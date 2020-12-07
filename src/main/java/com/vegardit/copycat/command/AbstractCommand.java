@@ -1,0 +1,137 @@
+/*
+ * Copyright 2020 by Vegard IT GmbH (https://vegardit.com) and contributors.
+ * SPDX-License-Identifier: Apache-2.0
+ */
+package com.vegardit.copycat.command;
+
+import java.nio.file.Path;
+import java.util.concurrent.Callable;
+import java.util.logging.Level;
+
+import com.vegardit.copycat.command.AbstractCommand.VersionProvider;
+import com.vegardit.copycat.util.JdkLoggingUtils;
+
+import net.sf.jstuff.core.logging.Logger;
+import net.sf.jstuff.core.reflection.Types;
+import picocli.CommandLine.Command;
+import picocli.CommandLine.IVersionProvider;
+import picocli.CommandLine.Model.CommandSpec;
+import picocli.CommandLine.Option;
+import picocli.CommandLine.Spec;
+
+/**
+ * @author Sebastian Thomschke, Vegard IT GmbH
+ */
+@Command( //
+   headerHeading = "" + //
+      "                                         __    /\\_/\\%n" + //
+      "      _________  ____  __  ___________ _/ /_  ( o.o )%n" + //
+      " -===/ ___/ __ \\/ __ \\/ / / / ___/ __ `/ __/   > ^ <%n" + //
+      "  -=/ /__/ /_/ / /_/ / /_/ / /__/ /_/ / /_     / * \\%n" + //
+      "-===\\___/\\____/ .___/\\__, /\\___/\\__,_/\\__/   (..)~(..)%n" + //
+      "             /_/    /____/%n" + //
+      "      https://github.com/vegardit/copycat%n" + //
+      "%n", //
+   mixinStandardHelpOptions = true, //
+   descriptionHeading = "%n", //
+   commandListHeading = "%nCommands%n", //
+   parameterListHeading = "%nPositional parameters:%n", //
+   optionListHeading = "%nOptions:%n", //
+   requiredOptionMarker = '*', //
+   usageHelpAutoWidth = true, //
+   separator = " ", //
+   showDefaultValues = true, //
+   sortOptions = true, //
+   versionProvider = VersionProvider.class //
+)
+public abstract class AbstractCommand implements Callable<Void> {
+
+   public static final class VersionProvider implements IVersionProvider {
+      @Override
+      public String[] getVersion() throws Exception {
+         return new String[] {Types.getVersion(AbstractCommand.class)};
+      }
+   }
+
+   private static final Logger LOG = Logger.create();
+
+   @Spec
+   protected CommandSpec commandSpec;
+
+   protected boolean quiet;
+
+   @Override
+   public final Void call() throws Exception {
+      /*
+       * install signal handlers
+       */
+      // Runtime.getRuntime().addShutdownHook() is not working reliable
+      try {
+         sun.misc.Signal.handle(new sun.misc.Signal("INT"), signal -> {
+            LOG.warn("Canceling operation due to SIGINT(2) signal (CTRL+C) received...");
+            onSigInt();
+            System.exit(128 + 2);
+         });
+      } catch (final IllegalArgumentException ex) {
+         // ignore java.lang.IllegalArgumentException: Unknown signal: INT
+      }
+      try {
+         sun.misc.Signal.handle(new sun.misc.Signal("TERM"), signal -> {
+            LOG.warn("Canceling operation due to SIGTERM(15) signal received...");
+            onSigTerm();
+            System.exit(128 + 15);
+         });
+      } catch (final IllegalArgumentException ex) {
+         // ignore java.lang.IllegalArgumentException: Unknown signal: TERM
+      }
+
+      execute();
+
+      LOG.info("");
+      LOG.info("The operation completed successfully.");
+      return null;
+   }
+
+   protected abstract void execute() throws Exception;
+
+   protected void onSigInt() {
+   }
+
+   protected void onSigTerm() {
+   }
+
+   @Option(names = "--log-errors-to-stdout", description = "Log errors to stdout instead of stderr.")
+   private void setErrorsToStdOut(final boolean flag) {
+      JdkLoggingUtils.configureConsoleHandler(!flag);
+   }
+
+   @Option(names = "--log-file", description = "Write console output also to the given log file..")
+   private void setLogFile(@SuppressWarnings("unused") final Path path) {
+      // nothing to do, already handled in main
+   }
+
+   @Option(names = {"-q", "--quiet"}, description = "Quiet mode.")
+   private void setQuiet(final boolean flag) {
+      quiet = flag;
+      if (flag) {
+         JdkLoggingUtils.setRootLogLevel(Level.SEVERE);
+      }
+   }
+
+   @Option(names = {"-v", "--verbose"}, description = {"Specify multiple -v options to increase verbosity.", "For example `-v -v -v` or `-vvv`."})
+   private void setVerbosity(final boolean[] flags) {
+      switch (flags.length) {
+         case 0:
+            JdkLoggingUtils.setRootLogLevel(Level.INFO);
+            break;
+         case 1:
+            JdkLoggingUtils.setRootLogLevel(Level.FINE);
+            break;
+         case 2:
+            JdkLoggingUtils.setRootLogLevel(Level.FINER);
+            break;
+         default:
+            JdkLoggingUtils.setRootLogLevel(Level.FINEST);
+      }
+   }
+}

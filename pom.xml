@@ -1,0 +1,355 @@
+<?xml version="1.0"?>
+<!--
+   Copyright 2020 by Vegard IT GmbH, Germany, https://vegardit.com
+   SPDX-License-Identifier: Apache-2.0
+
+   @author Sebastian Thomschke, Vegard IT GmbH
+-->
+<project xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd" xmlns="http://maven.apache.org/POM/4.0.0"
+   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+
+   <modelVersion>4.0.0</modelVersion>
+
+   <parent>
+      <groupId>com.vegardit.maven</groupId>
+      <artifactId>vegardit-maven-parent</artifactId>
+      <version>RELEASE</version>
+   </parent>
+
+   <groupId>com.vegardit</groupId>
+   <artifactId>copycat</artifactId>
+   <version>0.1.0-SNAPSHOT</version>
+
+
+   <name>copycat</name>
+   <description>Directory synchronization tool.</description>
+   <url>https://github.com/vegardit/copycat</url>
+   <organization>
+      <name>Vegard IT GmbH, Germany</name>
+      <url>https://vegardit.com/</url>
+   </organization>
+   <inceptionYear>2020</inceptionYear>
+
+
+   <licenses>
+      <license>
+         <name>Apache License 2.0</name>
+         <distribution>repo</distribution>
+         <url>https://spdx.org/licenses/Apache-2.0.html</url>
+      </license>
+   </licenses>
+
+
+   <properties>
+      <mainClass>com.vegardit.copycat.CopyCatMain</mainClass>
+
+      <java.version>11</java.version>
+
+      <!-- https://search.maven.org/artifact/org.graalvm.sdk/graal-sdk -->
+      <graalvm.version>20.3.0</graalvm.version>
+      <!-- https://search.maven.org/artifact/info.picocli/picocli -->
+      <picocli.version>4.5.2</picocli.version>
+
+      <skip.japicmp.cmp>true</skip.japicmp.cmp>
+   </properties>
+
+
+   <scm>
+      <!-- http://maven.apache.org/scm/git.html -->
+      <url>https://github.com/vegardit/copycat</url>
+      <connection>scm:git:https://github.com/vegardit/copycat.git</connection>
+      <developerConnection>scm:git:https://github.com/vegardit/copycat.git</developerConnection>
+      <tag>HEAD</tag>
+   </scm>
+
+
+   <ciManagement>
+      <system>github.com</system>
+      <url>https://github.com/vegardit/copycat/actions</url>
+   </ciManagement>
+
+
+   <issueManagement>
+      <system>github.com</system>
+      <url>https://github.com/vegardit/copycat/issues</url>
+   </issueManagement>
+
+
+   <build>
+      <plugins>
+         <plugin>
+            <groupId>org.codehaus.mojo</groupId>
+            <artifactId>build-helper-maven-plugin</artifactId>
+            <executions>
+               <execution>
+                  <id>add-license-file-to-jar</id>
+                  <phase>generate-resources</phase>
+                  <goals>
+                     <goal>add-resource</goal>
+                  </goals>
+                  <configuration>
+                     <resources>
+                        <resource>
+                           <directory>./</directory>
+                           <targetPath>META-INF</targetPath>
+                           <includes>
+                              <include>../LICENSE.txt</include>
+                           </includes>
+                        </resource>
+                     </resources>
+                  </configuration>
+               </execution>
+            </executions>
+         </plugin>
+
+         <plugin>
+            <artifactId>maven-shade-plugin</artifactId>
+            <executions>
+               <execution>
+                  <id>create-fat-jar</id>
+                  <phase>package</phase>
+                  <goals>
+                     <goal>shade</goal>
+                  </goals>
+                  <configuration>
+                     <shadedArtifactAttached>true</shadedArtifactAttached>
+                     <shadedClassifierName>fat</shadedClassifierName>
+
+                     <createDependencyReducedPom>false</createDependencyReducedPom>
+                     <keepDependenciesWithProvidedScope>true</keepDependenciesWithProvidedScope>
+                     <minimizeJar>true</minimizeJar>
+
+                     <promoteTransitiveDependencies>true</promoteTransitiveDependencies>
+
+                     <shadedArtifactAttached>true</shadedArtifactAttached>
+                     <shadedClassifierName>fat</shadedClassifierName>
+
+                     <filters>
+                        <filter>
+                           <artifact>*:*</artifact>
+                           <excludes>
+                              <exclude>rebel-remote.xml</exclude>
+                              <exclude>META-INF/maven/**/pom.*</exclude>
+                           </excludes>
+                        </filter>
+                     </filters>
+
+                     <transformers>
+                        <!-- http://maven.apache.org/plugins/maven-shade-plugin/examples/resource-transformers.html -->
+                        <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+                           <mainClass>${mainClass}</mainClass>
+                        </transformer>
+                     </transformers>
+                  </configuration>
+               </execution>
+            </executions>
+         </plugin>
+
+         <plugin>
+            <groupId>org.codehaus.mojo</groupId>
+            <artifactId>build-helper-maven-plugin</artifactId>
+            <executions>
+               <execution>
+                  <inherited>false</inherited>
+                  <id>attach-files</id>
+                  <phase>package</phase>
+                  <goals>
+                     <goal>attach-artifact</goal>
+                  </goals>
+                  <configuration>
+                     <artifacts>
+                        <artifact>
+                           <file>${project.build.directory}/bash/${project.artifactId}_bashcompletion.sh</file>
+                           <classifier>bashcompletion</classifier>
+                           <type>sh</type>
+                        </artifact>
+                     </artifacts>
+                  </configuration>
+               </execution>
+            </executions>
+         </plugin>
+      </plugins>
+   </build>
+
+
+   <dependencies>
+      <dependency>
+         <!-- command line parsing https://github.com/remkop/picocli -->
+         <groupId>info.picocli</groupId>
+         <artifactId>picocli</artifactId>
+         <version>${picocli.version}</version>
+      </dependency>
+      <dependency>
+         <!-- https://github.com/remkop/picocli-jansi-graalvm -->
+         <groupId>info.picocli</groupId>
+         <artifactId>picocli-jansi-graalvm</artifactId>
+         <version>1.2.0</version>
+      </dependency>
+      <dependency>
+         <!-- ANSI coloring -->
+         <groupId>org.fusesource.jansi</groupId>
+         <artifactId>jansi</artifactId>
+         <version>1.18</version>
+      </dependency>
+      <dependency>
+         <groupId>net.sf.jstuff</groupId>
+         <artifactId>jstuff-core</artifactId>
+         <version>5.7.1</version>
+      </dependency>
+      <dependency>
+         <groupId>org.graalvm.sdk</groupId>
+         <artifactId>graal-sdk</artifactId>
+         <version>${graalvm.version}</version>
+         <scope>provided</scope>
+      </dependency>
+      <dependency>
+         <!-- only to prevent java.lang.ClassNotFoundException: com.thoughtworks.paranamer.Paranamer during native image build -->
+         <groupId>com.thoughtworks.paranamer</groupId>
+         <artifactId>paranamer</artifactId>
+         <version>2.8</version>
+      </dependency>
+
+
+      <!--==================================================================
+          Test dependencies
+          ================================================================== -->
+      <dependency>
+         <!-- command line parsing -->
+         <groupId>info.picocli</groupId>
+         <artifactId>picocli-codegen</artifactId>
+         <version>${picocli.version}</version>
+         <scope>test</scope>
+      </dependency>
+      <dependency>
+         <groupId>org.assertj</groupId>
+         <artifactId>assertj-core</artifactId>
+         <version>3.18.1</version>
+         <scope>test</scope>
+      </dependency>
+
+      <dependency>
+         <groupId>junit</groupId>
+         <artifactId>junit</artifactId>
+         <version>4.13.1</version>
+         <scope>test</scope>
+      </dependency>
+   </dependencies>
+
+   <profiles>
+      <profile>
+         <id>native-image</id>
+
+         <properties>
+            <java.vendor>graalvm</java.vendor>
+         </properties>
+
+         <build>
+            <plugins>
+               <plugin>
+                  <groupId>org.codehaus.mojo</groupId>
+                  <artifactId>exec-maven-plugin</artifactId>
+                  <version>3.0.0</version>
+                  <executions>
+                     <execution>
+                        <id>graal-native-image</id>
+                        <phase>package</phase>
+                        <goals>
+                           <goal>exec</goal>
+                        </goals>
+                        <configuration>
+                           <skip>true</skip>
+                           <!-- https://www.graalvm.org/docs/reference-manual/native-image/ -->
+                           <executable>native-image</executable>
+                           <workingDirectory>${project.build.directory}</workingDirectory>
+                           <arguments>
+                              <!-- https://www.graalvm.org/reference-manual/native-image/Options/ -->
+                              <argument>-H:ReflectionConfigurationFiles=picocli-reflections.json</argument>
+                              <argument>-H:+ReportExceptionStackTraces</argument>
+                              <argument>-H:+RemoveUnusedSymbols</argument>
+                              <argument>--allow-incomplete-classpath</argument>
+                              <argument>--no-fallback</argument>
+                              <argument>--no-server</argument>
+                              <argument>--verbose</argument>
+                              <!--
+                                https://www.graalvm.org/reference-manual/native-image/StaticImages/#build-a-mostly-static-native-image
+                                <argument>-H:+StaticExecutableWithDynamicLibC</argument>
+                                for some reason currently static linking results in smaller binaries than dynamic linking or mostly-static image
+                               -->
+                              <argument>--static</argument>
+                              <argument>--class-path</argument>
+                              <argument>${project.artifactId}-${project.version}-fat.jar</argument>
+                              <argument>${mainClass}</argument>
+                              <argument>copycat-${project.version}</argument>
+                           </arguments>
+                        </configuration>
+                     </execution>
+                     <!--
+                     <execution>
+                        <id>strip</id>
+                        <phase>package</phase>
+                        <goals>
+                           <goal>exec</goal>
+                        </goals>
+                        <configuration>
+                           <executable>strip</executable>
+                           <workingDirectory>${project.build.directory}</workingDirectory>
+                           <arguments>
+                              <argument>- -verbose</argument>
+                              <argument>copycat-${project.version}</argument>
+                           </arguments>
+                        </configuration>
+                     </execution>
+                     <execution>
+                        <id>upx</id>
+                        <phase>package</phase>
+                        <goals>
+                           <goal>exec</goal>
+                        </goals>
+                        <configuration>
+                           <executable>upx</executable>
+                           <workingDirectory>${project.build.directory}</workingDirectory>
+                           <arguments>
+                              <argument>-9</argument>
+                              <argument>copycat-${project.version}</argument>
+                           </arguments>
+                        </configuration>
+                     </execution> -->
+                  </executions>
+               </plugin>
+
+               <plugin>
+                  <groupId>org.graalvm.nativeimage</groupId>
+                  <artifactId>native-image-maven-plugin</artifactId>
+                  <version>${graalvm.version}</version>
+                  <executions>
+                     <execution>
+                        <goals>
+                           <goal>native-image</goal>
+                        </goals>
+                        <phase>package</phase>
+                     </execution>
+                  </executions>
+                  <configuration>
+                     <!-- produces larger binaries than compiling from a reduced fat.jar -->
+                     <skip>true</skip>
+
+                     <detail>true</detail>
+                     <imageName>${project.artifactId}</imageName>
+                     <mainClass>${mainClass}</mainClass>
+                     <buildArgs><![CDATA[
+                        -H:ReflectionConfigurationFiles=picocli-reflections.json
+                        -H:+ReportExceptionStackTraces
+                        -H:+RemoveUnusedSymbols
+                        --allow-incomplete-classpath
+                        --no-fallback
+                        --no-server
+                        --static
+                        --verbose
+                     ]]></buildArgs>
+                  </configuration>
+               </plugin>
+            </plugins>
+         </build>
+      </profile>
+   </profiles>
+</project>

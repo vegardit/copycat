@@ -1,0 +1,424 @@
+# https://docs.github.com/en/free-pro-team@latest/actions/reference/workflow-syntax-for-github-actions
+name: Build
+
+on:
+  push:
+    paths-ignore:
+    - '**/*.md'
+  pull_request:
+
+env:
+  GRAALVM_VERSION: 20.3.0 # https://github.com/graalvm/graalvm-ce-builds/releases
+  JAVA_VERSION: 11
+  MAIN_CLASS: "com.vegardit.copycat.CopyCatMain"
+
+jobs:
+  ###########################################################
+  maven-build:
+  ###########################################################
+    runs-on: ubuntu-latest
+    steps:
+    - name: Git Checkout
+      uses: actions/checkout@v2 #https://github.com/actions/checkout
+
+    - name: Install OpenJDK ${{ env.JAVA_VERSION }}
+      uses: actions/setup-java@v1 #https://github.com/actions/setup-java
+      with:
+        java-version: ${{ env.JAVA_VERSION }}
+
+    - name: Cache local Maven repository
+      uses: actions/cache@v2
+      with:
+        path: ~/.m2/repository
+        key: ${{ runner.os }}-mvnrepo-${{ hashFiles('**/pom.xml') }}
+        restore-keys: |
+          ${{ runner.os }}-mvnrepo-
+
+    - name: Cache Maven binary
+      uses: actions/cache@v2
+      with:
+        path: |
+          ~/.m2/bin
+        key: ${{ runner.os }}-mvnbin-${{ hashFiles('.ci/build.sh') }}
+
+    - name: Build with Maven
+      env:
+        DEPLOY_SNAPSHOTS_TO_GITHUB_BRANCH: true
+        GITHUB_USER: ${{ github.actor }}
+      shell: bash
+      run: |
+        set -eu
+
+        if [ "${{github.ref}}" == "refs/heads/main" ]; then
+           export GITHUB_API_KEY="${{ secrets.GH_API_TOKEN }}"
+        else
+           export GITHUB_API_KEY="${{ github.token }}" # ${{ github.token }} only has read access
+        fi
+
+        # https://github.community/t/github-actions-bot-email-address/17204
+        git config user.name "github-actions[bot]"
+        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        bash .ci/build.sh
+
+        mv target/copycat-*-fat.jar target/copycat-fat.jar
+
+    - uses: actions/upload-artifact@v2
+      with:
+        name: copycat-fat.jar
+        path: target/copycat-fat.jar
+
+    - uses: actions/upload-artifact@v2
+      with:
+        name: picocli-reflections.json
+        path: target/picocli-reflections.json
+
+
+  ###########################################################
+  snapshot-release:
+  ###########################################################
+    runs-on: ubuntu-latest
+    needs: [maven-build]
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+    - name: Delete "snapshot" Release
+      shell: bash
+      run: |
+        set -eu
+
+        creds="${{ secrets.GH_API_TOKEN }}:x-oauth-basic"
+        api_base_url="$GITHUB_API_URL/repos/$GITHUB_REPOSITORY"
+
+        # delete release
+        snapshot_release_id=$(curl -fsL $creds https://api.github.com/repos/vegardit/copycat/releases | jq -r '.[] | select(.name == "snapshot") | .id')
+        if [[ -n $snapshot_release_id ]]; then
+           echo "Deleting release [$api_base_url/releases/$snapshot_release_id]..."
+           curl -u $creds -fsSL -X DELETE "$api_base_url/releases/$snapshot_release_id"
+        fi
+
+        # delete tag
+        snapshot_tag_url="$api_base_url/git/refs/tags/snapshot"
+        if curl -u $creds -fsLo /dev/null --head "$snapshot_tag_url"; then
+           echo "Deleting tag [$snapshot_tag_url]..."
+           curl -u $creds -fsSL -u $creds -X DELETE "$snapshot_tag_url"
+        fi
+
+    - name: Create "snapshot" Release
+      id: create_release
+      uses: actions/create-release@v1 # https://github.com/actions/upload-release-asset
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: "snapshot"
+        release_name: "snapshot"
+        draft: false
+        prerelease: true
+
+    - name: Save release upload URL
+      run: |
+        echo "${{ steps.create_release.outputs.upload_url }}" > release_upload_url.txt
+
+    - uses: actions/download-artifact@v2
+      with:
+        name: copycat-fat.jar
+
+    - name: Attach fat jar to "snapshot" Release
+      uses: actions/upload-release-asset@v1
+      env: 
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with: 
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_content_type: application/java-archive
+        asset_name: copycat-snapshot-fat.jar
+        asset_path: copycat-fat.jar
+
+    - uses: actions/upload-artifact@v2
+      with:
+        name: release_upload_url.txt
+        path: release_upload_url.txt
+
+
+  ###########################################################
+  native-linux:
+  ###########################################################
+    runs-on: ubuntu-latest
+    needs: [maven-build]
+
+    steps:
+    - name: Cache GraalVM binary
+      uses: actions/cache@v2
+      with:
+        path: |
+          /opt/graalvm
+        key: ${{ runner.os }}-graalvm-${{ env.GRAALVM_VERSION }}
+ 
+    - name: Install GraalVM
+      shell: bash
+      run: |
+        set -eu
+
+        sudo apt-get install --no-install-recommends -y gcc libz-dev 
+
+        if [ ! -e /opt/graalvm/bin/native-image ]; then
+           rm -rf /opt/graalvm
+
+           curl -fL "https://github.com/graalvm/graalvm-ce-builds/releases/download/vm-${GRAALVM_VERSION}/graalvm-ce-java${JAVA_VERSION}-linux-amd64-${GRAALVM_VERSION}.tar.gz" \
+             | tar zxv -C /opt/graalvm --strip-components=1 \
+                   --exclude=*/bin/jvisualvm \
+                   --exclude=*/lib/src.zip \
+                   --exclude=*/lib/visualvm
+
+           /opt/graalvm/bin/gu install native-image
+        fi
+
+        /opt/graalvm/bin/native-image --version
+
+        echo "JAVA_HOME=/opt/graalvm" >> $GITHUB_ENV
+        echo "/opt/graalvm/bin" >> $GITHUB_PATH
+
+    - name: Install binutils (strip)
+      run: sudo apt-get --no-install-recommends install -y binutils
+
+    - name: Install upx
+      run: |
+        mkdir /opt/upx
+        upx_download_url=$(curl -fsSL https://api.github.com/repos/upx/upx/releases/latest | grep browser_download_url | grep amd64_linux.tar.xz | cut "-d\"" -f4)
+        echo "Downloading [$upx_download_url]..."
+        curl -fL $upx_download_url | tar Jxv -C /opt/upx --strip-components=1
+
+    - uses: actions/download-artifact@v2
+      with:
+        name: copycat-fat.jar
+
+    - uses: actions/download-artifact@v2
+      with:
+        name: picocli-reflections.json
+
+    - name: Build native image
+      shell: bash
+      run: |
+        #https://www.graalvm.org/reference-manual/native-image/Options/
+        native-image \
+          -H:ReflectionConfigurationFiles=picocli-reflections.json \
+          -H:+ReportExceptionStackTraces \
+          -H:+RemoveUnusedSymbols \
+          --allow-incomplete-classpath \
+          --no-fallback \
+          --no-server \
+          --verbose \
+          --static \
+          --class-path copycat-fat.jar \
+          ${{ env.MAIN_CLASS }} \
+          copycat-snapshot-linux-amd64
+
+    - name: Minify executable
+      shell: bash
+      run: | 
+        strip --strip-unneeded copycat-snapshot-linux-amd64 
+        /opt/upx/upx -v -9 copycat-snapshot-linux-amd64
+
+    - uses: actions/download-artifact@v2
+      if: github.ref == 'refs/heads/main'
+      with:
+        name: release_upload_url.txt
+
+    - name: Prepare release artifact upload
+      shell: bash
+      run: echo "UPLOAD_URL=$(cat release_upload_url.txt)" >> $GITHUB_ENV
+
+    - name: Upload release artifact
+      if: github.ref == 'refs/heads/main'
+      uses: actions/upload-release-asset@v1
+      env: 
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with: 
+        upload_url: ${{ env.UPLOAD_URL }}
+        asset_content_type: application/octet-stream
+        asset_name: copycat-snapshot-linux-amd64
+        asset_path: copycat-snapshot-linux-amd64
+
+
+  ###########################################################
+  native-macos:
+  ###########################################################
+    runs-on: macos-latest
+    needs: [maven-build]
+
+    steps:
+    - name: Cache GraalVM binary
+      uses: actions/cache@v2
+      with:
+        path: |
+          graalvm
+        key: ${{ runner.os }}-graalvm-${{ env.GRAALVM_VERSION }}
+ 
+    - name: Install GraalVM
+      shell: bash
+      run: |
+        set -eu
+
+        GRAAL_VM_HOME=graalvm/Contents/Home
+
+        if [ ! -e $GRAAL_VM_HOME/bin/native-image ]; then
+           rm -rf graalvm
+           mkdir graalvm
+           curl -fL "https://github.com/graalvm/graalvm-ce-builds/releases/download/vm-${GRAALVM_VERSION}/graalvm-ce-java${JAVA_VERSION}-darwin-amd64-${GRAALVM_VERSION}.tar.gz" \
+             | tar zxv -C graalvm --strip-components=1 \
+                   --exclude=*/bin/jvisualvm \
+                   --exclude=*/lib/src.zip \
+                   --exclude=*/lib/visualvm
+
+           $GRAAL_VM_HOME/bin/gu install native-image
+        fi
+
+        $GRAAL_VM_HOME/bin/native-image --version
+
+        echo "JAVA_HOME=$GRAAL_VM_HOME" >> $GITHUB_ENV
+        echo "$GRAAL_VM_HOME/bin" >> $GITHUB_PATH
+
+    - name: Install upx
+      run: brew install upx
+
+    - uses: actions/download-artifact@v2
+      with:
+        name: copycat-fat.jar
+
+    - uses: actions/download-artifact@v2
+      with:
+        name: picocli-reflections.json
+
+    - name: Build native image
+      shell: bash
+      run: |
+        # not using "--static" because of error: DARWIN does not support building static executable images.
+        #https://www.graalvm.org/reference-manual/native-image/Options/
+        native-image \
+          -H:ReflectionConfigurationFiles=picocli-reflections.json \
+          -H:+ReportExceptionStackTraces \
+          -H:+RemoveUnusedSymbols \
+          --allow-incomplete-classpath \
+          --no-fallback \
+          --no-server \
+          --verbose \
+          --class-path copycat-fat.jar \
+          ${{ env.MAIN_CLASS }} \
+          copycat-snapshot-darwin-amd64
+
+    - name: Minify executable
+      shell: bash
+      run: |
+        # https://www.unix.com/man-page/osx/1/strip/
+        strip copycat-snapshot-darwin-amd64 
+        upx -v -9 copycat-snapshot-darwin-amd64
+
+    - uses: actions/download-artifact@v2
+      if: github.ref == 'refs/heads/main'
+      with:
+        name: release_upload_url.txt
+
+    - name: Prepare release artifact upload
+      shell: bash
+      run: echo "UPLOAD_URL=$(cat release_upload_url.txt)" >> $GITHUB_ENV
+
+    - name: Upload release artifact
+      if: github.ref == 'refs/heads/main'
+      uses: actions/upload-release-asset@v1
+      env: 
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with: 
+        upload_url: ${{ env.UPLOAD_URL }}
+        asset_content_type: application/octet-stream
+        asset_name: copycat-snapshot-darwin-amd64
+        asset_path: copycat-snapshot-darwin-amd64
+
+
+  ###########################################################
+  native-windows:
+  ###########################################################
+    runs-on: windows-latest
+    needs: [maven-build]
+
+    steps:
+    - name: Cache GraalVM binary
+      uses: actions/cache@v2
+      with:
+        path: |
+          graalvm-ce-java${{ env.JAVA_VERSION }}-${{ env.GRAALVM_VERSION }}
+        key: ${{ runner.os }}-graalvm-${{ env.GRAALVM_VERSION }}
+ 
+    - name: Install GraalVM
+      run: |
+        if (!(Test-Path "graalvm-ce-java${{ env.JAVA_VERSION }}-${{ env.GRAALVM_VERSION }}")) {
+           echo "Downloading GraalVM..."
+           Invoke-RestMethod -Uri https://github.com/graalvm/graalvm-ce-builds/releases/download/vm-${{ env.GRAALVM_VERSION }}/graalvm-ce-java${{ env.JAVA_VERSION }}-windows-amd64-${{ env.GRAALVM_VERSION }}.zip -OutFile 'graalvm.zip'
+
+           echo "Extracting GraalVM..."
+           Expand-Archive -path 'graalvm.zip' -destinationpath '.'
+
+           echo "Installing native-image..."
+           graalvm-ce-java${{ env.JAVA_VERSION }}-${{ env.GRAALVM_VERSION }}\bin\gu.cmd install native-image
+        }
+
+        & "graalvm-ce-java${{ env.JAVA_VERSION }}-${{ env.GRAALVM_VERSION }}\bin\native-image" "--version"
+
+        echo "Extend GITHUB_PATH..."
+        echo "$(($pwd).path)\graalvm-ce-java${{ env.JAVA_VERSION }}-${{ env.GRAALVM_VERSION }}\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+        echo "Extend GITHUB_ENV..."
+        echo "JAVA_HOME=$(($pwd).path)\graalvm-ce-java${{ env.JAVA_VERSION }}-${{ env.GRAALVM_VERSION }}" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+    - name: Install Visual C++ build tools
+      run: choco install visualstudio2017-workload-vctools
+
+    - name: Install UPX
+      run: choco install upx
+
+    - uses: actions/download-artifact@v2
+      with:
+        name: copycat-fat.jar
+
+    - uses: actions/download-artifact@v2
+      with:
+        name: picocli-reflections.json
+
+    - name: Build native image
+      shell: cmd
+      run: |
+        call "C:\Program Files (x86)\Microsoft Visual Studio\2017\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
+
+        "%JAVA_HOME%\bin\native-image" ^
+          -H:ReflectionConfigurationFiles=picocli-reflections.json ^
+          -H:+ReportExceptionStackTraces ^
+          -H:+RemoveUnusedSymbols ^
+          --allow-incomplete-classpath ^
+          --no-fallback ^
+          --no-server ^
+          --verbose ^
+          --static ^
+          --class-path copycat-fat.jar ^
+          ${{ env.MAIN_CLASS }} ^
+          copycat-snapshot-windows-amd64
+
+    - name: Minify executable
+      run: upx -v -9 copycat-snapshot-windows-amd64.exe
+
+    - uses: actions/download-artifact@v2
+      if: github.ref == 'refs/heads/main'
+      with:
+        name: release_upload_url.txt
+
+    - name: Prepare release artifact upload
+      if: github.ref == 'refs/heads/main'
+      shell: bash
+      run: echo "UPLOAD_URL=$(cat release_upload_url.txt)" >> $GITHUB_ENV
+
+    - name: Upload release artifact
+      if: github.ref == 'refs/heads/main'
+      uses: actions/upload-release-asset@v1
+      env: 
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with: 
+        upload_url: ${{ env.UPLOAD_URL }}
+        asset_content_type: application/octet-stream
+        asset_name: copycat-snapshot-windows-amd64.exe
+        asset_path: copycat-snapshot-windows-amd64.exe
