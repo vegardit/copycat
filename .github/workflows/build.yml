@@ -214,8 +214,15 @@ jobs:
     - name: Minify executable
       shell: bash
       run: | 
-        strip --strip-unneeded copycat-snapshot-linux-amd64 
+        strip --strip-unneeded copycat-snapshot-linux-amd64
         /opt/upx/upx -v -9 copycat-snapshot-linux-amd64
+
+    - name: Test executable
+      shell: bash
+      run: |
+        chmod u+x copycat-snapshot-linux-amd64
+        copycat-snapshot-linux-amd64 --version
+        copycat-snapshot-linux-amd64 --help
 
     - uses: actions/download-artifact@v2
       if: github.ref == 'refs/heads/main'
@@ -311,6 +318,13 @@ jobs:
         strip copycat-snapshot-darwin-amd64 
         upx -v -9 copycat-snapshot-darwin-amd64
 
+    - name: Test executable
+      shell: bash
+      run: |
+        chmod u+x copycat-snapshot-darwin-amd64
+        copycat-snapshot-darwin-amd64 --version
+        copycat-snapshot-darwin-amd64 --help
+
     - uses: actions/download-artifact@v2
       if: github.ref == 'refs/heads/main'
       with:
@@ -401,6 +415,11 @@ jobs:
 
     - name: Minify executable
       run: upx -v -9 copycat-snapshot-windows-amd64.exe
+
+    - name: Test executable
+      run: |
+        copycat-snapshot-windows-amd64.exe --version
+        copycat-snapshot-windows-amd64.exe --help
 
     - uses: actions/download-artifact@v2
       if: github.ref == 'refs/heads/main'
