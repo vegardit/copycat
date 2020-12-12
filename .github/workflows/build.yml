@@ -11,6 +11,7 @@ env:
   GRAALVM_VERSION: 20.3.0 # https://github.com/graalvm/graalvm-ce-builds/releases
   JAVA_VERSION: 11
   MAIN_CLASS: "com.vegardit.copycat.CopyCatMain"
+  RELEASE_NAME: "snapshot"
 
 jobs:
   ###########################################################
@@ -18,15 +19,15 @@ jobs:
   ###########################################################
     runs-on: ubuntu-latest
     steps:
-    - name: Git Checkout
+    - name: "SCM Checkout"
       uses: actions/checkout@v2 #https://github.com/actions/checkout
 
-    - name: Install OpenJDK ${{ env.JAVA_VERSION }}
+    - name: "Install: OpenJDK ${{ env.JAVA_VERSION }}"
       uses: actions/setup-java@v1 #https://github.com/actions/setup-java
       with:
         java-version: ${{ env.JAVA_VERSION }}
 
-    - name: Cache local Maven repository
+    - name: "Cache: Local Maven Repository"
       uses: actions/cache@v2
       with:
         path: ~/.m2/repository
@@ -34,14 +35,14 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-mvnrepo-
 
-    - name: Cache Maven binary
+    - name: "Cache: Maven Binaries"
       uses: actions/cache@v2
       with:
         path: |
           ~/.m2/bin
-        key: ${{ runner.os }}-mvnbin-${{ hashFiles('.ci/build.sh') }}
+        key: ${{ runner.os }}-mvnbin-${{ hashFiles('.ci/maven-build.sh') }}
 
-    - name: Build with Maven
+    - name: "Maven: build"
       env:
         DEPLOY_SNAPSHOTS_TO_GITHUB_BRANCH: true
         GITHUB_USER: ${{ github.actor }}
@@ -58,30 +59,33 @@ jobs:
         # https://github.community/t/github-actions-bot-email-address/17204
         git config user.name "github-actions[bot]"
         git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-        bash .ci/build.sh
+        bash .ci/maven-build.sh
 
         mv target/copycat-*-fat.jar target/copycat-fat.jar
 
-    - uses: actions/upload-artifact@v2
+    - name: "Share: copycat-fat.jar"
+      uses: actions/upload-artifact@v2
       with:
         name: copycat-fat.jar
         path: target/copycat-fat.jar
 
-    - uses: actions/upload-artifact@v2
+    - name: "Share: picocli-reflections.json"
+      uses: actions/upload-artifact@v2
       with:
         name: picocli-reflections.json
         path: target/picocli-reflections.json
 
 
   ###########################################################
-  snapshot-release:
+  create-release:
   ###########################################################
     runs-on: ubuntu-latest
     needs: [maven-build]
     if: github.ref == 'refs/heads/main'
 
     steps:
-    - name: Delete "snapshot" Release
+    - name: "Delete previous '${{ env.RELEASE_NAME }}' release"
+      if: env.RELEASE_NAME == 'snapshot'
       shell: bash
       run: |
         set -eu
@@ -90,69 +94,71 @@ jobs:
         api_base_url="$GITHUB_API_URL/repos/$GITHUB_REPOSITORY"
 
         # delete release
-        snapshot_release_id=$(curl -fsL $creds https://api.github.com/repos/vegardit/copycat/releases | jq -r '.[] | select(.name == "snapshot") | .id')
-        if [[ -n $snapshot_release_id ]]; then
-           echo "Deleting release [$api_base_url/releases/$snapshot_release_id]..."
-           curl -u $creds -fsSL -X DELETE "$api_base_url/releases/$snapshot_release_id"
+        release_id=$(curl -fsL $creds https://api.github.com/repos/vegardit/copycat/releases | jq -r '.[] | select(.name == "${{ env.RELEASE_NAME }}") | .id')
+        if [[ -n $release_id ]]; then
+           echo "Deleting release [$api_base_url/releases/$release_id]..."
+           curl -u $creds -fsSL -X DELETE "$api_base_url/releases/$release_id"
         fi
 
         # delete tag
-        snapshot_tag_url="$api_base_url/git/refs/tags/snapshot"
-        if curl -u $creds -fsLo /dev/null --head "$snapshot_tag_url"; then
-           echo "Deleting tag [$snapshot_tag_url]..."
-           curl -u $creds -fsSL -u $creds -X DELETE "$snapshot_tag_url"
+        tag_url="$api_base_url/git/refs/tags/${{ env.RELEASE_NAME }}"
+        if curl -u $creds -fsLo /dev/null --head "$tag_url"; then
+           echo "Deleting tag [$tag_url]..."
+           curl -u $creds -fsSL -u $creds -X DELETE "$tag_url"
         fi
 
-    - name: Create "snapshot" Release
+    - name: "Create '${{ env.RELEASE_NAME }}' Release"
       id: create_release
       uses: actions/create-release@v1 # https://github.com/actions/upload-release-asset
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
-        tag_name: "snapshot"
-        release_name: "snapshot"
+        tag_name: ${{ env.RELEASE_NAME }}
+        release_name: ${{ env.RELEASE_NAME }}
         draft: false
         prerelease: true
 
-    - name: Save release upload URL
+    - name: "Save release asset upload URL"
       run: |
-        echo "${{ steps.create_release.outputs.upload_url }}" > release_upload_url.txt
+        echo "${{ steps.create_release.outputs.upload_url }}" > release_asset_upload_url.txt
 
-    - uses: actions/download-artifact@v2
+    - name: "Share: release_asset_upload_url.txt"
+      uses: actions/upload-artifact@v2
+      with:
+        name: release_asset_upload_url.txt
+        path: release_asset_upload_url.txt
+
+    - name: "Get: copycat-fat.jar"
+      uses: actions/download-artifact@v2
       with:
         name: copycat-fat.jar
 
-    - name: Attach fat jar to "snapshot" Release
+    - name: "Attach: copycat-${{ env.RELEASE_NAME }}-fat.jar to '${{ env.RELEASE_NAME }}' Release"
       uses: actions/upload-release-asset@v1
       env: 
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with: 
         upload_url: ${{ steps.create_release.outputs.upload_url }}
         asset_content_type: application/java-archive
-        asset_name: copycat-snapshot-fat.jar
+        asset_name: copycat-${{ env.RELEASE_NAME }}-fat.jar
         asset_path: copycat-fat.jar
-
-    - uses: actions/upload-artifact@v2
-      with:
-        name: release_upload_url.txt
-        path: release_upload_url.txt
 
 
   ###########################################################
-  native-linux:
+  native-linux-amd64:
   ###########################################################
     runs-on: ubuntu-latest
     needs: [maven-build]
 
     steps:
-    - name: Cache GraalVM binary
+    - name: "Cache: GraalVM binaries"
       uses: actions/cache@v2
       with:
         path: |
           /opt/graalvm
         key: ${{ runner.os }}-graalvm-${{ env.GRAALVM_VERSION }}
  
-    - name: Install GraalVM
+    - name: "Install: GraalVM"
       shell: bash
       run: |
         set -eu
@@ -176,25 +182,27 @@ jobs:
         echo "JAVA_HOME=/opt/graalvm" >> $GITHUB_ENV
         echo "/opt/graalvm/bin" >> $GITHUB_PATH
 
-    - name: Install binutils (strip)
+    - name: "Install: binutils (strip)"
       run: sudo apt-get --no-install-recommends install -y binutils
 
-    - name: Install upx
+    - name: "Install: UPX"
       run: |
         mkdir /opt/upx
         upx_download_url=$(curl -fsSL https://api.github.com/repos/upx/upx/releases/latest | grep browser_download_url | grep amd64_linux.tar.xz | cut "-d\"" -f4)
         echo "Downloading [$upx_download_url]..."
         curl -fL $upx_download_url | tar Jxv -C /opt/upx --strip-components=1
 
-    - uses: actions/download-artifact@v2
+    - name: "Get: copycat-fat.jar" 
+      uses: actions/download-artifact@v2
       with:
         name: copycat-fat.jar
 
-    - uses: actions/download-artifact@v2
+    - name: "Get: picocli-reflections.json"
+      uses: actions/download-artifact@v2
       with:
         name: picocli-reflections.json
 
-    - name: Build native image
+    - name: "Build native image"
       shell: bash
       run: |
         #https://www.graalvm.org/reference-manual/native-image/Options/
@@ -209,31 +217,32 @@ jobs:
           --static \
           --class-path copycat-fat.jar \
           ${{ env.MAIN_CLASS }} \
-          copycat-snapshot-linux-amd64
+          copycat-${{ env.RELEASE_NAME }}-linux-amd64
 
-    - name: Minify executable
+    - name: "Minify executable"
       shell: bash
       run: | 
-        strip --strip-unneeded copycat-snapshot-linux-amd64
-        /opt/upx/upx -v -9 copycat-snapshot-linux-amd64
+        strip --strip-unneeded copycat-${{ env.RELEASE_NAME }}-linux-amd64
+        /opt/upx/upx -v -9 copycat-${{ env.RELEASE_NAME }}-linux-amd64
 
-    - name: Test executable
+    - name: "Test executable"
       shell: bash
       run: |
-        chmod u+x copycat-snapshot-linux-amd64
-        copycat-snapshot-linux-amd64 --version
-        copycat-snapshot-linux-amd64 --help
+        chmod u+x copycat-${{ env.RELEASE_NAME }}-linux-amd64
+        ./copycat-${{ env.RELEASE_NAME }}-linux-amd64 --version
+        ./copycat-${{ env.RELEASE_NAME }}-linux-amd64 --help
 
-    - uses: actions/download-artifact@v2
+    - name: "Get: release_asset_upload_url.txt"
+      uses: actions/download-artifact@v2
       if: github.ref == 'refs/heads/main'
       with:
-        name: release_upload_url.txt
+        name: release_asset_upload_url.txt
 
-    - name: Prepare release artifact upload
+    - name: "Prepare release artifact upload"
       shell: bash
-      run: echo "UPLOAD_URL=$(cat release_upload_url.txt)" >> $GITHUB_ENV
+      run: echo "UPLOAD_URL=$(cat release_asset_upload_url.txt)" >> $GITHUB_ENV
 
-    - name: Upload release artifact
+    - name: "Attach binary to release"
       if: github.ref == 'refs/heads/main'
       uses: actions/upload-release-asset@v1
       env: 
@@ -241,25 +250,25 @@ jobs:
       with: 
         upload_url: ${{ env.UPLOAD_URL }}
         asset_content_type: application/octet-stream
-        asset_name: copycat-snapshot-linux-amd64
-        asset_path: copycat-snapshot-linux-amd64
+        asset_name: copycat-${{ env.RELEASE_NAME }}-linux-amd64
+        asset_path: copycat-${{ env.RELEASE_NAME }}-linux-amd64
 
 
   ###########################################################
-  native-macos:
+  native-macos-amd64:
   ###########################################################
     runs-on: macos-latest
     needs: [maven-build]
 
     steps:
-    - name: Cache GraalVM binary
+    - name: "Cache: GraalVM binaries"
       uses: actions/cache@v2
       with:
         path: |
           graalvm
         key: ${{ runner.os }}-graalvm-${{ env.GRAALVM_VERSION }}
  
-    - name: Install GraalVM
+    - name: "Install: GraalVM"
       shell: bash
       run: |
         set -eu
@@ -283,18 +292,20 @@ jobs:
         echo "JAVA_HOME=$GRAAL_VM_HOME" >> $GITHUB_ENV
         echo "$GRAAL_VM_HOME/bin" >> $GITHUB_PATH
 
-    - name: Install upx
+    - name: "Install: UPX"
       run: brew install upx
 
-    - uses: actions/download-artifact@v2
+    - name: "Get: copycat-fat.jar" 
+      uses: actions/download-artifact@v2
       with:
         name: copycat-fat.jar
 
-    - uses: actions/download-artifact@v2
+    - name: "Get: picocli-reflections.json"
+      uses: actions/download-artifact@v2
       with:
         name: picocli-reflections.json
 
-    - name: Build native image
+    - name: "Build native image"
       shell: bash
       run: |
         # not using "--static" because of error: DARWIN does not support building static executable images.
@@ -309,32 +320,33 @@ jobs:
           --verbose \
           --class-path copycat-fat.jar \
           ${{ env.MAIN_CLASS }} \
-          copycat-snapshot-darwin-amd64
+          copycat-${{ env.RELEASE_NAME }}-darwin-amd64
 
-    - name: Minify executable
+    - name: "Minify executable"
       shell: bash
       run: |
         # https://www.unix.com/man-page/osx/1/strip/
-        strip copycat-snapshot-darwin-amd64 
-        upx -v -9 copycat-snapshot-darwin-amd64
+        strip copycat-${{ env.RELEASE_NAME }}-darwin-amd64 
+        upx -v -9 copycat-${{ env.RELEASE_NAME }}-darwin-amd64
 
-    - name: Test executable
+    - name: "Test executable"
       shell: bash
       run: |
-        chmod u+x copycat-snapshot-darwin-amd64
-        copycat-snapshot-darwin-amd64 --version
-        copycat-snapshot-darwin-amd64 --help
+        chmod u+x copycat-${{ env.RELEASE_NAME }}-darwin-amd64
+        ./copycat-${{ env.RELEASE_NAME }}-darwin-amd64 --version
+        ./copycat-${{ env.RELEASE_NAME }}-darwin-amd64 --help
 
-    - uses: actions/download-artifact@v2
+    - name: "Get: release_asset_upload_url.txt"
+      uses: actions/download-artifact@v2
       if: github.ref == 'refs/heads/main'
       with:
-        name: release_upload_url.txt
+        name: release_asset_upload_url.txt
 
-    - name: Prepare release artifact upload
+    - name: "Prepare release artifact upload"
       shell: bash
-      run: echo "UPLOAD_URL=$(cat release_upload_url.txt)" >> $GITHUB_ENV
+      run: echo "UPLOAD_URL=$(cat release_asset_upload_url.txt)" >> $GITHUB_ENV
 
-    - name: Upload release artifact
+    - name: "Attach binary to release"
       if: github.ref == 'refs/heads/main'
       uses: actions/upload-release-asset@v1
       env: 
@@ -342,25 +354,37 @@ jobs:
       with: 
         upload_url: ${{ env.UPLOAD_URL }}
         asset_content_type: application/octet-stream
-        asset_name: copycat-snapshot-darwin-amd64
-        asset_path: copycat-snapshot-darwin-amd64
+        asset_name: copycat-${{ env.RELEASE_NAME }}-darwin-amd64
+        asset_path: copycat-${{ env.RELEASE_NAME }}-darwin-amd64
 
 
   ###########################################################
-  native-windows:
+  native-windows-amd64:
   ###########################################################
     runs-on: windows-latest
     needs: [maven-build]
 
     steps:
-    - name: Cache GraalVM binary
+    - name: "Cache: GraalVM binaries"
       uses: actions/cache@v2
       with:
         path: |
           graalvm-ce-java${{ env.JAVA_VERSION }}-${{ env.GRAALVM_VERSION }}
         key: ${{ runner.os }}-graalvm-${{ env.GRAALVM_VERSION }}
+
+    - name: "Cache: Choco packages"
+      uses: actions/cache@v2
+      with:
+        path: |
+          %LocalAppData%\Temp\chocolatey\
+          # https://stackoverflow.com/a/35584821/5116073
+          %LocalAppData%\NuGet\Cache\
+          %LocalAppData%\NuGet\v3-cache\
+          %userprofile%\.nuget\packages\
+        key: ${{ runner.os }}-choco-${{ env.GRAALVM_VERSION }}
  
-    - name: Install GraalVM
+    - name: "Install: GraalVM"
+      shell: powershell
       run: |
         if (!(Test-Path "graalvm-ce-java${{ env.JAVA_VERSION }}-${{ env.GRAALVM_VERSION }}")) {
            echo "Downloading GraalVM..."
@@ -381,21 +405,36 @@ jobs:
         echo "Extend GITHUB_ENV..."
         echo "JAVA_HOME=$(($pwd).path)\graalvm-ce-java${{ env.JAVA_VERSION }}-${{ env.GRAALVM_VERSION }}" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
-    - name: Install Visual C++ build tools
-      run: choco install visualstudio2017-workload-vctools
+    - name: "Install: Visual C++ build tools"
+      shell: cmd
+      run: |
+        # https://docs.microsoft.com/en-us/visualstudio/install/use-command-line-parameters-to-install-visual-studio?view=vs-2017
 
-    - name: Install UPX
+        # https://chocolatey.org/packages/visualstudio2017-workload-vctools
+        # https://github.com/jberezanski/ChocolateyPackages/blob/master/visualstudio2017-workload-vctools/visualstudio2017-workload-vctools.nuspec
+        choco install visualstudio2017-workload-vctools
+
+        set rc=%ERRORLEVEL%
+        if %rc% NEQ 0 (
+           type C:\ProgramData\chocolatey\logs\chocolatey.log
+           exit /b %rc%
+        )
+
+    - name: "Install: UPX"
+      shell: cmd
       run: choco install upx
 
-    - uses: actions/download-artifact@v2
+    - name: "Get: copycat-fat.jar" 
+      uses: actions/download-artifact@v2
       with:
         name: copycat-fat.jar
 
-    - uses: actions/download-artifact@v2
+    - name: "Get: picocli-reflections.json"
+      uses: actions/download-artifact@v2
       with:
         name: picocli-reflections.json
 
-    - name: Build native image
+    - name: "Build native image"
       shell: cmd
       run: |
         call "C:\Program Files (x86)\Microsoft Visual Studio\2017\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
@@ -411,27 +450,29 @@ jobs:
           --static ^
           --class-path copycat-fat.jar ^
           ${{ env.MAIN_CLASS }} ^
-          copycat-snapshot-windows-amd64
+          copycat-${{ env.RELEASE_NAME }}-windows-amd64
 
-    - name: Minify executable
-      run: upx -v -9 copycat-snapshot-windows-amd64.exe
+    - name: "Minify executable"
+      run: upx -v -9 copycat-${{ env.RELEASE_NAME }}-windows-amd64.exe
 
-    - name: Test executable
+    - name: "Test executable"
+      shell: cmd
       run: |
-        copycat-snapshot-windows-amd64.exe --version
-        copycat-snapshot-windows-amd64.exe --help
+        copycat-${{ env.RELEASE_NAME }}-windows-amd64.exe --version
+        copycat-${{ env.RELEASE_NAME }}-windows-amd64.exe --help
 
-    - uses: actions/download-artifact@v2
+    - name: "Get: release_asset_upload_url.txt"
+      uses: actions/download-artifact@v2
       if: github.ref == 'refs/heads/main'
       with:
-        name: release_upload_url.txt
+        name: release_asset_upload_url.txt
 
-    - name: Prepare release artifact upload
+    - name: "Prepare release artifact upload"
       if: github.ref == 'refs/heads/main'
       shell: bash
-      run: echo "UPLOAD_URL=$(cat release_upload_url.txt)" >> $GITHUB_ENV
+      run: echo "UPLOAD_URL=$(cat release_asset_upload_url.txt)" >> $GITHUB_ENV
 
-    - name: Upload release artifact
+    - name: "Attach binary to release"
       if: github.ref == 'refs/heads/main'
       uses: actions/upload-release-asset@v1
       env: 
@@ -439,5 +480,5 @@ jobs:
       with: 
         upload_url: ${{ env.UPLOAD_URL }}
         asset_content_type: application/octet-stream
-        asset_name: copycat-snapshot-windows-amd64.exe
-        asset_path: copycat-snapshot-windows-amd64.exe
+        asset_name: copycat-${{ env.RELEASE_NAME }}-windows-amd64.exe
+        asset_path: copycat-${{ env.RELEASE_NAME }}-windows-amd64.exe

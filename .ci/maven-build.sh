@@ -84,11 +84,11 @@ echo "###################################################"
 echo "# Determining current Maven project version...    #"
 echo "###################################################"
 # https://stackoverflow.com/questions/3545292/how-to-get-maven-project-version-to-the-bash-command-line
-projectVersion="$(mvn -s .ci/maven_settings.xml help:evaluate -Dexpression=project.version -q -DforceStdout)"
+projectVersion="$(mvn -s .ci/maven-settings.xml help:evaluate -Dexpression=project.version -q -DforceStdout)"
 echo "  -> Current Version: $projectVersion"
 
 
-MAVEN_CLI_OPTS="-e -U --batch-mode --show-version --no-transfer-progress -s .ci/maven_settings.xml -t .ci/maven_toolchains.xml"
+MAVEN_CLI_OPTS="-e -U --batch-mode --show-version --no-transfer-progress -s .ci/maven-settings.xml -t .ci/maven-toolchains.xml"
 
 #
 # decide whether to perform a release build or build+deploy a snapshot version
@@ -107,8 +107,8 @@ if [[ ${projectVersion:-foo} == ${POM_CURRENT_VERSION:-bar} ]]; then
    echo "  ->               Is Dry-Run: ${DRY_RUN}"
 
    # workaround for "No toolchain found with specification [version:1.8, vendor:default]" during release builds
-   cp -f .ci/maven_settings.xml $HOME/.m2/settings.xml
-   cp -f .ci/maven_toolchains.xml $HOME/.m2/toolchains.xml
+   cp -f .ci/maven-settings.xml $HOME/.m2/settings.xml
+   cp -f .ci/maven-toolchains.xml $HOME/.m2/toolchains.xml
 
    if [[ "$TRAVIS" == "true" ]]; then
       # workaround for "Git fatal: ref HEAD is not a symbolic ref" during release on Travis CI
