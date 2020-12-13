@@ -167,6 +167,7 @@ jobs:
 
         if [ ! -e /opt/graalvm/bin/native-image ]; then
            rm -rf /opt/graalvm
+           mkdir -p /opt/graalvm
 
            curl -fL "https://github.com/graalvm/graalvm-ce-builds/releases/download/vm-${GRAALVM_VERSION}/graalvm-ce-java${JAVA_VERSION}-linux-amd64-${GRAALVM_VERSION}.tar.gz" \
              | tar zxv -C /opt/graalvm --strip-components=1 \
@@ -255,6 +256,149 @@ jobs:
 
 
   ###########################################################
+  native-linux-arm64:
+  ###########################################################
+    runs-on: ubuntu-latest
+    needs: [maven-build]
+
+    steps:
+    - name: "Cache: GraalVM binaries"
+      uses: actions/cache@v2
+      with:
+        path: |
+          /opt/graalvm
+        key: ${{ runner.os }}-arm64-graalvm-${{ env.GRAALVM_VERSION }}
+ 
+    - name: "Create arm64 container"
+      run: |
+        sudo apt-get update -y
+        sudo apt-get install --no-install-recommends -y qemu-user-static
+        docker run --rm --privileged multiarch/qemu-user-static --reset -p yes
+
+        docker container create --name arm64 --tty \
+          -v /opt:/opt:rw \
+          -v $PWD:/workspace:rw \
+          arm64v8/ubuntu:20.04
+
+        docker container start arm64
+
+        docker exec --tty arm64 apt-get update -y
+        docker exec --tty arm64 apt-get install -y curl sudo
+
+    - name: "Install: GraalVM"
+      shell: bash
+      run: |
+        set -eu
+
+        cat <<EOF > install_graalvm.sh
+        set -eu
+        sudo apt-get install --no-install-recommends -y gcc libz-dev 
+
+        if [ ! -e /opt/graalvm/bin/native-image ]; then
+           rm -rf /opt/graalvm
+           mkdir -p /opt/graalvm
+
+           curl -fL "https://github.com/graalvm/graalvm-ce-builds/releases/download/vm-${GRAALVM_VERSION}/graalvm-ce-java${JAVA_VERSION}-linux-aarch64-${GRAALVM_VERSION}.tar.gz" \
+             | tar zxv -C /opt/graalvm --strip-components=1 \
+                   --exclude=*/bin/jvisualvm \
+                   --exclude=*/lib/src.zip \
+                   --exclude=*/lib/visualvm
+
+           /opt/graalvm/bin/gu install native-image
+        fi
+
+        /opt/graalvm/bin/native-image --version
+        EOF
+
+        docker exec --tty -w /workspace arm64 /bin/bash ./install_graalvm.sh
+
+    - name: "Install: binutils (strip)"
+      run: |
+        docker exec --tty arm64 \
+        sudo apt-get --no-install-recommends install -y binutils
+
+    - name: "Install: UPX"
+      run: |
+        mkdir /opt/upx
+        upx_download_url=$(curl -fsSL https://api.github.com/repos/upx/upx/releases/latest | grep browser_download_url | grep arm64_linux.tar.xz | cut "-d\"" -f4)
+        echo "Downloading [$upx_download_url]..."
+        curl -fL $upx_download_url | tar Jxv -C /opt/upx --strip-components=1
+
+    - name: "Get: copycat-fat.jar" 
+      uses: actions/download-artifact@v2
+      with:
+        name: copycat-fat.jar
+
+    - name: "Get: picocli-reflections.json"
+      uses: actions/download-artifact@v2
+      with:
+        name: picocli-reflections.json
+
+    - name: "Build native image"
+      shell: bash
+      run: |
+        docker exec --tty -w /workspace arm64 /bin/bash -c '
+        export JAVA_HOME=/opt/graalvm
+        export PATH=/opt/graalvm/bin:$PATH
+        #https://www.graalvm.org/reference-manual/native-image/Options/
+        native-image \
+          -H:ReflectionConfigurationFiles=picocli-reflections.json \
+          -H:+ReportExceptionStackTraces \
+          -H:+RemoveUnusedSymbols \
+          --allow-incomplete-classpath \
+          --no-fallback \
+          --no-server \
+          --verbose \
+          --static \
+          --class-path copycat-fat.jar \
+          ${{ env.MAIN_CLASS }} \
+          copycat-${{ env.RELEASE_NAME }}-linux-arm64
+        '
+
+    - name: "Minify executable"
+      shell: bash
+      run: |
+        docker exec --tty -w /workspace arm64 /bin/bash -c '
+
+        strip --strip-unneeded copycat-${{ env.RELEASE_NAME }}-linux-arm64 &&
+        /opt/upx/upx -v -9 copycat-${{ env.RELEASE_NAME }}-linux-arm64
+
+        '
+
+    - name: "Test executable"
+      shell: bash
+      run: |
+        docker exec --tty -w /workspace arm64 /bin/bash -c '
+
+        chmod u+x copycat-${{ env.RELEASE_NAME }}-linux-arm64 &&
+        ./copycat-${{ env.RELEASE_NAME }}-linux-arm64 --version &&
+        ./copycat-${{ env.RELEASE_NAME }}-linux-arm64 --help
+
+        '
+
+    - name: "Get: release_asset_upload_url.txt"
+      uses: actions/download-artifact@v2
+      if: github.ref == 'refs/heads/main'
+      with:
+        name: release_asset_upload_url.txt
+
+    - name: "Prepare release artifact upload"
+      shell: bash
+      run: echo "UPLOAD_URL=$(cat release_asset_upload_url.txt)" >> $GITHUB_ENV
+
+    - name: "Attach binary to release"
+      if: github.ref == 'refs/heads/main'
+      uses: actions/upload-release-asset@v1
+      env: 
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with: 
+        upload_url: ${{ env.UPLOAD_URL }}
+        asset_content_type: application/octet-stream
+        asset_name: copycat-${{ env.RELEASE_NAME }}-linux-arm64
+        asset_path: copycat-${{ env.RELEASE_NAME }}-linux-arm64
+
+
+  ###########################################################
   native-macos-amd64:
   ###########################################################
     runs-on: macos-latest
@@ -278,6 +422,7 @@ jobs:
         if [ ! -e $GRAAL_VM_HOME/bin/native-image ]; then
            rm -rf graalvm
            mkdir graalvm
+
            curl -fL "https://github.com/graalvm/graalvm-ce-builds/releases/download/vm-${GRAALVM_VERSION}/graalvm-ce-java${JAVA_VERSION}-darwin-amd64-${GRAALVM_VERSION}.tar.gz" \
              | tar zxv -C graalvm --strip-components=1 \
                    --exclude=*/bin/jvisualvm \
