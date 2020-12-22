@@ -61,7 +61,7 @@ jobs:
         git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
         bash .ci/maven-build.sh
 
-        mv target/copycat-*-fat.jar target/copycat-fat.jar
+        mv target/copycat-*-fat-minimized.jar target/copycat-fat.jar
 
     - name: "Share: copycat-fat.jar"
       uses: actions/upload-artifact@v2
@@ -135,9 +135,9 @@ jobs:
 
     - name: "Attach: copycat-${{ env.RELEASE_NAME }}-fat.jar to '${{ env.RELEASE_NAME }}' Release"
       uses: actions/upload-release-asset@v1
-      env: 
+      env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with: 
+      with:
         upload_url: ${{ steps.create_release.outputs.upload_url }}
         asset_content_type: application/java-archive
         asset_name: copycat-${{ env.RELEASE_NAME }}-fat.jar
@@ -157,13 +157,13 @@ jobs:
         path: |
           /opt/graalvm
         key: ${{ runner.os }}-graalvm-${{ env.GRAALVM_VERSION }}
- 
+
     - name: "Install: GraalVM"
       shell: bash
       run: |
         set -eu
 
-        sudo apt-get install --no-install-recommends -y gcc libz-dev 
+        sudo apt-get install --no-install-recommends -y gcc libz-dev
 
         if [ ! -e /opt/graalvm/bin/native-image ]; then
            rm -rf /opt/graalvm
@@ -193,7 +193,7 @@ jobs:
         echo "Downloading [$upx_download_url]..."
         curl -fL $upx_download_url | tar Jxv -C /opt/upx --strip-components=1
 
-    - name: "Get: copycat-fat.jar" 
+    - name: "Get: copycat-fat.jar"
       uses: actions/download-artifact@v2
       with:
         name: copycat-fat.jar
@@ -215,14 +215,14 @@ jobs:
           --no-fallback \
           --no-server \
           --verbose \
-          --static \
+          -H:+StaticExecutableWithDynamicLibC `#https://www.graalvm.org/reference-manual/native-image/StaticImages/#build-a-mostly-static-native-image` \
           --class-path copycat-fat.jar \
           ${{ env.MAIN_CLASS }} \
           copycat-${{ env.RELEASE_NAME }}-linux-amd64
 
     - name: "Minify executable"
       shell: bash
-      run: | 
+      run: |
         strip --strip-unneeded copycat-${{ env.RELEASE_NAME }}-linux-amd64
         /opt/upx/upx -v -9 copycat-${{ env.RELEASE_NAME }}-linux-amd64
 
@@ -246,9 +246,9 @@ jobs:
     - name: "Attach binary to release"
       if: github.ref == 'refs/heads/main'
       uses: actions/upload-release-asset@v1
-      env: 
+      env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with: 
+      with:
         upload_url: ${{ env.UPLOAD_URL }}
         asset_content_type: application/octet-stream
         asset_name: copycat-${{ env.RELEASE_NAME }}-linux-amd64
@@ -268,7 +268,7 @@ jobs:
         path: |
           /opt/graalvm
         key: ${{ runner.os }}-arm64-graalvm-${{ env.GRAALVM_VERSION }}
- 
+
     - name: "Create arm64 container"
       run: |
         sudo apt-get update -y
@@ -292,7 +292,7 @@ jobs:
 
         cat <<EOF > install_graalvm.sh
         set -eu
-        sudo apt-get install --no-install-recommends -y gcc libz-dev 
+        sudo apt-get install --no-install-recommends -y gcc libz-dev
 
         if [ ! -e /opt/graalvm/bin/native-image ]; then
            rm -rf /opt/graalvm
@@ -324,7 +324,7 @@ jobs:
         echo "Downloading [$upx_download_url]..."
         curl -fL $upx_download_url | tar Jxv -C /opt/upx --strip-components=1
 
-    - name: "Get: copycat-fat.jar" 
+    - name: "Get: copycat-fat.jar"
       uses: actions/download-artifact@v2
       with:
         name: copycat-fat.jar
@@ -349,7 +349,7 @@ jobs:
           --no-fallback \
           --no-server \
           --verbose \
-          --static \
+          -H:+StaticExecutableWithDynamicLibC `#https://www.graalvm.org/reference-manual/native-image/StaticImages/#build-a-mostly-static-native-image` \
           --class-path copycat-fat.jar \
           ${{ env.MAIN_CLASS }} \
           copycat-${{ env.RELEASE_NAME }}-linux-arm64
@@ -389,9 +389,9 @@ jobs:
     - name: "Attach binary to release"
       if: github.ref == 'refs/heads/main'
       uses: actions/upload-release-asset@v1
-      env: 
+      env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with: 
+      with:
         upload_url: ${{ env.UPLOAD_URL }}
         asset_content_type: application/octet-stream
         asset_name: copycat-${{ env.RELEASE_NAME }}-linux-arm64
@@ -411,7 +411,7 @@ jobs:
         path: |
           graalvm
         key: ${{ runner.os }}-graalvm-${{ env.GRAALVM_VERSION }}
- 
+
     - name: "Install: GraalVM"
       shell: bash
       run: |
@@ -440,7 +440,7 @@ jobs:
     - name: "Install: UPX"
       run: brew install upx
 
-    - name: "Get: copycat-fat.jar" 
+    - name: "Get: copycat-fat.jar"
       uses: actions/download-artifact@v2
       with:
         name: copycat-fat.jar
@@ -471,7 +471,7 @@ jobs:
       shell: bash
       run: |
         # https://www.unix.com/man-page/osx/1/strip/
-        strip copycat-${{ env.RELEASE_NAME }}-darwin-amd64 
+        strip copycat-${{ env.RELEASE_NAME }}-darwin-amd64
         upx -v -9 copycat-${{ env.RELEASE_NAME }}-darwin-amd64
 
     - name: "Test executable"
@@ -494,9 +494,9 @@ jobs:
     - name: "Attach binary to release"
       if: github.ref == 'refs/heads/main'
       uses: actions/upload-release-asset@v1
-      env: 
+      env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with: 
+      with:
         upload_url: ${{ env.UPLOAD_URL }}
         asset_content_type: application/octet-stream
         asset_name: copycat-${{ env.RELEASE_NAME }}-darwin-amd64
@@ -527,7 +527,7 @@ jobs:
           %LocalAppData%\NuGet\v3-cache\
           %userprofile%\.nuget\packages\
         key: ${{ runner.os }}-choco-${{ env.GRAALVM_VERSION }}
- 
+
     - name: "Install: GraalVM"
       shell: powershell
       run: |
@@ -569,7 +569,7 @@ jobs:
       shell: cmd
       run: choco install upx
 
-    - name: "Get: copycat-fat.jar" 
+    - name: "Get: copycat-fat.jar"
       uses: actions/download-artifact@v2
       with:
         name: copycat-fat.jar
@@ -620,9 +620,9 @@ jobs:
     - name: "Attach binary to release"
       if: github.ref == 'refs/heads/main'
       uses: actions/upload-release-asset@v1
-      env: 
+      env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with: 
+      with:
         upload_url: ${{ env.UPLOAD_URL }}
         asset_content_type: application/octet-stream
         asset_name: copycat-${{ env.RELEASE_NAME }}-windows-amd64.exe

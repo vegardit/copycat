@@ -39,6 +39,8 @@ import com.vegardit.copycat.util.JdkLoggingUtils;
 import net.sf.jstuff.core.SystemUtils;
 import net.sf.jstuff.core.collection.CollectionUtils;
 import net.sf.jstuff.core.concurrent.Threads;
+import net.sf.jstuff.core.io.MoreFiles;
+import net.sf.jstuff.core.io.Size;
 import net.sf.jstuff.core.logging.Logger;
 import picocli.CommandLine;
 import picocli.CommandLine.Model.CommandSpec;
@@ -77,6 +79,9 @@ public class SyncCommand extends AbstractCommand {
    @Spec
    private CommandSpec spec;
 
+   @Option(names = "--copy-acl", defaultValue = "false", description = "Copy file permissions (ACL) for newly copied files.")
+   private boolean copyAcl;
+
    @Option(names = "--dry-run", defaultValue = "false", description = "Don't perform actual synchronization.")
    private boolean dryRun;
 
@@ -98,7 +103,7 @@ public class SyncCommand extends AbstractCommand {
    @Option(names = "--exclude-older-files", defaultValue = "false", description = "Don't override newer files in target with older files in source.")
    private boolean excludeOlderFiles;
 
-   @Option(names = "--exclude", description = "Glob pattern for files/directories to be excluded from sync.s")
+   @Option(names = "--exclude", description = "Glob pattern for files/directories to be excluded from sync.")
    private String[] excludes;
    private PathMatcher[] excludesSource;
    private PathMatcher[] excludesTarget;
@@ -141,7 +146,6 @@ public class SyncCommand extends AbstractCommand {
          @Override
          public FileVisitResult postVisitDirectory(final Path dir, final IOException exc) throws IOException {
             if (!dryRun) {
-               dir.toFile().setWritable(true);
                Files.delete(dir);
             }
             filesDeleted.increment();
@@ -151,7 +155,6 @@ public class SyncCommand extends AbstractCommand {
          @Override
          public FileVisitResult visitFile(final Path file, final BasicFileAttributes attrs) throws IOException {
             if (!dryRun) {
-               file.toFile().setWritable(true);
                Files.delete(file);
             }
             filesDeleted.increment();
@@ -166,7 +169,6 @@ public class SyncCommand extends AbstractCommand {
       final var fileSize = Files.size(file); // CHECKSTYLE:IGNORE MoveVariableInsideIfCheck
       final var start = System.currentTimeMillis(); // CHECKSTYLE:IGNORE MoveVariableInsideIfCheck
       if (!dryRun) {
-         file.toFile().setWritable(true);
          Files.delete(file);
       }
       if (count) {
@@ -216,6 +218,11 @@ public class SyncCommand extends AbstractCommand {
          LOG.info("Target: %s", targetRoot.toAbsolutePath());
       });
 
+      if (copyAcl && SystemUtils.IS_OS_WINDOWS && !SystemUtils.isRunningAsAdmin()) {
+         LOG.warn("Option --copy-acl was specified but process is not running with elevated administrative permissions."
+            + "ACL will be copied but excluding ownership information.");
+         Threads.sleep(2_000);
+      }
       LOG.info("Working hard using %s thread(s)%s...", threads, dryRun ? " (DRY RUN)" : "");
 
       if (Files.exists(targetRoot, NOFOLLOW_LINKS)) {
@@ -242,8 +249,9 @@ public class SyncCommand extends AbstractCommand {
             final var threadPool = Executors.newFixedThreadPool(threads, //
                new BasicThreadFactory.Builder().namingPattern("sync-%d").build() //
             );
-            final Exception[] ex = {null};
-            for (int i = 0; i < threads; i++) {
+            // CHECKSTYLE:IGNORE .* FOR NEXT LINE
+            final var ex = new Exception[] {null};
+            for (var i = 0; i < threads; i++) {
                threadPool.submit(() -> {
                   try {
                      sync();
@@ -326,6 +334,11 @@ public class SyncCommand extends AbstractCommand {
             throw new ParameterException(spec.commandLine(), "Target path [" + target + "] is not a directory!");
          if (!FileUtils.isWritable(targetRoot)) // Files.isWritable(targetRoot) always returns false for some reason
             throw new ParameterException(spec.commandLine(), "Target path [" + target + "] is not writable by user [" + SystemUtils.USER_NAME + "]!");
+      } else {
+         if (!Files.exists(targetRoot.getParent()))
+            throw new ParameterException(spec.commandLine(), "Target path parent directory [" + targetRoot.getParent() + "] does not exist!");
+         if (!Files.isDirectory(targetRoot.getParent()))
+            throw new ParameterException(spec.commandLine(), "Target path parent [" + targetRoot.getParent() + "] is not a directory!");
       }
    }
 
@@ -388,10 +401,10 @@ public class SyncCommand extends AbstractCommand {
                   final var targetAbsolute = targetEntry.getValue();
 
                   if (!deleteExcluded) {
-                     if (excludeHiddenSystemFiles && Files.isHidden(targetAbsolute) && FileUtils.hasDosSystemAttribute(targetAbsolute)) {
+                     if (excludeHiddenSystemFiles && Files.isHidden(targetAbsolute) && FileUtils.isDosSystemFile(targetAbsolute)) {
                         continue;
                      }
-                     if (excludeSystemFiles && FileUtils.hasDosSystemAttribute(targetAbsolute)) {
+                     if (excludeSystemFiles && FileUtils.isDosSystemFile(targetAbsolute)) {
                         continue;
                      }
                      if (excludeHiddenFiles && Files.isHidden(targetAbsolute)) {
@@ -433,17 +446,17 @@ public class SyncCommand extends AbstractCommand {
                final var sourceEntryAbsolute = sourceEntry.getValue();
                final var targetEntryAbsolute = targetEntries.get(relativePath);
 
-               if (excludeHiddenSystemFiles && Files.isHidden(sourceEntryAbsolute) && FileUtils.hasDosSystemAttribute(sourceEntryAbsolute)) {
+               if (excludeHiddenSystemFiles && Files.isHidden(sourceEntryAbsolute) && FileUtils.isDosSystemFile(sourceEntryAbsolute)) {
                   continue;
                }
-               if (excludeSystemFiles && FileUtils.hasDosSystemAttribute(sourceEntryAbsolute)) {
+               if (excludeSystemFiles && FileUtils.isDosSystemFile(sourceEntryAbsolute)) {
                   continue;
                }
                if (excludeHiddenFiles && Files.isHidden(sourceEntryAbsolute)) {
                   continue;
                }
                if (excludesSource != null) {
-                  boolean isExcluded = false;
+                  var isExcluded = false;
                   for (final var exclude : excludesSource) {
                      if (exclude.matches(sourceRelative)) {
                         isExcluded = true;
@@ -470,7 +483,11 @@ public class SyncCommand extends AbstractCommand {
          } catch (final Exception ex) {
             stats.onError(ex);
             if (ignoreErrors) {
-               LOG.error(ex);
+               if (getVerbosity() > 0) {
+                  LOG.error(ex);
+               } else {
+                  LOG.error(ex.getClass().getSimpleName() + ": " + ex.getMessage());
+               }
             } else {
                state = State.ABORT_BY_EXCEPTION;
                throw ex;
@@ -551,7 +568,7 @@ public class SyncCommand extends AbstractCommand {
    private void syncFile(final Path sourcePath, Path targetPath, final Path relativePath) throws IOException {
       final String copyCause;
 
-      final var sourceAttrs = Files.readAttributes(sourcePath, BasicFileAttributes.class, NOFOLLOW_LINKS);
+      final var sourceAttrs = MoreFiles.readAttributes(sourcePath);
 
       if (targetPath == null) {
          // target file does not exist
@@ -616,11 +633,11 @@ public class SyncCommand extends AbstractCommand {
 
       if (copyCause != null) {
          if ("NEW".equals(copyCause) && log.contains(LogEvent.CREATE) || log.contains(LogEvent.REPLACE)) {
-            LOG.info("%s [@|magenta %s|@] %s...", copyCause, relativePath, FileUtils.byteCountToDisplaySize(sourceAttrs.size()));
+            LOG.info("%s [@|magenta %s|@] %s...", copyCause, relativePath, Size.ofBytes(sourceAttrs.size()));
          }
          final var start = System.currentTimeMillis();
          if (!dryRun) {
-            Files.copy(sourcePath, targetPath, FILE_COPY_OPTIONS);
+            FileUtils.copyFile(sourcePath, sourceAttrs, targetPath, copyAcl, (bytesWritten, totalBytesWritten) -> { /**/ });
          }
          stats.onFileCopied(System.currentTimeMillis() - start, sourceAttrs.size());
       }

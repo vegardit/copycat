@@ -6,7 +6,6 @@ package com.vegardit.copycat;
 
 import java.io.PrintWriter;
 import java.io.StringWriter;
-import java.nio.file.Paths;
 import java.util.logging.FileHandler;
 
 import org.apache.commons.lang3.ArrayUtils;
@@ -40,30 +39,17 @@ public class CopyCatMain extends AbstractCommand {
 
    private static final Logger LOG = Logger.create();
 
-   /*
-    * This block prevents the Maven Shade plugin to remove the specified classes
-    * https://stackoverflow.com/questions/8698814/configure-maven-shade-minimizejar-to-include-class-files
-    */
-   static {
-      @SuppressWarnings("unused")
-      final Class<?>[] classes = new Class<?>[] { //
-         com.thoughtworks.paranamer.Paranamer.class, //
-      };
-   }
-
    public static void main(final String[] args) throws Exception {
       Thread.currentThread().setName("main");
 
       // this is a hack, but we need to evaluate these options before
       // any other component starts throwing exceptions
       FileHandler fileHandler = null;
-      {
-         JdkLoggingUtils.configureConsoleHandler(!ArrayUtils.contains(args, "--log-errors-to-stdout"));
-         final var logFilePos = ArrayUtils.indexOf(args, "--log-file");
-         if (logFilePos > -1 && logFilePos + 1 < args.length) {
-            final var logFilePath = args[logFilePos + 1];
-            fileHandler = JdkLoggingUtils.addFileHandler(Paths.get(logFilePath));
-         }
+      JdkLoggingUtils.configureConsoleHandler(!ArrayUtils.contains(args, "--log-errors-to-stdout"));
+      final var logFilePos = 1 + ArrayUtils.indexOf(args, "--log-file");
+      if (logFilePos > 0 && logFilePos < args.length) {
+         final var logFilePath = args[logFilePos];
+         fileHandler = JdkLoggingUtils.addFileHandler(logFilePath);
       }
 
       // enable ANSI coloring

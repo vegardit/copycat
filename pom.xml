@@ -49,6 +49,8 @@
       <graalvm.version>20.3.0</graalvm.version>
       <!-- https://search.maven.org/artifact/info.picocli/picocli -->
       <picocli.version>4.5.2</picocli.version>
+      <!-- https://search.maven.org/artifact/com.guardsquare/proguard-core -->
+      <proguard.version>7.0.1</proguard.version>
 
       <skip.japicmp.cmp>true</skip.japicmp.cmp>
    </properties>
@@ -121,9 +123,6 @@
 
                      <promoteTransitiveDependencies>true</promoteTransitiveDependencies>
 
-                     <shadedArtifactAttached>true</shadedArtifactAttached>
-                     <shadedClassifierName>fat</shadedClassifierName>
-
                      <filters>
                         <filter>
                            <artifact>*:*</artifact>
@@ -143,6 +142,101 @@
                   </configuration>
                </execution>
             </executions>
+         </plugin>
+
+         <plugin>
+            <groupId>com.github.wvengen</groupId>
+            <artifactId>proguard-maven-plugin</artifactId>
+            <version>2.3.1</version>
+            <executions>
+               <execution>
+                  <id>shrink-fat-jar</id>
+                  <goals>
+                     <goal>proguard</goal>
+                  </goals>
+                  <phase>package</phase>
+               </execution>
+            </executions>
+
+            <configuration>
+               <attach>true</attach>
+               <attachArtifactClassifier>minimized</attachArtifactClassifier>
+               <attachArtifactType>jar</attachArtifactType>
+               <injar>${project.artifactId}-${project.version}-fat.jar</injar>
+               <includeDependency>false</includeDependency>
+
+               <obfuscate>false</obfuscate>
+
+               <libs>
+                  <lib>${java.home}/jmods/java.base.jmod</lib>
+                  <lib>${java.home}/jmods/java.desktop.jmod</lib>
+                  <lib>${java.home}/jmods/java.logging.jmod</lib>
+                  <lib>${java.home}/jmods/java.management.jmod</lib>
+                  <lib>${java.home}/jmods/java.prefs.jmod</lib>
+                  <lib>${java.home}/jmods/jdk.unsupported.jmod</lib>
+               </libs>
+
+               <!-- https://www.guardsquare.com/en/products/proguard/manual/usage -->
+               <options>
+                  <option>-target ${java.version}</option>
+                  <option>-printmapping ${project.build.directory}/proguard-mapping.txt</option>
+                  <option>-printseeds ${project.build.directory}/proguard-keeps.txt</option>
+                  <option>-printusage ${project.build.directory}/proguard-usage.txt</option>
+
+                  <option>-dontskipnonpubliclibraryclassmembers</option>
+                  <option>-dontusemixedcaseclassnames</option>
+
+                  <option>-dontnote **</option>
+                  <option>-ignorewarnings</option>
+                  <option>-dontwarn org.slf4j.**</option>
+
+                  <option>-keep public class ${mainClass} { public static void main(java.lang.String[]); }</option>
+
+                  <option>-keepattributes Exceptions,*Annotation*,InnerClasses,MethodParameters,Signature,SourceFile,LineNumberTable</option>
+
+                  <!-- jansi support -->
+                  <option>-keep class org.fusesource.jansi.internal.** { *; }</option>
+
+                  <!-- picocli support -->
+                  <option>-keepclassmembers class * { @picocli.** *; }</option>
+
+                  <!-- keep default public constructors -->
+                  <option><![CDATA[-keepclassmembers public class * {
+                     public <init>(...);
+                  }]]></option>
+
+                  <!-- enum support -->
+                  <option><![CDATA[-keepclassmembers enum * {
+                     <fields>;
+                     public static **[] values();
+                     public static ** valueOf(java.lang.String);
+                  }]]></option>
+
+                  <!-- serializable support -->
+                  <option><![CDATA[-keepclassmembers class * implements java.io.Serializable {
+                     static final long serialVersionUID;
+                     private static final java.io.ObjectStreamField[] serialPersistentFields;
+                     !static !transient <fields>;
+                     private void writeObject(java.io.ObjectOutputStream);
+                     private void readObject(java.io.ObjectInputStream);
+                     java.lang.Object writeReplace();
+                     java.lang.Object readResolve();
+                  }]]></option>
+               </options>
+               <proguardVersion>${proguard.version}</proguardVersion>
+            </configuration>
+            <dependencies>
+               <dependency>
+                  <groupId>com.guardsquare</groupId>
+                  <artifactId>proguard-core</artifactId>
+                  <version>${proguard.version}</version>
+               </dependency>
+               <dependency>
+                  <groupId>com.guardsquare</groupId>
+                  <artifactId>proguard-base</artifactId>
+                  <version>${proguard.version}</version>
+               </dependency>
+            </dependencies>
          </plugin>
 
          <plugin>
@@ -194,19 +288,13 @@
       <dependency>
          <groupId>net.sf.jstuff</groupId>
          <artifactId>jstuff-core</artifactId>
-         <version>5.7.1</version>
+         <version>5.10.0</version>
       </dependency>
       <dependency>
          <groupId>org.graalvm.sdk</groupId>
          <artifactId>graal-sdk</artifactId>
          <version>${graalvm.version}</version>
          <scope>provided</scope>
-      </dependency>
-      <dependency>
-         <!-- only to prevent java.lang.ClassNotFoundException: com.thoughtworks.paranamer.Paranamer during native image build -->
-         <groupId>com.thoughtworks.paranamer</groupId>
-         <artifactId>paranamer</artifactId>
-         <version>2.8</version>
       </dependency>
 
 
@@ -234,122 +322,4 @@
          <scope>test</scope>
       </dependency>
    </dependencies>
-
-   <profiles>
-      <profile>
-         <id>native-image</id>
-
-         <properties>
-            <java.vendor>graalvm</java.vendor>
-         </properties>
-
-         <build>
-            <plugins>
-               <plugin>
-                  <groupId>org.codehaus.mojo</groupId>
-                  <artifactId>exec-maven-plugin</artifactId>
-                  <version>3.0.0</version>
-                  <executions>
-                     <execution>
-                        <id>graal-native-image</id>
-                        <phase>package</phase>
-                        <goals>
-                           <goal>exec</goal>
-                        </goals>
-                        <configuration>
-                           <skip>true</skip>
-                           <!-- https://www.graalvm.org/docs/reference-manual/native-image/ -->
-                           <executable>native-image</executable>
-                           <workingDirectory>${project.build.directory}</workingDirectory>
-                           <arguments>
-                              <!-- https://www.graalvm.org/reference-manual/native-image/Options/ -->
-                              <argument>-H:ReflectionConfigurationFiles=picocli-reflections.json</argument>
-                              <argument>-H:+ReportExceptionStackTraces</argument>
-                              <argument>-H:+RemoveUnusedSymbols</argument>
-                              <argument>--allow-incomplete-classpath</argument>
-                              <argument>--no-fallback</argument>
-                              <argument>--no-server</argument>
-                              <argument>--verbose</argument>
-                              <!--
-                                https://www.graalvm.org/reference-manual/native-image/StaticImages/#build-a-mostly-static-native-image
-                                <argument>-H:+StaticExecutableWithDynamicLibC</argument>
-                                for some reason currently static linking results in smaller binaries than dynamic linking or mostly-static image
-                               -->
-                              <argument>--static</argument>
-                              <argument>--class-path</argument>
-                              <argument>${project.artifactId}-${project.version}-fat.jar</argument>
-                              <argument>${mainClass}</argument>
-                              <argument>copycat-${project.version}</argument>
-                           </arguments>
-                        </configuration>
-                     </execution>
-                     <!--
-                     <execution>
-                        <id>strip</id>
-                        <phase>package</phase>
-                        <goals>
-                           <goal>exec</goal>
-                        </goals>
-                        <configuration>
-                           <executable>strip</executable>
-                           <workingDirectory>${project.build.directory}</workingDirectory>
-                           <arguments>
-                              <argument>- -verbose</argument>
-                              <argument>copycat-${project.version}</argument>
-                           </arguments>
-                        </configuration>
-                     </execution>
-                     <execution>
-                        <id>upx</id>
-                        <phase>package</phase>
-                        <goals>
-                           <goal>exec</goal>
-                        </goals>
-                        <configuration>
-                           <executable>upx</executable>
-                           <workingDirectory>${project.build.directory}</workingDirectory>
-                           <arguments>
-                              <argument>-9</argument>
-                              <argument>copycat-${project.version}</argument>
-                           </arguments>
-                        </configuration>
-                     </execution> -->
-                  </executions>
-               </plugin>
-
-               <plugin>
-                  <groupId>org.graalvm.nativeimage</groupId>
-                  <artifactId>native-image-maven-plugin</artifactId>
-                  <version>${graalvm.version}</version>
-                  <executions>
-                     <execution>
-                        <goals>
-                           <goal>native-image</goal>
-                        </goals>
-                        <phase>package</phase>
-                     </execution>
-                  </executions>
-                  <configuration>
-                     <!-- produces larger binaries than compiling from a reduced fat.jar -->
-                     <skip>true</skip>
-
-                     <detail>true</detail>
-                     <imageName>${project.artifactId}</imageName>
-                     <mainClass>${mainClass}</mainClass>
-                     <buildArgs><![CDATA[
-                        -H:ReflectionConfigurationFiles=picocli-reflections.json
-                        -H:+ReportExceptionStackTraces
-                        -H:+RemoveUnusedSymbols
-                        --allow-incomplete-classpath
-                        --no-fallback
-                        --no-server
-                        --static
-                        --verbose
-                     ]]></buildArgs>
-                  </configuration>
-               </plugin>
-            </plugins>
-         </build>
-      </profile>
-   </profiles>
 </project>

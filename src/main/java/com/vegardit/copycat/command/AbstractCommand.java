@@ -12,6 +12,7 @@ import com.vegardit.copycat.command.AbstractCommand.VersionProvider;
 import com.vegardit.copycat.util.JdkLoggingUtils;
 
 import net.sf.jstuff.core.logging.Logger;
+import net.sf.jstuff.core.logging.jul.Levels;
 import net.sf.jstuff.core.reflection.Types;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.IVersionProvider;
@@ -58,7 +59,15 @@ public abstract class AbstractCommand implements Callable<Void> {
    @Spec
    protected CommandSpec commandSpec;
 
-   protected boolean quiet;
+   private int verbosity = 0;
+
+   public boolean isQuiet() {
+      return verbosity == -1;
+   }
+
+   public int getVerbosity() {
+      return verbosity;
+   }
 
    @Override
    public final Void call() throws Exception {
@@ -112,9 +121,9 @@ public abstract class AbstractCommand implements Callable<Void> {
 
    @Option(names = {"-q", "--quiet"}, description = "Quiet mode.")
    private void setQuiet(final boolean flag) {
-      quiet = flag;
       if (flag) {
-         JdkLoggingUtils.setRootLogLevel(Level.SEVERE);
+         Levels.setRootLevel(Level.SEVERE);
+         verbosity = -1;
       }
    }
 
@@ -122,16 +131,17 @@ public abstract class AbstractCommand implements Callable<Void> {
    private void setVerbosity(final boolean[] flags) {
       switch (flags.length) {
          case 0:
-            JdkLoggingUtils.setRootLogLevel(Level.INFO);
+            Levels.setRootLevel(Level.INFO);
             break;
          case 1:
-            JdkLoggingUtils.setRootLogLevel(Level.FINE);
+            Levels.setRootLevel(Level.FINE);
             break;
          case 2:
-            JdkLoggingUtils.setRootLogLevel(Level.FINER);
+            Levels.setRootLevel(Level.FINER);
             break;
          default:
-            JdkLoggingUtils.setRootLogLevel(Level.FINEST);
+            Levels.setRootLevel(Level.FINEST);
       }
+      verbosity = flags.length;
    }
 }
