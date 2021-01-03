@@ -1,3 +1,8 @@
+# Copyright 2020 by Vegard IT GmbH, Germany, https://vegardit.com
+# SPDX-License-Identifier: Apache-2.0
+#
+# Author: Sebastian Thomschke, Vegard IT GmbH
+#
 # https://docs.github.com/en/free-pro-team@latest/actions/reference/workflow-syntax-for-github-actions
 name: Build
 
@@ -42,7 +47,7 @@ jobs:
           ~/.m2/bin
         key: ${{ runner.os }}-mvnbin-${{ hashFiles('.ci/maven-build.sh') }}
 
-    - name: "Maven: build"
+    - name: "Maven build"
       env:
         DEPLOY_SNAPSHOTS_TO_GITHUB_BRANCH: true
         GITHUB_USER: ${{ github.actor }}
@@ -63,106 +68,14 @@ jobs:
 
         mv target/copycat-*-fat-minimized.jar target/copycat-fat.jar
 
-    - name: "Share: copycat-fat.jar"
+    - name: "Share: maven-build-artifacts"
       uses: actions/upload-artifact@v2
       with:
-        name: copycat-fat.jar
-        path: target/copycat-fat.jar
-
-    - name: "Share: picocli-reflections.json"
-      uses: actions/upload-artifact@v2
-      with:
-        name: picocli-reflections.json
-        path: target/picocli-reflections.json
-
-    - name: "Share: bashcompletion.sh"
-      uses: actions/upload-artifact@v2
-      with:
-        name: bashcompletion.sh
-        path: target/bash/bashcompletion.sh
-
-
-  ###########################################################
-  create-release:
-  ###########################################################
-    runs-on: ubuntu-latest
-    needs: [maven-build]
-    if: github.ref == 'refs/heads/main'
-
-    steps:
-    - name: "Delete previous '${{ env.RELEASE_NAME }}' release"
-      if: env.RELEASE_NAME == 'snapshot'
-      shell: bash
-      run: |
-        set -eu
-
-        creds="${{ secrets.GH_API_TOKEN }}:x-oauth-basic"
-        api_base_url="$GITHUB_API_URL/repos/$GITHUB_REPOSITORY"
-
-        # delete release
-        release_id=$(curl -fsL $creds https://api.github.com/repos/vegardit/copycat/releases | jq -r '.[] | select(.name == "${{ env.RELEASE_NAME }}") | .id')
-        if [[ -n $release_id ]]; then
-           echo "Deleting release [$api_base_url/releases/$release_id]..."
-           curl -u $creds -fsSL -X DELETE "$api_base_url/releases/$release_id"
-        fi
-
-        # delete tag
-        tag_url="$api_base_url/git/refs/tags/${{ env.RELEASE_NAME }}"
-        if curl -u $creds -fsLo /dev/null --head "$tag_url"; then
-           echo "Deleting tag [$tag_url]..."
-           curl -u $creds -fsSL -u $creds -X DELETE "$tag_url"
-        fi
-
-    - name: "Create '${{ env.RELEASE_NAME }}' Release"
-      id: create_release
-      uses: actions/create-release@v1 # https://github.com/actions/upload-release-asset
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        tag_name: ${{ env.RELEASE_NAME }}
-        release_name: ${{ env.RELEASE_NAME }}
-        draft: false
-        prerelease: true
-
-    - name: "Save release asset upload URL"
-      run: |
-        echo "${{ steps.create_release.outputs.upload_url }}" > release_asset_upload_url.txt
-
-    - name: "Share: release_asset_upload_url.txt"
-      uses: actions/upload-artifact@v2
-      with:
-        name: release_asset_upload_url.txt
-        path: release_asset_upload_url.txt
-
-    - name: "Get: copycat-fat.jar"
-      uses: actions/download-artifact@v2
-      with:
-        name: copycat-fat.jar
-
-    - name: "Attach: copycat-${{ env.RELEASE_NAME }}-fat.jar to '${{ env.RELEASE_NAME }}' Release"
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_content_type: application/java-archive
-        asset_name: copycat-${{ env.RELEASE_NAME }}-fat.jar
-        asset_path: copycat-fat.jar
-
-    - name: "Get: bashcompletion.sh"
-      uses: actions/download-artifact@v2
-      with:
-        name: bashcompletion.sh
-
-    - name: "Attach: copycat-${{ env.RELEASE_NAME }}-bashcompletion.sh to '${{ env.RELEASE_NAME }}' Release"
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_content_type: application/java-archive
-        asset_name: copycat-${{ env.RELEASE_NAME }}-bashcompletion.sh
-        asset_path: bashcompletion.sh
+        name: maven-build-artifacts
+        path: |
+           target/copycat-fat.jar
+           target/picocli-reflections.json
+           target/bash/bashcompletion.sh
 
 
   ###########################################################
@@ -214,17 +127,12 @@ jobs:
         echo "Downloading [$upx_download_url]..."
         curl -fL $upx_download_url | tar Jxv -C /opt/upx --strip-components=1
 
-    - name: "Get: copycat-fat.jar"
+    - name: "Get: maven-build-artifacts"
       uses: actions/download-artifact@v2
       with:
-        name: copycat-fat.jar
+        name: maven-build-artifacts
 
-    - name: "Get: picocli-reflections.json"
-      uses: actions/download-artifact@v2
-      with:
-        name: picocli-reflections.json
-
-    - name: "Build native image"
+    - name: "Build executable"
       shell: bash
       run: |
         #https://www.graalvm.org/reference-manual/native-image/Options/
@@ -239,41 +147,25 @@ jobs:
           -H:+StaticExecutableWithDynamicLibC `#https://www.graalvm.org/reference-manual/native-image/StaticImages/#build-a-mostly-static-native-image` \
           --class-path copycat-fat.jar \
           ${{ env.MAIN_CLASS }} \
-          copycat-${{ env.RELEASE_NAME }}-linux-amd64
+          copycat-linux-amd64
 
     - name: "Minify executable"
       shell: bash
       run: |
-        strip --strip-unneeded copycat-${{ env.RELEASE_NAME }}-linux-amd64
-        /opt/upx/upx -v -9 copycat-${{ env.RELEASE_NAME }}-linux-amd64
+        strip --strip-unneeded copycat-linux-amd64
+        /opt/upx/upx -v -9 copycat-linux-amd64
 
     - name: "Test executable"
       shell: bash
       run: |
-        chmod u+x copycat-${{ env.RELEASE_NAME }}-linux-amd64
-        ./copycat-${{ env.RELEASE_NAME }}-linux-amd64 --version
-        ./copycat-${{ env.RELEASE_NAME }}-linux-amd64 --help
+        chmod u+x copycat-linux-amd64
+        ./copycat-linux-amd64 --version
+        ./copycat-linux-amd64 --help
 
-    - name: "Get: release_asset_upload_url.txt"
-      uses: actions/download-artifact@v2
-      if: github.ref == 'refs/heads/main'
+    - name: "Share: native binary"
+      uses: actions/upload-artifact@v2
       with:
-        name: release_asset_upload_url.txt
-
-    - name: "Prepare release artifact upload"
-      shell: bash
-      run: echo "UPLOAD_URL=$(cat release_asset_upload_url.txt)" >> $GITHUB_ENV
-
-    - name: "Attach binary to release"
-      if: github.ref == 'refs/heads/main'
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ env.UPLOAD_URL }}
-        asset_content_type: application/octet-stream
-        asset_name: copycat-${{ env.RELEASE_NAME }}-linux-amd64
-        asset_path: copycat-${{ env.RELEASE_NAME }}-linux-amd64
+        path: copycat-linux-amd64
 
 
   ###########################################################
@@ -345,17 +237,12 @@ jobs:
         echo "Downloading [$upx_download_url]..."
         curl -fL $upx_download_url | tar Jxv -C /opt/upx --strip-components=1
 
-    - name: "Get: copycat-fat.jar"
+    - name: "Get: maven-build-artifacts"
       uses: actions/download-artifact@v2
       with:
-        name: copycat-fat.jar
+        name: maven-build-artifacts
 
-    - name: "Get: picocli-reflections.json"
-      uses: actions/download-artifact@v2
-      with:
-        name: picocli-reflections.json
-
-    - name: "Build native image"
+    - name: "Build executable"
       shell: bash
       run: |
         docker exec --tty -w /workspace arm64 /bin/bash -c '
@@ -373,7 +260,7 @@ jobs:
           -H:+StaticExecutableWithDynamicLibC `#https://www.graalvm.org/reference-manual/native-image/StaticImages/#build-a-mostly-static-native-image` \
           --class-path copycat-fat.jar \
           ${{ env.MAIN_CLASS }} \
-          copycat-${{ env.RELEASE_NAME }}-linux-arm64
+          copycat-linux-arm64
         '
 
     - name: "Minify executable"
@@ -381,8 +268,8 @@ jobs:
       run: |
         docker exec --tty -w /workspace arm64 /bin/bash -c '
 
-        strip --strip-unneeded copycat-${{ env.RELEASE_NAME }}-linux-arm64 &&
-        /opt/upx/upx -v -9 copycat-${{ env.RELEASE_NAME }}-linux-arm64
+        strip --strip-unneeded copycat-linux-arm64 &&
+        /opt/upx/upx -v -9 copycat-linux-arm64
 
         '
 
@@ -391,32 +278,16 @@ jobs:
       run: |
         docker exec --tty -w /workspace arm64 /bin/bash -c '
 
-        chmod u+x copycat-${{ env.RELEASE_NAME }}-linux-arm64 &&
-        ./copycat-${{ env.RELEASE_NAME }}-linux-arm64 --version &&
-        ./copycat-${{ env.RELEASE_NAME }}-linux-arm64 --help
+        chmod u+x  copycat-linux-arm64 &&
+        ./copycat-linux-arm64 --version &&
+        ./copycat-linux-arm64 --help
 
         '
 
-    - name: "Get: release_asset_upload_url.txt"
-      uses: actions/download-artifact@v2
-      if: github.ref == 'refs/heads/main'
+    - name: "Share: native binary"
+      uses: actions/upload-artifact@v2
       with:
-        name: release_asset_upload_url.txt
-
-    - name: "Prepare release artifact upload"
-      shell: bash
-      run: echo "UPLOAD_URL=$(cat release_asset_upload_url.txt)" >> $GITHUB_ENV
-
-    - name: "Attach binary to release"
-      if: github.ref == 'refs/heads/main'
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ env.UPLOAD_URL }}
-        asset_content_type: application/octet-stream
-        asset_name: copycat-${{ env.RELEASE_NAME }}-linux-arm64
-        asset_path: copycat-${{ env.RELEASE_NAME }}-linux-arm64
+        path: copycat-linux-arm64
 
 
   ###########################################################
@@ -461,17 +332,12 @@ jobs:
     - name: "Install: UPX"
       run: brew install upx
 
-    - name: "Get: copycat-fat.jar"
+    - name: "Get: maven-build-artifacts"
       uses: actions/download-artifact@v2
       with:
-        name: copycat-fat.jar
+        name: maven-build-artifacts
 
-    - name: "Get: picocli-reflections.json"
-      uses: actions/download-artifact@v2
-      with:
-        name: picocli-reflections.json
-
-    - name: "Build native image"
+    - name: "Build executable"
       shell: bash
       run: |
         # not using "--static" because of error: DARWIN does not support building static executable images.
@@ -486,42 +352,26 @@ jobs:
           --verbose \
           --class-path copycat-fat.jar \
           ${{ env.MAIN_CLASS }} \
-          copycat-${{ env.RELEASE_NAME }}-darwin-amd64
+          copycat-darwin-amd64
 
     - name: "Minify executable"
       shell: bash
       run: |
         # https://www.unix.com/man-page/osx/1/strip/
-        strip copycat-${{ env.RELEASE_NAME }}-darwin-amd64
-        upx -v -9 copycat-${{ env.RELEASE_NAME }}-darwin-amd64
+        strip copycat-darwin-amd64
+        upx -v -9 copycat-darwin-amd64
 
     - name: "Test executable"
       shell: bash
       run: |
-        chmod u+x copycat-${{ env.RELEASE_NAME }}-darwin-amd64
-        ./copycat-${{ env.RELEASE_NAME }}-darwin-amd64 --version
-        ./copycat-${{ env.RELEASE_NAME }}-darwin-amd64 --help
+        chmod u+x copycat-darwin-amd64
+        ./copycat-darwin-amd64 --version
+        ./copycat-darwin-amd64 --help
 
-    - name: "Get: release_asset_upload_url.txt"
-      uses: actions/download-artifact@v2
-      if: github.ref == 'refs/heads/main'
+    - name: "Share: native binary"
+      uses: actions/upload-artifact@v2
       with:
-        name: release_asset_upload_url.txt
-
-    - name: "Prepare release artifact upload"
-      shell: bash
-      run: echo "UPLOAD_URL=$(cat release_asset_upload_url.txt)" >> $GITHUB_ENV
-
-    - name: "Attach binary to release"
-      if: github.ref == 'refs/heads/main'
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ env.UPLOAD_URL }}
-        asset_content_type: application/octet-stream
-        asset_name: copycat-${{ env.RELEASE_NAME }}-darwin-amd64
-        asset_path: copycat-${{ env.RELEASE_NAME }}-darwin-amd64
+        path: copycat-darwin-amd64
 
 
   ###########################################################
@@ -590,17 +440,12 @@ jobs:
       shell: cmd
       run: choco install upx
 
-    - name: "Get: copycat-fat.jar"
+    - name: "Get: maven-build-artifacts"
       uses: actions/download-artifact@v2
       with:
-        name: copycat-fat.jar
+        name: maven-build-artifacts
 
-    - name: "Get: picocli-reflections.json"
-      uses: actions/download-artifact@v2
-      with:
-        name: picocli-reflections.json
-
-    - name: "Build native image"
+    - name: "Build executable"
       shell: cmd
       run: |
         call "C:\Program Files (x86)\Microsoft Visual Studio\2017\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
@@ -616,35 +461,80 @@ jobs:
           --static ^
           --class-path copycat-fat.jar ^
           ${{ env.MAIN_CLASS }} ^
-          copycat-${{ env.RELEASE_NAME }}-windows-amd64
+          copycat-windows-amd64
 
     - name: "Minify executable"
-      run: upx -v -9 copycat-${{ env.RELEASE_NAME }}-windows-amd64.exe
+      run: upx -v -9 copycat-windows-amd64.exe
 
     - name: "Test executable"
       shell: cmd
       run: |
-        copycat-${{ env.RELEASE_NAME }}-windows-amd64.exe --version
-        copycat-${{ env.RELEASE_NAME }}-windows-amd64.exe --help
+        copycat-windows-amd64.exe --version
+        copycat-windows-amd64.exe --help
 
-    - name: "Get: release_asset_upload_url.txt"
-      uses: actions/download-artifact@v2
-      if: github.ref == 'refs/heads/main'
+    - name: "Share: native binary"
+      uses: actions/upload-artifact@v2
       with:
-        name: release_asset_upload_url.txt
+        path: copycat-windows-amd64.exe
 
-    - name: "Prepare release artifact upload"
-      if: github.ref == 'refs/heads/main'
+
+  ###########################################################
+  publish-release:
+  ###########################################################
+    runs-on: ubuntu-latest
+    needs: 
+      - native-linux-amd64
+      - native-linux-arm64
+      - native-macos-amd64
+      - native-windows-amd64
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+
+    - name: "SCM Checkout" 
+      # only required by "hub release create" to prevent "fatal: Not a git repository"
+      uses: actions/checkout@v2 #https://github.com/actions/checkout
+
+    - name: "Get: all build artifacts"
+      uses: actions/download-artifact@v2
+
+    - name: "Delete previous '${{ env.RELEASE_NAME }}' release"
+      if: env.RELEASE_NAME == 'snapshot'
       shell: bash
-      run: echo "UPLOAD_URL=$(cat release_asset_upload_url.txt)" >> $GITHUB_ENV
+      run: |
+        set -eu
 
-    - name: "Attach binary to release"
-      if: github.ref == 'refs/heads/main'
-      uses: actions/upload-release-asset@v1
+        creds="${{ secrets.GH_API_TOKEN }}:x-oauth-basic"
+        api_base_url="$GITHUB_API_URL/repos/$GITHUB_REPOSITORY"
+
+        # delete github release
+        release_id=$(curl -fsL $creds https://api.github.com/repos/vegardit/copycat/releases | jq -r '.[] | select(.name == "${{ env.RELEASE_NAME }}") | .id')
+        if [[ -n $release_id ]]; then
+           echo "Deleting release [$api_base_url/releases/$release_id]..."
+           curl -u $creds -fsSL -X DELETE "$api_base_url/releases/$release_id"
+        fi
+
+        # delete git tag
+        tag_url="$api_base_url/git/refs/tags/${{ env.RELEASE_NAME }}"
+        if curl -u $creds -fsLo /dev/null --head "$tag_url"; then
+           echo "Deleting tag [$tag_url]..."
+           curl -u $creds -fsSL -u $creds -X DELETE "$tag_url"
+        fi
+
+    - name: "Create '${{ env.RELEASE_NAME }}' Release"
+      shell: bash
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ env.UPLOAD_URL }}
-        asset_content_type: application/octet-stream
-        asset_name: copycat-${{ env.RELEASE_NAME }}-windows-amd64.exe
-        asset_path: copycat-${{ env.RELEASE_NAME }}-windows-amd64.exe
+      run: |
+        set -eu
+
+        # https://hub.github.com/hub-release.1.html
+        hub release create \
+          --message "${{ env.RELEASE_NAME }}" "${{ env.RELEASE_NAME }}" \
+          --attach "maven-build-artifacts/copycat-fat.jar#copycat-${{ env.RELEASE_NAME }}-fat.jar" \
+          --attach "maven-build-artifacts/bash/bashcompletion.sh#copycat-${{ env.RELEASE_NAME }}-bashcompletion.sh" \
+          --attach "artifact/copycat-linux-amd64#copycat-${{ env.RELEASE_NAME }}-linux-amd64" \
+          --attach "artifact/copycat-linux-arm64#copycat-${{ env.RELEASE_NAME }}-linux-arm64" \
+          --attach "artifact/copycat-darwin-amd64#copycat-${{ env.RELEASE_NAME }}-darwin-amd64" \
+          --attach "artifact/copycat-windows-amd64.exe#copycat-${{ env.RELEASE_NAME }}-windows-amd64.exe" \
+          --prerelease
