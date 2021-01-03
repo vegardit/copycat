@@ -2,7 +2,7 @@
  * Copyright 2020 by Vegard IT GmbH (https://vegardit.com) and contributors.
  * SPDX-License-Identifier: Apache-2.0
  */
-package com.vegardit.copycat.command;
+package com.vegardit.copycat.command.sync;
 
 import java.io.File;
 import java.io.IOException;
@@ -33,6 +33,7 @@ import java.util.logging.Level;
 import org.apache.commons.lang3.concurrent.BasicThreadFactory;
 import org.apache.commons.lang3.mutable.MutableLong;
 
+import com.vegardit.copycat.command.AbstractCommand;
 import com.vegardit.copycat.util.FileUtils;
 import com.vegardit.copycat.util.JdkLoggingUtils;
 

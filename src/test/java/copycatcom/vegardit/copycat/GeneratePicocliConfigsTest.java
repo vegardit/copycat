@@ -2,7 +2,7 @@
  * Copyright 2020 by Vegard IT GmbH (https://vegardit.com) and contributors.
  * SPDX-License-Identifier: Apache-2.0
  */
-package copycatcom.vegardit.tools.copycat;
+package copycatcom.vegardit.copycat;
 
 import java.io.File;
 
@@ -26,6 +26,10 @@ public class GeneratePicocliConfigsTest {
 
    @Test
    public void generateGraalVMReflectionConfig() {
-      ReflectionConfigGenerator.main(CopyCatMain.class.getName(), "-o", "target/picocli-reflections.json");
+      ReflectionConfigGenerator.main( //
+         CopyCatMain.class.getName(), //
+         CopyCatMain.LoggingOptions.class.getName(), //
+         "-o", "target/picocli-reflections.json" //
+      );
    }
 }

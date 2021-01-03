@@ -4,23 +4,24 @@
  */
 package com.vegardit.copycat;
 
-import java.io.PrintWriter;
-import java.io.StringWriter;
+import java.io.IOException;
+import java.util.List;
 import java.util.logging.FileHandler;
 
-import org.apache.commons.lang3.ArrayUtils;
-
 import com.vegardit.copycat.command.AbstractCommand;
-import com.vegardit.copycat.command.SyncCommand;
-import com.vegardit.copycat.command.WatchCommand;
+import com.vegardit.copycat.command.LoggingOptionsMixin;
+import com.vegardit.copycat.command.sync.SyncCommand;
+import com.vegardit.copycat.command.watch.WatchCommand;
 import com.vegardit.copycat.util.JdkLoggingUtils;
 
 import net.sf.jstuff.core.Strings;
+import net.sf.jstuff.core.io.StringPrintWriter;
 import net.sf.jstuff.core.logging.Logger;
 import picocli.CommandLine;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.ParameterException;
 import picocli.CommandLine.RunLast;
+import picocli.CommandLine.Unmatched;
 import picocli.CommandLine.UnmatchedArgumentException;
 import picocli.jansi.graalvm.AnsiConsole;
 
@@ -37,20 +38,28 @@ import picocli.jansi.graalvm.AnsiConsole;
 )
 public class CopyCatMain extends AbstractCommand {
 
+   public static class LoggingOptions extends LoggingOptionsMixin {
+      @Unmatched
+      List<String> ignored;
+   }
+
    private static final Logger LOG = Logger.create();
+
+   private static FileHandler configureLogging(final String[] args) throws IOException {
+      final var loggingOptions = new LoggingOptions();
+      CommandLine.populateCommand(loggingOptions, args);
+      JdkLoggingUtils.configureConsoleHandler(loggingOptions.logErrorsToStdOut);
+      if (loggingOptions.logFile == null)
+         return null;
+      return JdkLoggingUtils.addFileHandler(loggingOptions.logFile.toAbsolutePath().toString());
+   }
 
    public static void main(final String[] args) throws Exception {
       Thread.currentThread().setName("main");
 
-      // this is a hack, but we need to evaluate these options before
-      // any other component starts throwing exceptions
-      FileHandler fileHandler = null;
-      JdkLoggingUtils.configureConsoleHandler(!ArrayUtils.contains(args, "--log-errors-to-stdout"));
-      final var logFilePos = 1 + ArrayUtils.indexOf(args, "--log-file");
-      if (logFilePos > 0 && logFilePos < args.length) {
-         final var logFilePath = args[logFilePos];
-         fileHandler = JdkLoggingUtils.addFileHandler(logFilePath);
-      }
+      // this is a small hack, but we need to evaluate the logging options before
+      // any other component starts throwing exceptions, see https://github.com/remkop/picocli/issues/1295
+      final var fileHandler = configureLogging(args);
 
       // enable ANSI coloring
       AnsiConsole.systemInstall();
@@ -69,11 +78,12 @@ public class CopyCatMain extends AbstractCommand {
             LOG.error(ex.getMessage());
          } else {
             LOG.error(ex.getMessage());
-            final var sw = new StringWriter();
-            UnmatchedArgumentException.printSuggestions(ex, new PrintWriter(sw));
-            final var suggestions = sw.toString();
-            if (Strings.isNotBlank(suggestions)) {
-               LOG.info(Strings.trim(suggestions));
+            try (var sw = new StringPrintWriter()) {
+               UnmatchedArgumentException.printSuggestions(ex, sw);
+               final var suggestions = sw.toString();
+               if (Strings.isNotBlank(suggestions)) {
+                  LOG.info(Strings.trim(suggestions));
+               }
             }
             LOG.info("Execute 'copycat --help' for usage help.");
          }

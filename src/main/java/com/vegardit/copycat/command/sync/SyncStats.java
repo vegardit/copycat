@@ -2,7 +2,7 @@
  * Copyright 2020 by Vegard IT GmbH (https://vegardit.com) and contributors.
  * SPDX-License-Identifier: Apache-2.0
  */
-package com.vegardit.copycat.command;
+package com.vegardit.copycat.command.sync;
 
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedDeque;

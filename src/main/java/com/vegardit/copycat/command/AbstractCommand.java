@@ -4,18 +4,17 @@
  */
 package com.vegardit.copycat.command;
 
-import java.nio.file.Path;
 import java.util.concurrent.Callable;
 import java.util.logging.Level;
 
 import com.vegardit.copycat.command.AbstractCommand.VersionProvider;
-import com.vegardit.copycat.util.JdkLoggingUtils;
 
 import net.sf.jstuff.core.logging.Logger;
 import net.sf.jstuff.core.logging.jul.Levels;
 import net.sf.jstuff.core.reflection.Types;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.IVersionProvider;
+import picocli.CommandLine.Mixin;
 import picocli.CommandLine.Model.CommandSpec;
 import picocli.CommandLine.Option;
 import picocli.CommandLine.Spec;
@@ -46,7 +45,6 @@ import picocli.CommandLine.Spec;
    versionProvider = VersionProvider.class //
 )
 public abstract class AbstractCommand implements Callable<Void> {
-
    public static final class VersionProvider implements IVersionProvider {
       @Override
       public String[] getVersion() throws Exception {
@@ -58,6 +56,12 @@ public abstract class AbstractCommand implements Callable<Void> {
 
    @Spec
    protected CommandSpec commandSpec;
+
+   /**
+    * logging options are not further evaluated, since it is already done in main entry point
+    */
+   @Mixin
+   private LoggingOptionsMixin loggingOptions;
 
    private int verbosity = 0;
 
@@ -107,16 +111,6 @@ public abstract class AbstractCommand implements Callable<Void> {
    }
 
    protected void onSigTerm() {
-   }
-
-   @Option(names = "--log-errors-to-stdout", description = "Log errors to stdout instead of stderr.")
-   private void setErrorsToStdOut(final boolean flag) {
-      JdkLoggingUtils.configureConsoleHandler(!flag);
-   }
-
-   @Option(names = "--log-file", description = "Write console output also to the given log file..")
-   private void setLogFile(@SuppressWarnings("unused") final Path path) {
-      // nothing to do, already handled in main
    }
 
    @Option(names = {"-q", "--quiet"}, description = "Quiet mode.")

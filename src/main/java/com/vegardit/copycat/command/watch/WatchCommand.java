@@ -2,9 +2,11 @@
  * Copyright 2020 by Vegard IT GmbH (https://vegardit.com) and contributors.
  * SPDX-License-Identifier: Apache-2.0
  */
-package com.vegardit.copycat.command;
+package com.vegardit.copycat.command.watch;
 
 import org.apache.commons.lang3.NotImplementedException;
+
+import com.vegardit.copycat.command.AbstractCommand;
 
 import picocli.CommandLine;
 
