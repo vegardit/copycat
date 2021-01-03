@@ -499,71 +499,65 @@ public class SyncCommand extends AbstractCommand {
    }
 
    /**
-    * @param targetPath null, if target path does not exist
+    * @param targetPath null, if target path does not exist yet
     */
-   private void syncDirShallow(final Path sourcePath, Path targetPath, final Path relativePath) throws IOException {
-      boolean targetExists;
-      if (targetPath == null) {
-         targetExists = false;
-         targetPath = targetRoot.resolve(relativePath);
-      } else {
-         targetExists = true;
-      }
-
+   private void syncDirShallow(final Path sourcePath, final Path targetPath, final Path relativePath) throws IOException {
       final var sourceAttrs = Files.readAttributes(sourcePath, BasicFileAttributes.class, NOFOLLOW_LINKS);
 
-      if (targetExists) {
+      final Path resolvedTargetPath;
+      if (targetPath == null) {
+         resolvedTargetPath = targetRoot.resolve(relativePath);
+      } else {
          if (Files.isRegularFile(targetPath)) {
             LOG.debug("Deleting target file [@|magenta %s|@] because source is directory...", relativePath);
             delFile(targetPath, true);
-            targetExists = false;
          } else {
             final var targetEntryIsSymlink = Files.isSymbolicLink(targetPath);
-            if (sourceAttrs.isSymbolicLink() != targetEntryIsSymlink) { // one is symlink the other is not
-               if (targetEntryIsSymlink) {
-                  LOG.debug("Deleting target [@|magenta %s|@] because target is symlink and source is not...", targetPath);
-                  delFile(targetPath, true);
-                  targetExists = false;
-               } else {
-                  LOG.debug("Deleting target [@|magenta %s|@] because source is symlink and target is not...", targetPath);
-                  delDir(targetPath);
-                  targetExists = false;
-               }
+
+            if (sourceAttrs.isSymbolicLink() == targetEntryIsSymlink)
+               // both are either symlink or directory, thus nothing to do
+               return;
+
+            if (targetEntryIsSymlink) {
+               LOG.debug("Deleting target [@|magenta %s|@] because target is symlink and source is not...", targetPath);
+               delFile(targetPath, true);
+            } else {
+               LOG.debug("Deleting target [@|magenta %s|@] because source is symlink and target is not...", targetPath);
+               delDir(targetPath);
             }
          }
+         resolvedTargetPath = targetPath;
       }
 
-      if (!targetExists) {
-         final var start = System.currentTimeMillis();
-         if (sourceAttrs.isSymbolicLink()) {
-            if (log.contains(LogEvent.CREATE)) {
-               LOG.info("NEW [@|magenta %s -> %s%s|@]...", relativePath, Files.readSymbolicLink(sourcePath), File.separator);
-            }
-            try {
-               if (!dryRun) {
-                  Files.copy(sourcePath, targetPath, FILE_COPY_OPTIONS);
-               }
-               stats.onFileCopied(System.currentTimeMillis() - start, sourceAttrs.size());
-            } catch (final FileSystemException ex) {
-               if (ignoreSymlinkErrors) {
-                  LOG.error("Symlink creation failed:" + ex.getMessage(), ex);
-               } else
-                  throw ex;
-            }
-         } else {
-            if (log.contains(LogEvent.REPLACE)) {
-               LOG.info("NEW [@|magenta %s%s|@]...", relativePath, File.separator);
-            }
+      final var start = System.currentTimeMillis();
+      if (sourceAttrs.isSymbolicLink()) {
+         if (log.contains(LogEvent.CREATE)) {
+            LOG.info("NEW [@|magenta %s -> %s%s|@]...", relativePath, Files.readSymbolicLink(sourcePath), File.separator);
+         }
+         try {
             if (!dryRun) {
-               Files.copy(sourcePath, targetPath, DIR_COPY_OPTIONS);
+               Files.copy(sourcePath, resolvedTargetPath, FILE_COPY_OPTIONS);
             }
             stats.onFileCopied(System.currentTimeMillis() - start, sourceAttrs.size());
+         } catch (final FileSystemException ex) {
+            if (ignoreSymlinkErrors) {
+               LOG.error("Symlink creation failed:" + ex.getMessage(), ex);
+            } else
+               throw ex;
          }
+      } else {
+         if (log.contains(LogEvent.CREATE)) {
+            LOG.info("NEW [@|magenta %s%s|@]...", relativePath, File.separator);
+         }
+         if (!dryRun) {
+            Files.copy(sourcePath, resolvedTargetPath, DIR_COPY_OPTIONS);
+         }
+         stats.onFileCopied(System.currentTimeMillis() - start, sourceAttrs.size());
       }
    }
 
    /**
-    * @param targetPath null, if target path does not exist
+    * @param targetPath null, if target path does not exist yet
     */
    private void syncFile(final Path sourcePath, Path targetPath, final Path relativePath) throws IOException {
       final String copyCause;
