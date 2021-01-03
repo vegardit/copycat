@@ -21,7 +21,7 @@ public class GeneratePicocliConfigsTest {
    @Test
    public void generateBashCompletion() {
       new File("target/bash").mkdirs();
-      AutoComplete.main(CopyCatMain.class.getName(), "--force", "-o", "target/bash/copycat_bashcompletion.sh");
+      AutoComplete.main(CopyCatMain.class.getName(), "--force", "-o", "target/bash/bashcompletion.sh");
    }
 
    @Test

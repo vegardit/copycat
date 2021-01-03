@@ -75,6 +75,12 @@ jobs:
         name: picocli-reflections.json
         path: target/picocli-reflections.json
 
+    - name: "Share: bashcompletion.sh"
+      uses: actions/upload-artifact@v2
+      with:
+        name: bashcompletion.sh
+        path: target/bash/bashcompletion.sh
+
 
   ###########################################################
   create-release:
@@ -142,6 +148,21 @@ jobs:
         asset_content_type: application/java-archive
         asset_name: copycat-${{ env.RELEASE_NAME }}-fat.jar
         asset_path: copycat-fat.jar
+
+    - name: "Get: bashcompletion.sh"
+      uses: actions/download-artifact@v2
+      with:
+        name: bashcompletion.sh
+
+    - name: "Attach: copycat-${{ env.RELEASE_NAME }}-bashcompletion.sh to '${{ env.RELEASE_NAME }}' Release"
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_content_type: application/java-archive
+        asset_name: copycat-${{ env.RELEASE_NAME }}-bashcompletion.sh
+        asset_path: bashcompletion.sh
 
 
   ###########################################################

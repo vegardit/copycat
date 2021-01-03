@@ -253,7 +253,7 @@
                   <configuration>
                      <artifacts>
                         <artifact>
-                           <file>${project.build.directory}/bash/${project.artifactId}_bashcompletion.sh</file>
+                           <file>${project.build.directory}/bash/bashcompletion.sh</file>
                            <classifier>bashcompletion</classifier>
                            <type>sh</type>
                         </artifact>
