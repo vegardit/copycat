@@ -137,6 +137,7 @@ jobs:
       run: |
         #https://www.graalvm.org/reference-manual/native-image/Options/
         native-image \
+          -H:NativeLinkerOption=-no-pie \
           -H:ReflectionConfigurationFiles=picocli-reflections.json \
           -H:+ReportExceptionStackTraces \
           -H:+RemoveUnusedSymbols \
@@ -250,6 +251,7 @@ jobs:
         export PATH=/opt/graalvm/bin:$PATH
         #https://www.graalvm.org/reference-manual/native-image/Options/
         native-image \
+          -H:NativeLinkerOption=-no-pie \
           -H:ReflectionConfigurationFiles=picocli-reflections.json \
           -H:+ReportExceptionStackTraces \
           -H:+RemoveUnusedSymbols \
@@ -343,6 +345,7 @@ jobs:
         # not using "--static" because of error: DARWIN does not support building static executable images.
         #https://www.graalvm.org/reference-manual/native-image/Options/
         native-image \
+          -H:NativeLinkerOption=-no-pie \
           -H:ReflectionConfigurationFiles=picocli-reflections.json \
           -H:+ReportExceptionStackTraces \
           -H:+RemoveUnusedSymbols \
@@ -451,6 +454,7 @@ jobs:
         call "C:\Program Files (x86)\Microsoft Visual Studio\2017\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
 
         "%JAVA_HOME%\bin\native-image" ^
+          -H:NativeLinkerOption=-no-pie ^
           -H:ReflectionConfigurationFiles=picocli-reflections.json ^
           -H:+ReportExceptionStackTraces ^
           -H:+RemoveUnusedSymbols ^
