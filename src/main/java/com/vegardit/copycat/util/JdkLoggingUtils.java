@@ -4,7 +4,11 @@
  */
 package com.vegardit.copycat.util;
 
+import java.io.BufferedOutputStream;
+import java.io.FileDescriptor;
+import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.PrintStream;
 import java.util.Date;
 import java.util.Timer;
 import java.util.TimerTask;
@@ -40,6 +44,8 @@ public final class JdkLoggingUtils {
             synchronized (JdkLoggingUtils.class) {
                if (consoleHandler != null) {
                   consoleHandler.flush();
+                  System.out.flush();
+                  System.err.flush();
                }
             }
          }
@@ -118,6 +124,8 @@ public final class JdkLoggingUtils {
             // nothing to do
             return;
 
+         disableAutoFlush();
+
          LoggerConfig.setCompactExceptionLogging(false);
          Loggers.ROOT_LOGGER.setUseParentHandlers(false);
          for (final Handler handler : Loggers.ROOT_LOGGER.getHandlers()) {
@@ -133,6 +141,17 @@ public final class JdkLoggingUtils {
          }
          Loggers.ROOT_LOGGER.addHandler(consoleHandler);
       }
+   }
+
+   private static void disableAutoFlush() {
+      System.out.flush();
+      System.err.flush();
+      @SuppressWarnings("resource")
+      final var errStream = new PrintStream(new BufferedOutputStream(new FileOutputStream(FileDescriptor.err), 1024), false);
+      @SuppressWarnings("resource")
+      final var outStream = new PrintStream(new BufferedOutputStream(new FileOutputStream(FileDescriptor.out), 1024), false);
+      System.setErr(errStream);
+      System.setOut(outStream);
    }
 
    /**

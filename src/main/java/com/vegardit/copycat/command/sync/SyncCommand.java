@@ -222,7 +222,7 @@ public class SyncCommand extends AbstractCommand {
       if (copyAcl && SystemUtils.IS_OS_WINDOWS && !SystemUtils.isRunningAsAdmin()) {
          LOG.warn("Option --copy-acl was specified but process is not running with elevated administrative permissions."
             + "ACL will be copied but excluding ownership information.");
-         Threads.sleep(2_000);
+         Threads.sleep(5_000);
       }
       LOG.info("Working hard using %s thread(s)%s...", threads, dryRun ? " (DRY RUN)" : "");
 

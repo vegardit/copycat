@@ -48,7 +48,7 @@ public class CopyCatMain extends AbstractCommand {
    private static FileHandler configureLogging(final String[] args) throws IOException {
       final var loggingOptions = new LoggingOptions();
       CommandLine.populateCommand(loggingOptions, args);
-      JdkLoggingUtils.configureConsoleHandler(loggingOptions.logErrorsToStdOut);
+      JdkLoggingUtils.configureConsoleHandler(!loggingOptions.logErrorsToStdOut);
       if (loggingOptions.logFile == null)
          return null;
       return JdkLoggingUtils.addFileHandler(loggingOptions.logFile.toAbsolutePath().toString());
