@@ -343,7 +343,7 @@ public class SyncCommand extends AbstractCommand {
       }
    }
 
-   private void sync() throws Exception {
+   private void sync() throws IOException {
 
       final var sourceEntries = new HashMap<Path, Path>(); // Map<SourcePathRelativeToRoot, SourcePathAbsolute>
       final var targetEntries = new HashMap<Path, Path>(); // Map<TargetPathRelativeToRoot, TargetPathAbsolute>
@@ -481,7 +481,7 @@ public class SyncCommand extends AbstractCommand {
                   }
                }
             }
-         } catch (final Exception ex) {
+         } catch (final IOException | RuntimeException ex) {
             stats.onError(ex);
             if (ignoreErrors) {
                if (getVerbosity() > 0) {
