@@ -6,9 +6,12 @@ package com.vegardit.copycat.util;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
+import java.nio.file.OpenOption;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.AclFileAttributeView;
 import java.nio.file.attribute.BasicFileAttributeView;
 import java.nio.file.attribute.BasicFileAttributes;
@@ -17,6 +20,8 @@ import java.nio.file.attribute.DosFileAttributes;
 import java.nio.file.attribute.PosixFileAttributeView;
 import java.nio.file.attribute.PosixFileAttributes;
 import java.nio.file.attribute.UserDefinedFileAttributeView;
+
+import com.sun.nio.file.ExtendedOpenOption;
 
 import net.sf.jstuff.core.SystemUtils;
 import net.sf.jstuff.core.functional.LongBiConsumer;
@@ -28,12 +33,27 @@ import net.sf.jstuff.core.io.MoreFiles;
 public abstract class FileUtils {
 
    private static final LinkOption[] NOFOLLOW_LINKS = {LinkOption.NOFOLLOW_LINKS};
+   private static final OpenOption[] FILE_READ_OPTIONS = { //
+      ExtendedOpenOption.NOSHARE_WRITE, //
+      StandardOpenOption.READ //
+   };
+   private static final OpenOption[] FILE_WRITE_OPTIONS = { //
+      ExtendedOpenOption.NOSHARE_READ, //
+      ExtendedOpenOption.NOSHARE_WRITE, //
+      ExtendedOpenOption.NOSHARE_DELETE, //
+      StandardOpenOption.CREATE, //
+      StandardOpenOption.TRUNCATE_EXISTING, //
+      StandardOpenOption.WRITE //
+   };
 
    @SuppressWarnings("resource")
    public static void copyFile(final Path source, final BasicFileAttributes sourceAttrs, final Path target, final boolean copyACL,
       final LongBiConsumer onBytesWritten) throws IOException {
 
-      MoreFiles.copyContent(source, target, onBytesWritten);
+      try (var sourceCh = FileChannel.open(source, FILE_READ_OPTIONS);
+           var targetCh = FileChannel.open(target, FILE_WRITE_OPTIONS)) {
+         MoreFiles.copyContent(sourceCh, targetCh, onBytesWritten);
+      }
 
       final var sourceFS = source.getFileSystem();
       final var targetFS = target.getFileSystem();

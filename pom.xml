@@ -46,7 +46,7 @@
       <java.version>11</java.version>
 
       <!-- https://search.maven.org/artifact/org.graalvm.sdk/graal-sdk -->
-      <graalvm.version>20.3.0</graalvm.version>
+      <graalvm.version>21.0.0.2</graalvm.version>
       <!-- https://search.maven.org/artifact/info.picocli/picocli -->
       <picocli.version>4.6.1</picocli.version>
       <!-- https://search.maven.org/artifact/com.guardsquare/proguard-core -->
@@ -99,6 +99,23 @@
                            </includes>
                         </resource>
                      </resources>
+                  </configuration>
+               </execution>
+               <execution>
+                  <inherited>false</inherited>
+                  <id>attach-files</id>
+                  <phase>package</phase>
+                  <goals>
+                     <goal>attach-artifact</goal>
+                  </goals>
+                  <configuration>
+                     <artifacts>
+                        <artifact>
+                           <file>${project.build.directory}/bash/bashcompletion.sh</file>
+                           <classifier>bashcompletion</classifier>
+                           <type>sh</type>
+                        </artifact>
+                     </artifacts>
                   </configuration>
                </execution>
             </executions>
@@ -188,7 +205,6 @@
 
                   <option>-dontnote **</option>
                   <option>-ignorewarnings</option>
-                  <option>-dontwarn org.slf4j.**</option>
 
                   <option>-keep public class ${mainClass} { public static void main(java.lang.String[]); }</option>
 
@@ -238,30 +254,6 @@
                </dependency>
             </dependencies>
          </plugin>
-
-         <plugin>
-            <groupId>org.codehaus.mojo</groupId>
-            <artifactId>build-helper-maven-plugin</artifactId>
-            <executions>
-               <execution>
-                  <inherited>false</inherited>
-                  <id>attach-files</id>
-                  <phase>package</phase>
-                  <goals>
-                     <goal>attach-artifact</goal>
-                  </goals>
-                  <configuration>
-                     <artifacts>
-                        <artifact>
-                           <file>${project.build.directory}/bash/bashcompletion.sh</file>
-                           <classifier>bashcompletion</classifier>
-                           <type>sh</type>
-                        </artifact>
-                     </artifacts>
-                  </configuration>
-               </execution>
-            </executions>
-         </plugin>
       </plugins>
    </build>
 
@@ -288,7 +280,7 @@
       <dependency>
          <groupId>net.sf.jstuff</groupId>
          <artifactId>jstuff-core</artifactId>
-         <version>5.10.0</version>
+         <version>5.14.1</version>
       </dependency>
       <dependency>
          <groupId>org.graalvm.sdk</groupId>
@@ -311,14 +303,14 @@
       <dependency>
          <groupId>org.assertj</groupId>
          <artifactId>assertj-core</artifactId>
-         <version>3.18.1</version>
+         <version>3.19.0</version>
          <scope>test</scope>
       </dependency>
 
       <dependency>
          <groupId>junit</groupId>
          <artifactId>junit</artifactId>
-         <version>4.13.1</version>
+         <version>4.13.2</version>
          <scope>test</scope>
       </dependency>
    </dependencies>
