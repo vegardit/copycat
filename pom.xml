@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <!--
-   Copyright 2020 by Vegard IT GmbH, Germany, https://vegardit.com
+   Copyright 2020-2021 by Vegard IT GmbH, Germany, https://vegardit.com
    SPDX-License-Identifier: Apache-2.0
 
    @author Sebastian Thomschke, Vegard IT GmbH
@@ -257,6 +257,17 @@
       </plugins>
    </build>
 
+   <dependencyManagement>
+      <dependencies>
+         <dependency>
+            <groupId>net.sf.jstuff</groupId>
+            <artifactId>jstuff-core</artifactId>
+            <version>5.14.1</version>
+            <type>pom</type>
+            <scope>import</scope>
+         </dependency>
+      </dependencies>
+   </dependencyManagement>
 
    <dependencies>
       <dependency>
@@ -280,7 +291,6 @@
       <dependency>
          <groupId>net.sf.jstuff</groupId>
          <artifactId>jstuff-core</artifactId>
-         <version>5.14.1</version>
       </dependency>
       <dependency>
          <groupId>org.graalvm.sdk</groupId>
@@ -288,7 +298,6 @@
          <version>${graalvm.version}</version>
          <scope>provided</scope>
       </dependency>
-
 
       <!--==================================================================
           Test dependencies
