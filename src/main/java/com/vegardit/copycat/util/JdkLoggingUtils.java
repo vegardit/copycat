@@ -36,7 +36,7 @@ public final class JdkLoggingUtils {
    static {
       /*
        * this ensures that in case of long running operations, e.g. copying of large files
-       * at least after 5 seconds the log appenders buffer is flushed
+       * at least after 2 seconds the log appenders buffer is flushed
        */
       new Timer(true).schedule(new TimerTask() {
          @Override
@@ -49,7 +49,7 @@ public final class JdkLoggingUtils {
                }
             }
          }
-      }, TimeUnit.SECONDS.toMillis(5), TimeUnit.SECONDS.toMillis(5));
+      }, TimeUnit.SECONDS.toMillis(2), TimeUnit.SECONDS.toMillis(2));
    }
 
    private static final Formatter ANSI_FORMATTER = new Formatter() {

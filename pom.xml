@@ -18,7 +18,7 @@
 
    <groupId>com.vegardit</groupId>
    <artifactId>copycat</artifactId>
-   <version>0.1.0-SNAPSHOT</version>
+   <version>1.0.0-SNAPSHOT</version>
 
 
    <name>copycat</name>
@@ -262,7 +262,7 @@
          <dependency>
             <groupId>net.sf.jstuff</groupId>
             <artifactId>jstuff-core</artifactId>
-            <version>5.14.1</version>
+            <version>5.14.3</version>
             <type>pom</type>
             <scope>import</scope>
          </dependency>
@@ -297,6 +297,17 @@
          <artifactId>graal-sdk</artifactId>
          <version>${graalvm.version}</version>
          <scope>provided</scope>
+      </dependency>
+      <dependency>
+         <!-- https://github.com/gmethvin/directory-watcher -->
+         <groupId>io.methvin</groupId>
+         <artifactId>directory-watcher</artifactId>
+         <!-- https://search.maven.org/artifact/io.methvin/directory-watcher -->
+         <version>0.15.0</version>
+      </dependency>
+      <dependency>
+         <groupId>org.slf4j</groupId>
+         <artifactId>slf4j-jdk14</artifactId>
       </dependency>
 
       <!--==================================================================

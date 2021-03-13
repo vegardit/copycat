@@ -7,10 +7,12 @@ package com.vegardit.copycat.util;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
+import java.nio.file.CopyOption;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.OpenOption;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.AclFileAttributeView;
 import java.nio.file.attribute.BasicFileAttributeView;
@@ -20,6 +22,9 @@ import java.nio.file.attribute.DosFileAttributes;
 import java.nio.file.attribute.PosixFileAttributeView;
 import java.nio.file.attribute.PosixFileAttributes;
 import java.nio.file.attribute.UserDefinedFileAttributeView;
+
+import org.apache.commons.lang3.CharUtils;
+import org.apache.commons.lang3.StringUtils;
 
 import com.sun.nio.file.ExtendedOpenOption;
 
@@ -31,7 +36,7 @@ import net.sf.jstuff.core.io.MoreFiles;
  * @author Sebastian Thomschke, Vegard IT GmbH
  */
 public abstract class FileUtils {
-
+   private static final CopyOption[] COPY_WITH_ATTRS_OPTIONS = {StandardCopyOption.COPY_ATTRIBUTES, LinkOption.NOFOLLOW_LINKS};
    private static final LinkOption[] NOFOLLOW_LINKS = {LinkOption.NOFOLLOW_LINKS};
    private static final OpenOption[] FILE_READ_OPTIONS = { //
       ExtendedOpenOption.NOSHARE_WRITE, //
@@ -47,14 +52,7 @@ public abstract class FileUtils {
    };
 
    @SuppressWarnings("resource")
-   public static void copyFile(final Path source, final BasicFileAttributes sourceAttrs, final Path target, final boolean copyACL,
-      final LongBiConsumer onBytesWritten) throws IOException {
-
-      try (var sourceCh = FileChannel.open(source, FILE_READ_OPTIONS);
-           var targetCh = FileChannel.open(target, FILE_WRITE_OPTIONS)) {
-         MoreFiles.copyContent(sourceCh, targetCh, onBytesWritten);
-      }
-
+   public static void copyAttributes(final Path source, final BasicFileAttributes sourceAttrs, final Path target, final boolean copyACL) throws IOException {
       final var sourceFS = source.getFileSystem();
       final var targetFS = target.getFileSystem();
 
@@ -105,6 +103,36 @@ public abstract class FileUtils {
          sourceAttrs, //
          targetFSP.getFileAttributeView(target, BasicFileAttributeView.class, NOFOLLOW_LINKS) //
       );
+   }
+
+   public static void copyDirShallow(final Path source, final Path target, final boolean copyACL) throws IOException {
+      if (copyACL) {
+         Files.copy(source, target, NOFOLLOW_LINKS);
+         final var sourceAttrs = MoreFiles.readAttributes(source);
+         copyAttributes(source, sourceAttrs, target, copyACL);
+      } else {
+         Files.copy(source, target, COPY_WITH_ATTRS_OPTIONS);
+      }
+   }
+
+   public static void copyDirShallow(final Path source, final BasicFileAttributes sourceAttrs, final Path target, final boolean copyACL) throws IOException {
+      if (copyACL) {
+         Files.copy(source, target, NOFOLLOW_LINKS);
+         copyAttributes(source, sourceAttrs, target, copyACL);
+      } else {
+         Files.copy(source, target, COPY_WITH_ATTRS_OPTIONS);
+      }
+   }
+
+   public static void copyFile(final Path source, final BasicFileAttributes sourceAttrs, final Path target, final boolean copyACL,
+      final LongBiConsumer onBytesWritten) throws IOException {
+
+      try (var sourceCh = FileChannel.open(source, FILE_READ_OPTIONS);
+           var targetCh = FileChannel.open(target, FILE_WRITE_OPTIONS)) {
+         MoreFiles.copyContent(sourceCh, targetCh, onBytesWritten);
+      }
+
+      copyAttributes(source, sourceAttrs, target, copyACL);
    }
 
    private static void copyTimeAttrs(final BasicFileAttributes sourceAttrs, final BasicFileAttributeView targetAttrs) throws IOException {
@@ -167,5 +195,19 @@ public abstract class FileUtils {
    @SuppressWarnings("resource")
    public static boolean supportsPosixAttributes(final Path path) {
       return path.getFileSystem().supportedFileAttributeViews().contains("posix");
+   }
+
+   public static Path toAbsolute(Path path) {
+      if (path == null)
+         return path;
+      path = path.toAbsolutePath();
+
+      if (SystemUtils.IS_OS_WINDOWS) {
+         // ensure drive letter is uppercase
+         final var pathStr = path.toString();
+         if (!CharUtils.isAsciiAlphaUpper(pathStr.charAt(0)))
+            return Path.of(StringUtils.capitalize(pathStr));
+      }
+      return path;
    }
 }
