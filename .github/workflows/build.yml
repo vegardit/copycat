@@ -13,7 +13,7 @@ on:
   pull_request:
 
 env:
-  GRAALVM_VERSION: 20.3.0 # https://github.com/graalvm/graalvm-ce-builds/releases
+  GRAALVM_VERSION: 21.0.0.2 # https://github.com/graalvm/graalvm-ce-builds/releases
   JAVA_VERSION: 11
   MAIN_CLASS: "com.vegardit.copycat.CopyCatMain"
   RELEASE_NAME: "snapshot"
@@ -146,6 +146,14 @@ jobs:
           --no-server \
           --verbose \
           -H:+StaticExecutableWithDynamicLibC `#https://www.graalvm.org/reference-manual/native-image/StaticImages/#build-a-mostly-static-native-image` \
+          --initialize-at-build-time=org.slf4j \
+          --initialize-at-build-time=net.sf.jstuff.core.collection.WeakIdentityHashMap \
+          --initialize-at-build-time=net.sf.jstuff.core.logging \
+          --initialize-at-build-time=net.sf.jstuff.core.reflection.StackTrace \
+          --initialize-at-build-time=com.vegardit.copycat.command.sync.AbstractSyncCommand \
+          --initialize-at-build-time=com.vegardit.copycat.command.watch.WatchCommand \
+          -Dnet.sf.jstuff.core.logging.Logger.preferSLF4J=false \
+          -Dfile.encoding=UTF-8 \
           --class-path copycat-fat.jar \
           ${{ env.MAIN_CLASS }} \
           copycat-linux-amd64
@@ -162,6 +170,8 @@ jobs:
         chmod u+x copycat-linux-amd64
         ./copycat-linux-amd64 --version
         ./copycat-linux-amd64 --help
+        ./copycat-linux-amd64 sync --help
+        ./copycat-linux-amd64 watch --help
 
     - name: "Share: native binary"
       uses: actions/upload-artifact@v2
@@ -260,6 +270,14 @@ jobs:
           --no-server \
           --verbose \
           -H:+StaticExecutableWithDynamicLibC `#https://www.graalvm.org/reference-manual/native-image/StaticImages/#build-a-mostly-static-native-image` \
+          --initialize-at-build-time=org.slf4j \
+          --initialize-at-build-time=net.sf.jstuff.core.collection.WeakIdentityHashMap \
+          --initialize-at-build-time=net.sf.jstuff.core.logging \
+          --initialize-at-build-time=net.sf.jstuff.core.reflection.StackTrace \
+          --initialize-at-build-time=com.vegardit.copycat.command.sync.AbstractSyncCommand \
+          --initialize-at-build-time=com.vegardit.copycat.command.watch.WatchCommand \
+          -Dnet.sf.jstuff.core.logging.Logger.preferSLF4J=false \
+          -Dfile.encoding=UTF-8 \
           --class-path copycat-fat.jar \
           ${{ env.MAIN_CLASS }} \
           copycat-linux-arm64
@@ -282,7 +300,9 @@ jobs:
 
         chmod u+x  copycat-linux-arm64 &&
         ./copycat-linux-arm64 --version &&
-        ./copycat-linux-arm64 --help
+        ./copycat-linux-arm64 --help &&
+        ./copycat-linux-arm64 sync --help &&
+        ./copycat-linux-arm64 watch --help
 
         '
 
@@ -353,6 +373,14 @@ jobs:
           --no-fallback \
           --no-server \
           --verbose \
+          --initialize-at-build-time=org.slf4j \
+          --initialize-at-build-time=net.sf.jstuff.core.collection.WeakIdentityHashMap \
+          --initialize-at-build-time=net.sf.jstuff.core.logging \
+          --initialize-at-build-time=net.sf.jstuff.core.reflection.StackTrace \
+          --initialize-at-build-time=com.vegardit.copycat.command.sync.AbstractSyncCommand \
+          --initialize-at-build-time=com.vegardit.copycat.command.watch.WatchCommand \
+          -Dnet.sf.jstuff.core.logging.Logger.preferSLF4J=false \
+          -Dfile.encoding=UTF-8 \
           --class-path copycat-fat.jar \
           ${{ env.MAIN_CLASS }} \
           copycat-darwin-amd64
@@ -370,6 +398,8 @@ jobs:
         chmod u+x copycat-darwin-amd64
         ./copycat-darwin-amd64 --version
         ./copycat-darwin-amd64 --help
+        ./copycat-darwin-amd64 sync --help
+        ./copycat-darwin-amd64 watch --help
 
     - name: "Share: native binary"
       uses: actions/upload-artifact@v2
@@ -380,17 +410,13 @@ jobs:
   ###########################################################
   native-windows-amd64:
   ###########################################################
-    runs-on: windows-latest
+    # using windows-2016 instead of windows-latest because of 
+    # https://stackoverflow.com/questions/66486023/chocolatey-fails-to-install-visualstudio2017-workload-vctools-in-github-actions
+    # https://github.com/jberezanski/ChocolateyPackages/issues/97
+    runs-on: windows-2016
     needs: [maven-build]
 
     steps:
-    - name: "Cache: GraalVM binaries"
-      uses: actions/cache@v2
-      with:
-        path: |
-          graalvm-ce-java${{ env.JAVA_VERSION }}-${{ env.GRAALVM_VERSION }}
-        key: ${{ runner.os }}-graalvm-${{ env.GRAALVM_VERSION }}
-
     - name: "Cache: Choco packages"
       uses: actions/cache@v2
       with:
@@ -401,6 +427,28 @@ jobs:
           %LocalAppData%\NuGet\v3-cache\
           %userprofile%\.nuget\packages\
         key: ${{ runner.os }}-choco-${{ env.GRAALVM_VERSION }}
+
+    - name: "Install: Visual C++ build tools"
+      shell: cmd
+      run: |
+        REM https://docs.microsoft.com/en-us/visualstudio/install/use-command-line-parameters-to-install-visual-studio?view=vs-2017
+
+        REM https://chocolatey.org/packages/visualstudio2017-workload-vctools
+        REM https://github.com/jberezanski/ChocolateyPackages/blob/master/visualstudio2017-workload-vctools/visualstudio2017-workload-vctools.nuspec
+        choco install visualstudio2017-workload-vctools
+
+        set rc=%ERRORLEVEL%
+        if %rc% NEQ 0 (
+           type C:\ProgramData\chocolatey\logs\chocolatey.log
+           exit /b %rc%
+        )
+
+    - name: "Cache: GraalVM binaries"
+      uses: actions/cache@v2
+      with:
+        path: |
+          graalvm-ce-java${{ env.JAVA_VERSION }}-${{ env.GRAALVM_VERSION }}
+        key: ${{ runner.os }}-graalvm-${{ env.GRAALVM_VERSION }}
 
     - name: "Install: GraalVM"
       shell: powershell
@@ -423,21 +471,6 @@ jobs:
 
         echo "Extend GITHUB_ENV..."
         echo "JAVA_HOME=$(($pwd).path)\graalvm-ce-java${{ env.JAVA_VERSION }}-${{ env.GRAALVM_VERSION }}" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-
-    - name: "Install: Visual C++ build tools"
-      shell: cmd
-      run: |
-        # https://docs.microsoft.com/en-us/visualstudio/install/use-command-line-parameters-to-install-visual-studio?view=vs-2017
-
-        # https://chocolatey.org/packages/visualstudio2017-workload-vctools
-        # https://github.com/jberezanski/ChocolateyPackages/blob/master/visualstudio2017-workload-vctools/visualstudio2017-workload-vctools.nuspec
-        choco install visualstudio2017-workload-vctools
-
-        set rc=%ERRORLEVEL%
-        if %rc% NEQ 0 (
-           type C:\ProgramData\chocolatey\logs\chocolatey.log
-           exit /b %rc%
-        )
 
     - name: "Install: UPX"
       shell: cmd
@@ -463,6 +496,14 @@ jobs:
           --no-server ^
           --verbose ^
           --static ^
+          --initialize-at-build-time=org.slf4j ^
+          --initialize-at-build-time=net.sf.jstuff.core.collection.WeakIdentityHashMap ^
+          --initialize-at-build-time=net.sf.jstuff.core.logging ^
+          --initialize-at-build-time=net.sf.jstuff.core.reflection.StackTrace ^
+          --initialize-at-build-time=com.vegardit.copycat.command.sync.AbstractSyncCommand ^
+          --initialize-at-build-time=com.vegardit.copycat.command.watch.WatchCommand ^
+          -Dnet.sf.jstuff.core.logging.Logger.preferSLF4J=false ^
+          -Dfile.encoding=UTF-8 ^
           --class-path copycat-fat.jar ^
           ${{ env.MAIN_CLASS }} ^
           copycat-windows-amd64
@@ -475,6 +516,8 @@ jobs:
       run: |
         copycat-windows-amd64.exe --version
         copycat-windows-amd64.exe --help
+        copycat-windows-amd64.exe sync --help
+        copycat-windows-amd64.exe watch --help
 
     - name: "Share: native binary"
       uses: actions/upload-artifact@v2

@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
 #
-# Copyright 2015-2020 by Vegard IT GmbH, Germany, https://vegardit.com
+# Copyright 2015-2021 by Vegard IT GmbH, Germany, https://vegardit.com
 # SPDX-License-Identifier: Apache-2.0
 #
 # @author Sebastian Thomschke, Vegard IT GmbH
-# @author Patrick Spielmann, Vegard IT GmbH
 
 set -e # abort script at first error
 set -o pipefail # causes a pipeline to return the exit status of the last command in the pipe that returned a non-zero return value
@@ -97,6 +96,8 @@ if [[ ${projectVersion:-foo} == ${POM_CURRENT_VERSION:-bar} ]]; then
    # https://stackoverflow.com/questions/8653126/how-to-increment-version-number-in-a-shell-script/21493080#21493080
    nextDevelopmentVersion="$(echo ${POM_RELEASE_VERSION} | perl -pe 's/^((\d+\.)*)(\d+)(.*)$/$1.($3+1).$4/e')-SNAPSHOT"
 
+   SKIP_TESTS=${SKIP_TESTS:-false}
+
    echo
    echo "###################################################"
    echo "# Creating Maven Release...                       #"
@@ -115,7 +116,7 @@ if [[ ${projectVersion:-foo} == ${POM_CURRENT_VERSION:-bar} ]]; then
       git checkout ${GIT_BRANCH}
    fi
 
-   mvn $MAVEN_CLI_OPTS \
+   mvn $MAVEN_CLI_OPTS "$@" \
       -DskipTests=${SKIP_TESTS} \
       -DskipITs=${SKIP_TESTS} \
       -DdryRun=${DRY_RUN} \
@@ -130,7 +131,7 @@ else
    echo "###################################################"
    echo "# Building Maven Project...                       #"
    echo "###################################################"
-   mvn $MAVEN_CLI_OPTS \
+   mvn $MAVEN_CLI_OPTS "$@" \
       help:active-profiles clean verify \
       | grep -v -e "\[INFO\]  .* \[0.0[0-9][0-9]s\]" # the grep command suppresses all lines from maven-buildtime-extension that report plugins with execution time <=99ms
 fi

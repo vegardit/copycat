@@ -39,6 +39,32 @@
       </license>
    </licenses>
 
+   <repositories>
+      <repository>
+         <!-- required by proguard -->
+         <id>jcenter</id>
+         <url>https://jcenter.bintray.com</url>
+         <releases>
+            <enabled>true</enabled>
+         </releases>
+         <snapshots>
+            <enabled>false</enabled>
+         </snapshots>
+      </repository>
+   </repositories>
+   <pluginRepositories>
+      <pluginRepository>
+         <!-- required by proguard -->
+         <id>jcenter</id>
+         <url>https://jcenter.bintray.com</url>
+         <releases>
+            <enabled>true</enabled>
+         </releases>
+         <snapshots>
+            <enabled>false</enabled>
+         </snapshots>
+      </pluginRepository>
+   </pluginRepositories>
 
    <properties>
       <mainClass>com.vegardit.copycat.CopyCatMain</mainClass>
