@@ -455,8 +455,21 @@ jobs:
         echo "JAVA_HOME=$(($pwd).path)\graalvm-ce-java${{ env.JAVA_VERSION }}-${{ env.GRAALVM_VERSION }}" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
     - name: "Install: UPX"
-      shell: cmd
-      run: choco install upx
+      # first choco install in a build takes 3+ minutes
+      # shell: cmd
+      # run: choco install -y upx
+      shell: bash
+      run: |
+        set -eux
+
+        upx_download_url=$(curl -fsSL https://api.github.com/repos/upx/upx/releases/latest | grep browser_download_url | grep upx-3.96-win64.zip | cut "-d\"" -f4)
+        echo "Downloading [$upx_download_url]..."
+        curl -fL -o /tmp/upx.zip $upx_download_url
+        
+        echo "Extracting upx.zip..."
+        mkdir /tmp/upx
+        7z e /tmp/upx.zip -o/tmp/upx *.exe -r
+        echo "$(cygpath -wa /tmp/upx)" >> $GITHUB_PATH
 
     - name: "Get: maven-build-artifacts"
       uses: actions/download-artifact@v2
