@@ -12,11 +12,13 @@ on:
     - '**/*.md'
   pull_request:
 
+
 env:
   GRAALVM_VERSION: 21.0.0.2 # https://github.com/graalvm/graalvm-ce-builds/releases
   JAVA_VERSION: 11
   MAIN_CLASS: "com.vegardit.copycat.CopyCatMain"
   RELEASE_NAME: "snapshot"
+
 
 jobs:
   ###########################################################
@@ -410,39 +412,16 @@ jobs:
   ###########################################################
   native-windows-amd64:
   ###########################################################
-    # using windows-2016 instead of windows-latest because of 
-    # https://stackoverflow.com/questions/66486023/chocolatey-fails-to-install-visualstudio2017-workload-vctools-in-github-actions
-    # https://github.com/jberezanski/ChocolateyPackages/issues/97
-    runs-on: windows-2016
+    # preinstalled software: https://github.com/actions/virtual-environments/blob/main/images/win/Windows2019-Readme.md
+    runs-on: windows-latest
     needs: [maven-build]
 
     steps:
-    - name: "Cache: Choco packages"
-      uses: actions/cache@v2
-      with:
-        path: |
-          %LocalAppData%\Temp\chocolatey\
-          # https://stackoverflow.com/a/35584821/5116073
-          %LocalAppData%\NuGet\Cache\
-          %LocalAppData%\NuGet\v3-cache\
-          %userprofile%\.nuget\packages\
-        key: ${{ runner.os }}-choco-${{ env.GRAALVM_VERSION }}
-
-    - name: "Install: Visual C++ build tools"
-      shell: cmd
-      run: |
-        REM https://docs.microsoft.com/en-us/visualstudio/install/use-command-line-parameters-to-install-visual-studio?view=vs-2017
-
-        REM https://chocolatey.org/packages/visualstudio2017-workload-vctools
-        REM https://github.com/jberezanski/ChocolateyPackages/blob/master/visualstudio2017-workload-vctools/visualstudio2017-workload-vctools.nuspec
-        choco install visualstudio2017-workload-vctools
-
-        set rc=%ERRORLEVEL%
-        if %rc% NEQ 0 (
-           type C:\ProgramData\chocolatey\logs\chocolatey.log
-           exit /b %rc%
-        )
-
+    - name: Enable Developer Command Prompt
+      # makes cl.exe available on PATH
+      # https://github.com/marketplace/actions/enable-developer-command-prompt
+      uses: ilammy/msvc-dev-cmd@v1
+  
     - name: "Cache: GraalVM binaries"
       uses: actions/cache@v2
       with:
