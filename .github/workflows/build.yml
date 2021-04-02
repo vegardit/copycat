@@ -580,3 +580,10 @@ jobs:
           --attach "artifact/copycat-darwin-amd64#copycat-${{ env.RELEASE_NAME }}-darwin-amd64" \
           --attach "artifact/copycat-windows-amd64.exe#copycat-${{ env.RELEASE_NAME }}-windows-amd64.exe" \
           --prerelease
+
+    - name: "Delete intermediate build artifacts"
+      uses: geekyeggo/delete-artifact@1-glob-support # https://github.com/GeekyEggo/delete-artifact/
+      with:
+        name: "*"
+        useGlob: true
+        failOnError: false
