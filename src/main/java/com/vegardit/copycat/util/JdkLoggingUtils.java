@@ -63,12 +63,12 @@ public final class JdkLoggingUtils {
       }
 
       @Override
-      public synchronized String format(final LogRecord record) {
+      public synchronized String format(final LogRecord entry) {
          final var threadName = Thread.currentThread().getName();
-         final var recordTime = new Date(record.getMillis());
-         final var msg = ansiRender(record.getMessage());
+         final var recordTime = new Date(entry.getMillis());
+         final var msg = ansiRender(entry.getMessage());
 
-         switch (record.getLevel().intValue()) {
+         switch (entry.getLevel().intValue()) {
             case Levels.INFO_INT:
                return ansiRender("%1$tT @|green [%2$s]|@ %3$s%n", //
                   recordTime, threadName, msg);
@@ -78,15 +78,15 @@ public final class JdkLoggingUtils {
                   recordTime, threadName, msg);
 
             case Levels.SEVERE_INT:
-               return record.getThrown() == null //
+               return entry.getThrown() == null //
                   ? ansiRender("@|red %1$tT [%2$s] ERROR: %3$s%n|@", //
-                     recordTime, threadName, record.getMessage()) //
+                     recordTime, threadName, entry.getMessage()) //
                   : ansiRender("@|red %1$tT [%2$s] ERROR: %3$s %4$s|@", //
-                     recordTime, threadName, msg, Exceptions.getStackTrace(record.getThrown()));
+                     recordTime, threadName, msg, Exceptions.getStackTrace(entry.getThrown()));
 
             default:
                return String.format("%1$tT [%2$s] %3$-6s: %4$s %n", //
-                  recordTime, threadName, record.getLevel().getLocalizedName(), msg);
+                  recordTime, threadName, entry.getLevel().getLocalizedName(), msg);
          }
       }
    };
@@ -94,13 +94,13 @@ public final class JdkLoggingUtils {
    private static final Formatter PLAIN_FORMATTER = new Formatter() {
 
       @Override
-      public synchronized String format(final LogRecord record) {
+      public synchronized String format(final LogRecord entry) {
          final var threadName = Thread.currentThread().getName();
-         final var recordTime = new Date(record.getMillis());
-         final var msg = record.getMessage().replaceAll("(@\\|[a-z]+\\s)|(\\|@)", ""); // remove ansi keywords
+         final var recordTime = new Date(entry.getMillis());
+         final var msg = entry.getMessage().replaceAll("(@\\|[a-z]+\\s)|(\\|@)", ""); // remove ansi keywords
 
          return String.format("%1$tT [%2$s] %3$-6s: %4$s %n", //
-            recordTime, threadName, record.getLevel().getLocalizedName(), msg);
+            recordTime, threadName, entry.getLevel().getLocalizedName(), msg);
       }
    };
 
