@@ -462,10 +462,10 @@ jobs:
       run: |
         set -eux
 
-        upx_download_url=$(curl -fsSL https://api.github.com/repos/upx/upx/releases/latest | grep browser_download_url | grep upx-3.96-win64.zip | cut "-d\"" -f4)
+        upx_download_url=$(curl -fsSL https://api.github.com/repos/upx/upx/releases/latest | grep browser_download_url | grep win64.zip | cut "-d\"" -f4)
         echo "Downloading [$upx_download_url]..."
         curl -fL -o /tmp/upx.zip $upx_download_url
-        
+
         echo "Extracting upx.zip..."
         mkdir /tmp/upx
         7z e /tmp/upx.zip -o/tmp/upx *.exe -r
