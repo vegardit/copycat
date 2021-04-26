@@ -17,11 +17,15 @@
 
 ## <a name="what-is-it"></a>What is it?
 
-Copycat is a cross platform file synchronization tool for local file systems similar to robocopy for Windows.
+Copycat is a cross platform file synchronization tool for local file systems similar to [robocopy](https://docs.microsoft.com/en-us/windows-server/administration/windows-commands/robocopy) for Windows.
 
 It's written in Java but compiled to native binaries for Windows/Linux/MacOS using [GraalVM](https://graalvm.org).
 
 ![screen](src/site/img/screen.png)
+
+Advantages over robocopy:
+- supports excluding files/folders using relative paths and glob patters
+- cross platform support
 
 
 ## <a name="installation"></a>Installation
