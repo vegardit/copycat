@@ -26,7 +26,7 @@ on:
 
 
 env:
-  GRAALVM_VERSION: 21.0.0.2 # https://github.com/graalvm/graalvm-ce-builds/releases
+  GRAALVM_VERSION: 21.1.0 # https://github.com/graalvm/graalvm-ce-builds/releases
   JAVA_VERSION: 11
   MAIN_CLASS: "com.vegardit.copycat.CopyCatMain"
   RELEASE_NAME: "snapshot"
