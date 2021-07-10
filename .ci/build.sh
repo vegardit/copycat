@@ -30,22 +30,19 @@ else
 fi
 echo "  -> GIT Branch: $GIT_BRANCH"; echo
 
-
-if ! hash mvn 2>/dev/null; then
-   MAVEN_VERSION=3.6.3 # https://maven.apache.org/download.cgi
-   if [[ ! -e $HOME/.m2/bin/apache-maven-$MAVEN_VERSION ]]; then
-      echo
-      echo "###################################################"
-      echo "# Installing Maven version $MAVEN_VERSION...               #"
-      echo "###################################################"
-      mkdir -p $HOME/.m2/bin/
-      maven_download_url="https://repo1.maven.org/maven2/org/apache/maven/apache-maven/${MAVEN_VERSION}/apache-maven-${MAVEN_VERSION}-bin.tar.gz"
-      echo "Downloading [$maven_download_url]..." && \
-      curl -fL $maven_download_url | tar zxv -C $HOME/.m2/bin/
-   fi
-   export M2_HOME=$HOME/.m2/bin/apache-maven-$MAVEN_VERSION
-   export PATH=$M2_HOME/bin:$PATH
+MAVEN_VERSION=3.8.1 # https://maven.apache.org/download.cgi
+if [[ ! -e $HOME/.m2/bin/apache-maven-$MAVEN_VERSION ]]; then
+   echo
+   echo "###################################################"
+   echo "# Installing Maven version $MAVEN_VERSION...               #"
+   echo "###################################################"
+   mkdir -p $HOME/.m2/bin/
+   maven_download_url="https://repo1.maven.org/maven2/org/apache/maven/apache-maven/${MAVEN_VERSION}/apache-maven-${MAVEN_VERSION}-bin.tar.gz"
+   echo "Downloading [$maven_download_url]..."
+   curl -fsSL $maven_download_url | tar zxv -C $HOME/.m2/bin/
 fi
+export M2_HOME=$HOME/.m2/bin/apache-maven-$MAVEN_VERSION
+export PATH=$M2_HOME/bin:$PATH
 
 
 echo
@@ -92,7 +89,7 @@ MAVEN_CLI_OPTS="-e -U --batch-mode --show-version --no-transfer-progress -s .ci/
 #
 # decide whether to perform a release build or build+deploy a snapshot version
 #
-if [[ ${projectVersion:-foo} == ${POM_CURRENT_VERSION:-bar} ]]; then
+if [[ ${projectVersion:-foo} == ${POM_CURRENT_VERSION:-bar} && ${MAY_CREATE_RELEASE:-false} == "true" ]]; then
    # https://stackoverflow.com/questions/8653126/how-to-increment-version-number-in-a-shell-script/21493080#21493080
    nextDevelopmentVersion="$(echo ${POM_RELEASE_VERSION} | perl -pe 's/^((\d+\.)*)(\d+)(.*)$/$1.($3+1).$4/e')-SNAPSHOT"
 
@@ -115,6 +112,8 @@ if [[ ${projectVersion:-foo} == ${POM_CURRENT_VERSION:-bar} ]]; then
       # workaround for "Git fatal: ref HEAD is not a symbolic ref" during release on Travis CI
       git checkout ${GIT_BRANCH}
    fi
+
+   export DEPLOY_RELEASES_TO_MAVEN_CENTRAL=false
 
    mvn $MAVEN_CLI_OPTS "$@" \
       -DskipTests=${SKIP_TESTS} \
