@@ -7,18 +7,20 @@
 
 set -e # abort script at first error
 set -o pipefail # causes a pipeline to return the exit status of the last command in the pipe that returned a non-zero return value
+set -o nounset # treat undefined variables as errors
 
 if [[ -f .ci/release-trigger.sh ]]; then
    echo "Sourcing [.ci/release-trigger.sh]..."
    source .ci/release-trigger.sh
 fi
 
+cd $(dirname $0)/..
 
 echo
 echo "###################################################"
 echo "# Determining GIT branch......                    #"
 echo "###################################################"
-if [[ $CI == "true" && $TRAVIS == "true" && $USER == "travis" ]]; then
+if [[ $CI == "true" && ${TRAVIS:-false} == "true" && $USER == "travis" ]]; then
    # https://docs.travis-ci.com/user/environment-variables/#default-environment-variables
    if [[ $TRAVIS_PULL_REQUEST == "false" ]]; then
       GIT_BRANCH="$TRAVIS_BRANCH"
