@@ -18,7 +18,7 @@ import com.vegardit.copycat.command.sync.AbstractSyncCommand;
 import com.vegardit.copycat.util.FileUtils;
 
 import io.methvin.watcher.DirectoryWatcher;
-import net.sf.jstuff.core.collection.CollectionUtils;
+import net.sf.jstuff.core.collection.Sets;
 import net.sf.jstuff.core.io.MoreFiles;
 import net.sf.jstuff.core.io.Size;
 import net.sf.jstuff.core.logging.Logger;
@@ -41,7 +41,7 @@ public class WatchCommand extends AbstractSyncCommand {
 
    private static final Logger LOG = Logger.create();
 
-   private final Set<LogEvent> loggableEvents = CollectionUtils.newHashSet(LogEvent.values());
+   private final Set<LogEvent> loggableEvents = Sets.newHashSet(LogEvent.values());
 
    private void delDir(final Path dir) throws IOException {
       Files.walkFileTree(dir, new SimpleFileVisitor<>() {

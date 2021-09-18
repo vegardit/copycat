@@ -30,7 +30,7 @@ import org.apache.commons.lang3.mutable.MutableLong;
 import com.vegardit.copycat.util.FileUtils;
 import com.vegardit.copycat.util.JdkLoggingUtils;
 
-import net.sf.jstuff.core.collection.CollectionUtils;
+import net.sf.jstuff.core.collection.Sets;
 import net.sf.jstuff.core.concurrent.Threads;
 import net.sf.jstuff.core.io.MoreFiles;
 import net.sf.jstuff.core.io.Size;
@@ -76,7 +76,7 @@ public class SyncCommand extends AbstractSyncCommand {
    @Option(names = "--ignore-symlink-errors", defaultValue = "false", description = "Continue if creation of symlinks on target fails.")
    private boolean ignoreSymlinkErrors;
 
-   private final Set<LogEvent> loggableEvents = CollectionUtils.newHashSet(LogEvent.values());
+   private final Set<LogEvent> loggableEvents = Sets.newHashSet(LogEvent.values());
 
    @Option(names = "--no-log", description = "Don't log the given filesystem operation. Valid values: ${COMPLETION-CANDIDATES}")
    private void setNoLog(final LogEvent[] values) {
@@ -261,7 +261,8 @@ public class SyncCommand extends AbstractSyncCommand {
              */
             sourceEntries.clear();
             try (var sourceDS = Files.newDirectoryStream(source)) {
-               sourceDS.forEach(sourceEntry -> sourceEntries.put(sourceEntry.subpath(sourceRoot.getNameCount(), sourceEntry.getNameCount()), sourceEntry));
+               sourceDS.forEach(sourceEntry -> sourceEntries.put(sourceEntry.subpath(sourceRoot.getNameCount(), sourceEntry.getNameCount()),
+                  sourceEntry));
             }
 
             /*
@@ -270,7 +271,8 @@ public class SyncCommand extends AbstractSyncCommand {
             targetEntries.clear();
             if (!(dryRun && !Files.exists(target))) { // in dry run mode the target directory may not exist
                try (var targetDS = Files.newDirectoryStream(target)) {
-                  targetDS.forEach(targetEntry -> targetEntries.put(targetEntry.subpath(targetRoot.getNameCount(), targetEntry.getNameCount()), targetEntry));
+                  targetDS.forEach(targetEntry -> targetEntries.put(targetEntry.subpath(targetRoot.getNameCount(), targetEntry
+                     .getNameCount()), targetEntry));
                }
             }
 

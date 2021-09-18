@@ -39,33 +39,6 @@
       </license>
    </licenses>
 
-   <repositories>
-      <repository>
-         <!-- required by proguard -->
-         <id>jcenter</id>
-         <url>https://jcenter.bintray.com</url>
-         <releases>
-            <enabled>true</enabled>
-         </releases>
-         <snapshots>
-            <enabled>false</enabled>
-         </snapshots>
-      </repository>
-   </repositories>
-   <pluginRepositories>
-      <pluginRepository>
-         <!-- required by proguard -->
-         <id>jcenter</id>
-         <url>https://jcenter.bintray.com</url>
-         <releases>
-            <enabled>true</enabled>
-         </releases>
-         <snapshots>
-            <enabled>false</enabled>
-         </snapshots>
-      </pluginRepository>
-   </pluginRepositories>
-
    <properties>
       <mainClass>com.vegardit.copycat.CopyCatMain</mainClass>
 
@@ -288,7 +261,7 @@
          <dependency>
             <groupId>net.sf.jstuff</groupId>
             <artifactId>jstuff-core</artifactId>
-            <version>5.14.3</version>
+            <version>5.16.0</version>
             <type>pom</type>
             <scope>import</scope>
          </dependency>
