@@ -47,7 +47,7 @@
       <!-- https://search.maven.org/artifact/org.graalvm.sdk/graal-sdk -->
       <graalvm.version>21.2.0</graalvm.version>
       <!-- https://search.maven.org/artifact/info.picocli/picocli -->
-      <picocli.version>4.6.1</picocli.version>
+      <picocli.version>4.6.2</picocli.version>
       <!-- https://search.maven.org/artifact/com.guardsquare/proguard-core -->
       <proguard.version>7.1.1</proguard.version>
 
