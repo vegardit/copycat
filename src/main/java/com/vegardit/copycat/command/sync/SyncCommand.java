@@ -402,7 +402,7 @@ public class SyncCommand extends AbstractSyncCommand {
             LOG.info("NEW [@|magenta %s%s|@]...", relativePath, File.separator);
          }
          if (!dryRun) {
-            FileUtils.copyDirShallow(sourcePath, sourceAttrs, targetPath, copyAcl);
+            FileUtils.copyDirShallow(sourcePath, sourceAttrs, resolvedTargetPath, copyAcl);
          }
          stats.onFileCopied(System.currentTimeMillis() - start, sourceAttrs.size());
       }
