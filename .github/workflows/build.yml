@@ -55,14 +55,14 @@ jobs:
     #  run: |
     #    echo "::set-output name=md5sum::$(java -version 2>&1 | md5sum | cut -f1 -d" ")"
     #- name: Cache Java CDS archive
-    #  uses: actions/cache@v2
+    #  uses: actions/cache@v3
     #  with:
     #    path: |
     #      ~/.xshare/${{ steps.java-version-checksum.outputs.md5sum }}
     #    key: ${{ runner.os }}-xshare-${{ steps.java-version-checksum.outputs.md5sum }}
 
     - name: "Cache: Local Maven Repository"
-      uses: actions/cache@v2
+      uses: actions/cache@v3
       with:
         path: ~/.m2/repository
         key: ${{ runner.os }}-mvnrepo-${{ hashFiles('**/pom.xml') }}
@@ -70,7 +70,7 @@ jobs:
           ${{ runner.os }}-mvnrepo-
 
     - name: "Cache: Maven Binaries"
-      uses: actions/cache@v2
+      uses: actions/cache@v3
       with:
         path: |
           ~/.m2/bin
@@ -121,7 +121,7 @@ jobs:
 
     steps:
     - name: "Cache: GraalVM binaries"
-      uses: actions/cache@v2
+      uses: actions/cache@v3
       with:
         path: |
           /opt/graalvm
@@ -222,7 +222,7 @@ jobs:
 
     steps:
     - name: "Cache: GraalVM binaries"
-      uses: actions/cache@v2
+      uses: actions/cache@v3
       with:
         path: |
           /opt/graalvm
@@ -355,7 +355,7 @@ jobs:
 
     steps:
     - name: "Cache: GraalVM binaries"
-      uses: actions/cache@v2
+      uses: actions/cache@v3
       with:
         path: |
           graalvm
@@ -456,7 +456,7 @@ jobs:
       uses: ilammy/msvc-dev-cmd@v1
   
     - name: "Cache: GraalVM binaries"
-      uses: actions/cache@v2
+      uses: actions/cache@v3
       with:
         path: |
           graalvm-ce-java${{ env.JAVA_VERSION }}-${{ env.GRAALVM_VERSION }}
