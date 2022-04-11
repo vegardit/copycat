@@ -163,7 +163,7 @@ jobs:
         curl -fL $upx_download_url | tar Jxv -C /opt/upx --strip-components=1
 
     - name: "Get: maven-build-artifacts"
-      uses: actions/download-artifact@v2
+      uses: actions/download-artifact@v3
       with:
         name: maven-build-artifacts
 
@@ -284,7 +284,7 @@ jobs:
         curl -fL $upx_download_url | tar Jxv -C /opt/upx --strip-components=1
 
     - name: "Get: maven-build-artifacts"
-      uses: actions/download-artifact@v2
+      uses: actions/download-artifact@v3
       with:
         name: maven-build-artifacts
 
@@ -390,7 +390,7 @@ jobs:
       run: brew install upx
 
     - name: "Get: maven-build-artifacts"
-      uses: actions/download-artifact@v2
+      uses: actions/download-artifact@v3
       with:
         name: maven-build-artifacts
 
@@ -502,7 +502,7 @@ jobs:
         echo "$(cygpath -wa /tmp/upx)" >> $GITHUB_PATH
 
     - name: "Get: maven-build-artifacts"
-      uses: actions/download-artifact@v2
+      uses: actions/download-artifact@v3
       with:
         name: maven-build-artifacts
 
@@ -568,7 +568,7 @@ jobs:
       uses: actions/checkout@v3 #https://github.com/actions/checkout
 
     - name: "Get: all build artifacts"
-      uses: actions/download-artifact@v2
+      uses: actions/download-artifact@v3
 
     - name: "Delete previous '${{ env.RELEASE_NAME }}' release"
       if: env.RELEASE_NAME == 'snapshot'
