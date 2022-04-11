@@ -104,7 +104,7 @@ jobs:
         mv target/copycat-*-fat-minimized.jar target/copycat-fat.jar
 
     - name: "Share: maven-build-artifacts"
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v3
       with:
         name: maven-build-artifacts
         path: |
@@ -209,7 +209,7 @@ jobs:
         ./copycat-linux-amd64 watch --help
 
     - name: "Share: native binary"
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v3
       with:
         path: copycat-linux-amd64
 
@@ -342,7 +342,7 @@ jobs:
         '
 
     - name: "Share: native binary"
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v3
       with:
         path: copycat-linux-arm64
 
@@ -437,7 +437,7 @@ jobs:
         ./copycat-darwin-amd64 watch --help
 
     - name: "Share: native binary"
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v3
       with:
         path: copycat-darwin-amd64
 
@@ -545,7 +545,7 @@ jobs:
         copycat-windows-amd64.exe watch --help
 
     - name: "Share: native binary"
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v3
       with:
         path: copycat-windows-amd64.exe
 
