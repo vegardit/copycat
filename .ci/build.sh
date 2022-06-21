@@ -32,7 +32,8 @@ else
 fi
 echo "  -> GIT Branch: $GIT_BRANCH"; echo
 
-MAVEN_VERSION=3.8.5 # https://maven.apache.org/download.cgi
+
+MAVEN_VERSION=3.8.6 # https://maven.apache.org/download.cgi
 if [[ ! -e $HOME/.m2/bin/apache-maven-$MAVEN_VERSION ]]; then
    echo
    echo "###################################################"
@@ -110,7 +111,7 @@ if [[ ${projectVersion:-foo} == ${POM_CURRENT_VERSION:-bar} && ${MAY_CREATE_RELE
    cp -f .ci/maven-settings.xml $HOME/.m2/settings.xml
    cp -f .ci/maven-toolchains.xml $HOME/.m2/toolchains.xml
 
-   if [[ "$TRAVIS" == "true" ]]; then
+   if [[ "${TRAVIS:-false}" == "true" ]]; then
       # workaround for "Git fatal: ref HEAD is not a symbolic ref" during release on Travis CI
       git checkout ${GIT_BRANCH}
    fi
