@@ -10,15 +10,21 @@ if %JAVA_MAJOR_VERSION% LSS 11 (
   exit /b
 )
 
-if exist "_LOCAL\env.cmd" (
+
+set ROOT=%~dp0
+
+if exist "%ROOT%_LOCAL\env.cmd" (
   call _LOCAL\env.cmd
 )
 
-if not exist target\classes (
+if not exist "%ROOT%target\copycat-*-SNAPSHOT-fat-minimized.jar" (
   mvn -Pfast-build compile
 )
 
-mvn exec:java ^
-  -Dexec.mainClass="com.vegardit.copycat.CopyCatMain" ^
-  -Dexec.classpathScope=runtime ^
-  -Dexec.args="%*"
+for /F %%I in ('dir "%ROOT%target\copycat-*-SNAPSHOT-fat-minimized.jar" /b /O-N') do (
+  set "JAR=%ROOT%target\%%I"
+  goto :found_jar
+)
+:found_jar
+
+java -jar "%JAR%" %*

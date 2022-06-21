@@ -42,10 +42,12 @@
    <properties>
       <mainClass>com.vegardit.copycat.CopyCatMain</mainClass>
 
+      <!-- don't upgrade to Java 17 which breaks ARM builds https://github.com/oracle/graal/issues/4143 -->
       <java.version>11</java.version>
 
       <!-- https://search.maven.org/artifact/org.graalvm.sdk/graal-sdk -->
-      <graalvm.version>22.1.0.1</graalvm.version>
+      <!-- don't upgrade to 22.1.0.1 which breaks Windows builds https://github.com/oracle/graal/issues/4340 -->
+      <graalvm.version>21.3.2.1</graalvm.version>
       <!-- https://search.maven.org/artifact/info.picocli/picocli -->
       <picocli.version>4.6.3</picocli.version>
       <!-- https://search.maven.org/artifact/com.guardsquare/proguard-core -->

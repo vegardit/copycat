@@ -4,7 +4,7 @@
    <toolchain>
       <type>jdk</type>
       <provides>
-         <version>11</version>
+         <version>${env.JAVA_VERSION}</version>
          <vendor>default</vendor>
       </provides>
       <configuration>
