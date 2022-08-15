@@ -51,7 +51,7 @@
       <!-- https://search.maven.org/artifact/info.picocli/picocli -->
       <picocli.version>4.6.3</picocli.version>
       <!-- https://search.maven.org/artifact/com.guardsquare/proguard-core -->
-      <proguard.version>9.0.2</proguard.version>
+      <proguard.version>9.0.3</proguard.version>
 
       <skip.japicmp.cmp>true</skip.japicmp.cmp>
    </properties>
