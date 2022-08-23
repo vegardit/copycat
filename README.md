@@ -7,7 +7,7 @@
 [![Maintainability](https://api.codeclimate.com/v1/badges/6f32ab9599e166bb9b59/maintainability)](https://codeclimate.com/github/vegardit/copycat/maintainability)
 [![Contributor Covenant](https://img.shields.io/badge/Contributor%20Covenant-v2.0%20adopted-ff69b4.svg)](CODE_OF_CONDUCT.md)
 
-**IMPORTANT Copycat is currently in alpha testing and may not work as expected! DO NOT USE WITH IMPORTANT DATA.**
+**IMPORTANT Copycat is currently in alpha testing and may not work as expected! DO NOT USE WITH IMPORTANT DATA!**
 
 1. [What is it?](#what-is-it)
 1. [Installation](#installation)
@@ -24,7 +24,7 @@ It's written in Java but compiled to native binaries for Windows/Linux/MacOS usi
 ![screen](src/site/img/screen.png)
 
 Advantages over robocopy:
-- supports excluding files/folders using relative paths and glob patters
+- supports excluding files/folders using relative paths and glob patterns
 - cross platform support
 
 
