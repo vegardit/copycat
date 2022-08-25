@@ -52,21 +52,21 @@ public final class JdkLoggingUtils {
       }, TimeUnit.SECONDS.toMillis(2), TimeUnit.SECONDS.toMillis(2));
    }
 
-   private static final Formatter ANSI_FORMATTER = new Formatter() {
+   public static class AnsiFormatter extends Formatter {
 
-      private String ansiRender(final String text) {
+      protected String ansiRender(final String text) {
          return AnsiRenderer.render(text);
       }
 
-      private String ansiRender(final String text, final Object... args) {
+      protected String ansiRender(final String text, final Object... args) {
          return String.format(AnsiRenderer.render(text), args);
       }
 
       @Override
       public synchronized String format(final LogRecord entry) {
-         final var threadName = Thread.currentThread().getName();
-         final var recordTime = new Date(entry.getMillis());
          final var msg = ansiRender(entry.getMessage());
+         final var recordTime = new Date(entry.getMillis());
+         final var threadName = Thread.currentThread().getName();
 
          switch (entry.getLevel().intValue()) {
             case Levels.INFO_INT:
@@ -89,7 +89,7 @@ public final class JdkLoggingUtils {
                   recordTime, threadName, entry.getLevel().getLocalizedName(), msg);
          }
       }
-   };
+   }
 
    private static final Formatter PLAIN_FORMATTER = new Formatter() {
 
@@ -118,7 +118,7 @@ public final class JdkLoggingUtils {
    /**
     * Configures the JDK Logger for pretty console printing.
     */
-   public static void configureConsoleHandler(final boolean useStdErr) {
+   public static void configureConsoleHandler(final boolean useStdErr, final Formatter consoleFormatter) {
       synchronized (Loggers.ROOT_LOGGER) {
          if (useStdErr && consoleHandler instanceof DualPrintStreamHandler)
             // nothing to do
@@ -135,9 +135,9 @@ public final class JdkLoggingUtils {
             Loggers.ROOT_LOGGER.removeHandler(handler);
          }
          if (useStdErr) {
-            consoleHandler = new DualPrintStreamHandler(System.out, System.err, ANSI_FORMATTER);
+            consoleHandler = new DualPrintStreamHandler(System.out, System.err, consoleFormatter);
          } else {
-            consoleHandler = new PrintStreamHandler(System.out, ANSI_FORMATTER);
+            consoleHandler = new PrintStreamHandler(System.out, consoleFormatter);
          }
          Loggers.ROOT_LOGGER.addHandler(consoleHandler);
       }

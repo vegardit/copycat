@@ -7,6 +7,9 @@ package com.vegardit.copycat;
 import java.io.IOException;
 import java.util.List;
 import java.util.logging.FileHandler;
+import java.util.logging.LogRecord;
+
+import org.fusesource.jansi.Ansi;
 
 import com.vegardit.copycat.command.AbstractCommand;
 import com.vegardit.copycat.command.LoggingOptionsMixin;
@@ -48,7 +51,28 @@ public class CopyCatMain extends AbstractCommand {
    private static FileHandler configureLogging(final String[] args) throws IOException {
       final var loggingOptions = new LoggingOptions();
       CommandLine.populateCommand(loggingOptions, args);
-      JdkLoggingUtils.configureConsoleHandler(!loggingOptions.logErrorsToStdOut);
+      JdkLoggingUtils.configureConsoleHandler(!loggingOptions.logErrorsToStdOut, new JdkLoggingUtils.AnsiFormatter() {
+
+         final String replaceLastLine = new Ansi().cursorUpLine().eraseLine().toString();
+
+         String lastMessage = "";
+
+         @Override
+         protected String ansiRender(final String text, final Object... args) {
+            if (lastMessage.startsWith("Scanning "))
+               return replaceLastLine + super.ansiRender(text, args);
+            return super.ansiRender(text, args);
+         }
+
+         @Override
+         public synchronized String format(final LogRecord entry) {
+            try {
+               return super.format(entry);
+            } finally {
+               lastMessage = entry.getMessage();
+            }
+         }
+      });
       if (loggingOptions.logFile == null)
          return null;
       return JdkLoggingUtils.addFileHandler(loggingOptions.logFile.toAbsolutePath().toString());
