@@ -18,7 +18,14 @@ if not exist target\classes (
   mvn -Pfast-build compile
 )
 
-mvn exec:java ^
-  -Dexec.mainClass="com.vegardit.copycat.CopyCatMain" ^
+:: run within maven JVM process
+::mvn org.codehaus.mojo:exec-maven-plugin:java ^
+::  -Dexec.mainClass="com.vegardit.copycat.CopyCatMain" ^
+::  -Dexec.classpathScope=runtime ^
+::  -Dexec.args="%*"
+
+:: run in new JVM process
+mvn org.codehaus.mojo:exec-maven-plugin:exec ^
   -Dexec.classpathScope=runtime ^
-  -Dexec.args="%*"
+  -Dexec.executable="java" ^
+  -Dexec.args="-cp %%classpath com.vegardit.copycat.CopyCatMain %*"
