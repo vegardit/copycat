@@ -202,7 +202,7 @@ public abstract class FileUtils {
    public static Path toAbsolute(Path path) {
       if (path == null)
          return path;
-      path = path.toAbsolutePath();
+      path = path.normalize().toAbsolutePath();
 
       if (SystemUtils.IS_OS_WINDOWS) {
          // ensure drive letter is uppercase

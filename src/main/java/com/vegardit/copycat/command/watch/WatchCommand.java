@@ -65,20 +65,20 @@ public class WatchCommand extends AbstractSyncCommand {
 
    @Override
    protected void doExecute() throws Exception {
-      if (!Files.exists(targetRoot, NOFOLLOW_LINKS)) {
+      if (!Files.exists(targetRootAbsolute, NOFOLLOW_LINKS)) {
          if (loggableEvents.contains(LogEvent.CREATE)) {
-            LOG.info("NEW [@|magenta %s%s|@]...", targetRoot, File.separator);
+            LOG.info("NEW [@|magenta %s%s|@]...", targetRootAbsolute, File.separator);
          }
-         FileUtils.copyDirShallow(sourceRoot, targetRoot, copyAcl);
+         FileUtils.copyDirShallow(sourceRootAbsolute, targetRootAbsolute, copyAcl);
       }
 
       final var watcher = DirectoryWatcher.builder() //
-         .path(sourceRoot) //
+         .path(sourceRootAbsolute) //
          .listener(event -> {
             try {
                final var sourceAbsolute = event.path();
-               final var sourceRelative = sourceAbsolute.subpath(sourceRoot.getNameCount(), sourceAbsolute.getNameCount());
-               final var targetAbsolute = targetRoot.resolve(sourceRelative);
+               final var sourceRelative = sourceAbsolute.subpath(sourceRootAbsolute.getNameCount(), sourceAbsolute.getNameCount());
+               final var targetAbsolute = targetRootAbsolute.resolve(sourceRelative);
 
                if (isExcludedSourcePath(sourceAbsolute, sourceRelative)) {
                   LOG.debug("Ignoring %s of %s", event.eventType(), sourceRelative);
@@ -142,8 +142,8 @@ public class WatchCommand extends AbstractSyncCommand {
          }) //
          .build();
       watcher.watch();
-      if (!Files.exists(sourceRoot))
-         throw new IllegalStateException("Directory: [" + sourceRoot + "] does not exist anymore!");
+      if (!Files.exists(sourceRootAbsolute))
+         throw new IllegalStateException("Directory: [" + sourceRootAbsolute + "] does not exist anymore!");
    }
 
    @Option(names = "--no-log", description = "Don't log the given filesystem operation. Valid values: ${COMPLETION-CANDIDATES}")

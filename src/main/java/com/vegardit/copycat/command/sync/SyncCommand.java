@@ -17,6 +17,7 @@ import java.util.ArrayDeque;
 import java.util.HashMap;
 import java.util.Queue;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -161,14 +162,14 @@ public class SyncCommand extends AbstractSyncCommand {
 
       LOG.info("Working hard using %s thread(s)%s...", threads, dryRun ? " (DRY RUN)" : "");
 
-      if (!Files.exists(targetRoot, NOFOLLOW_LINKS)) {
+      if (!Files.exists(targetRootAbsolute, NOFOLLOW_LINKS)) {
          if (loggableEvents.contains(LogEvent.CREATE)) {
-            LOG.info("NEW [@|magenta %s%s|@]...", targetRoot, File.separator);
+            LOG.info("NEW [@|magenta %s%s|@]...", targetRootAbsolute, File.separator);
          }
-         FileUtils.copyDirShallow(sourceRoot, targetRoot, copyAcl);
+         FileUtils.copyDirShallow(sourceRootAbsolute, targetRootAbsolute, copyAcl);
       }
 
-      sourceDirsToScan.add(sourceRoot);
+      sourceDirsToScan.add(sourceRootAbsolute);
 
       /*
        * start syncing
@@ -232,8 +233,8 @@ public class SyncCommand extends AbstractSyncCommand {
 
    private void sync() throws IOException {
 
-      final var sourceEntries = new HashMap<Path, Path>(); // Map<SourcePathRelativeToRoot, SourcePathAbsolute>
-      final var targetEntries = new HashMap<Path, Path>(); // Map<TargetPathRelativeToRoot, TargetPathAbsolute>
+      final var sourceChildren = new HashMap<Path, Path>(); // Map<SourcePathRelativeToRoot, SourcePathAbsolute>
+      final var targetChildren = new ConcurrentHashMap<Path, Path>(); // Map<TargetPathRelativeToRoot, TargetPathAbsolute>
 
       while (state == State.NORMAL) {
          final var source = getNextSourceEntry();
@@ -244,12 +245,12 @@ public class SyncCommand extends AbstractSyncCommand {
          try {
             final Path target;
             final Path sourceRelative;
-            if (source.equals(sourceRoot)) { // is root ?
-               target = targetRoot;
+            if (source.equals(sourceRootAbsolute)) { // is root ?
+               target = targetRootAbsolute;
                sourceRelative = Paths.get(".");
             } else {
-               sourceRelative = source.subpath(sourceRoot.getNameCount(), source.getNameCount());
-               target = targetRoot.resolve(sourceRelative);
+               sourceRelative = source.subpath(sourceRootAbsolute.getNameCount(), source.getNameCount());
+               target = targetRootAbsolute.resolve(sourceRelative);
             }
 
             if (loggableEvents.contains(LogEvent.SCAN)) {
@@ -259,20 +260,20 @@ public class SyncCommand extends AbstractSyncCommand {
             /*
              * read direct children of source dir
              */
-            sourceEntries.clear();
-            try (var sourceDS = Files.newDirectoryStream(source)) {
-               sourceDS.forEach(sourceEntry -> sourceEntries.put(sourceEntry.subpath(sourceRoot.getNameCount(), sourceEntry.getNameCount()),
-                  sourceEntry));
+            sourceChildren.clear();
+            try (var ds = Files.newDirectoryStream(source)) {
+               ds.forEach(sourceEntry -> sourceChildren //
+                  .put(sourceEntry.subpath(sourceRootAbsolute.getNameCount(), sourceEntry.getNameCount()), sourceEntry));
             }
 
             /*
              * read direct children of target dir
              */
-            targetEntries.clear();
+            targetChildren.clear();
             if (!(dryRun && !Files.exists(target))) { // in dry run mode the target directory may not exist
-               try (var targetDS = Files.newDirectoryStream(target)) {
-                  targetDS.forEach(targetEntry -> targetEntries.put(targetEntry.subpath(targetRoot.getNameCount(), targetEntry
-                     .getNameCount()), targetEntry));
+               try (var ds = Files.newDirectoryStream(target)) {
+                  ds.forEach(targetEntry -> targetChildren //
+                     .put(targetEntry.subpath(targetRootAbsolute.getNameCount(), targetEntry.getNameCount()), targetEntry));
                }
             }
 
@@ -280,55 +281,66 @@ public class SyncCommand extends AbstractSyncCommand {
              * remove extraneous entries in target dir
              */
             if (delete) {
-               for (final var targetEntry : targetEntries.entrySet()) {
+               for (final var targetChildEntry : targetChildren.entrySet()) {
                   if (state != State.NORMAL) {
                      break;
                   }
-                  final var targetRelative = targetEntry.getKey();
-                  if (sourceEntries.containsKey(targetRelative)) {
-                     continue;
-                  }
-                  final var targetAbsolute = targetEntry.getValue();
 
-                  if (!deleteExcluded && isExcludedTargetPath(targetAbsolute, sourceRelative)) {
+                  final var targetChildRelative = targetChildEntry.getKey();
+                  final var targetChildAbsolute = targetChildEntry.getValue();
+
+                  final boolean existsInSource = sourceChildren.containsKey(targetChildRelative);
+                  final boolean isExcludedFromSync = isExcludedTargetPath(targetChildAbsolute, targetChildRelative);
+
+                  final boolean needRemoval;
+                  if (existsInSource) {
+                     needRemoval = isExcludedFromSync && deleteExcluded;
+                  } else {
+                     needRemoval = !isExcludedFromSync || isExcludedFromSync && deleteExcluded;
+                  }
+
+                  if (!needRemoval) {
                      continue;
                   }
 
                   if (loggableEvents.contains(LogEvent.DELETE)) {
-                     LOG.info("DELETE [@|magenta %s|@]...", targetRelative);
+                     LOG.info("DELETE [@|magenta %s|@]...", targetChildRelative);
                   }
-                  if (Files.isDirectory(targetAbsolute, NOFOLLOW_LINKS)) {
-                     delDir(targetAbsolute);
+                  if (Files.isDirectory(targetChildAbsolute, NOFOLLOW_LINKS)) {
+                     delDir(targetChildAbsolute);
                   } else {
-                     delFile(targetAbsolute, true);
+                     delFile(targetChildAbsolute, true);
                   }
+
+                  // this requires targetChildEntries to be a ConcurrentHashMap
+                  targetChildren.remove(targetChildRelative);
                }
             }
 
             /*
              * iterate over direct children of source dir
              */
-            for (final var sourceEntry : sourceEntries.entrySet()) {
+            for (final var sourceEntry : sourceChildren.entrySet()) {
                if (state != State.NORMAL) {
                   break;
                }
-               final var relativePath = sourceEntry.getKey();
-               final var sourceEntryAbsolute = sourceEntry.getValue();
-               final var targetEntryAbsolute = targetEntries.get(relativePath);
+               final var sourceChildRelative = sourceEntry.getKey();
+               final var sourceChildAbsolute = sourceEntry.getValue();
+               final var targetChildAbsolute = targetChildren.get(sourceChildRelative);
 
-               if (isExcludedSourcePath(sourceEntryAbsolute, sourceRelative)) {
+               if (isExcludedSourcePath(sourceChildAbsolute, sourceChildRelative)) {
                   continue;
                }
 
-               if (Files.isRegularFile(sourceEntryAbsolute)) {
-                  syncFile(sourceEntryAbsolute, targetEntryAbsolute, relativePath);
+               if (Files.isRegularFile(sourceChildAbsolute)) {
+                  syncFile(sourceChildAbsolute, targetChildAbsolute, sourceChildRelative);
                   stats.onFileScanned();
                } else {
-                  syncDirShallow(sourceEntryAbsolute, targetEntryAbsolute, relativePath);
-                  if (Files.isSymbolicLink(sourceEntryAbsolute)) {
+                  syncDirShallow(sourceChildAbsolute, targetChildAbsolute, sourceChildRelative);
+                  if (Files.isSymbolicLink(sourceChildAbsolute)) {
                      stats.onFileScanned();
                   } else {
-                     sourceDirsToScan.add(sourceEntryAbsolute);
+                     sourceDirsToScan.add(sourceChildAbsolute);
                   }
                }
             }
@@ -358,7 +370,7 @@ public class SyncCommand extends AbstractSyncCommand {
 
       final Path resolvedTargetPath;
       if (targetPath == null) {
-         resolvedTargetPath = targetRoot.resolve(relativePath);
+         resolvedTargetPath = targetRootAbsolute.resolve(relativePath);
       } else {
          if (Files.isRegularFile(targetPath)) {
             LOG.debug("Deleting target file [@|magenta %s|@] because source is directory...", relativePath);
@@ -418,7 +430,7 @@ public class SyncCommand extends AbstractSyncCommand {
 
       if (targetPath == null) {
          // target file does not exist
-         targetPath = targetRoot.resolve(relativePath);
+         targetPath = targetRootAbsolute.resolve(relativePath);
          copyCause = "NEW";
 
       } else {
