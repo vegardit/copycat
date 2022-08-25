@@ -48,7 +48,8 @@ public abstract class AbstractCommand implements Callable<Void> {
    public static final class VersionProvider implements IVersionProvider {
       @Override
       public String[] getVersion() throws Exception {
-         return new String[] {Types.getVersion(AbstractCommand.class)};
+         final var version = Types.getVersion(AbstractCommand.class);
+         return new String[] {version == null ? "unknown" : version};
       }
    }
 
@@ -121,7 +122,8 @@ public abstract class AbstractCommand implements Callable<Void> {
       }
    }
 
-   @Option(names = {"-v", "--verbose"}, description = {"Specify multiple -v options to increase verbosity.", "For example `-v -v -v` or `-vvv`."})
+   @Option(names = {"-v", "--verbose"}, description = {"Specify multiple -v options to increase verbosity.",
+      "For example `-v -v -v` or `-vvv`."})
    private void setVerbosity(final boolean[] flags) {
       switch (flags.length) {
          case 0:
