@@ -5,7 +5,7 @@
 [![License](https://img.shields.io/github/license/vegardit/copycat.svg?color=blue&label=License)](LICENSE.txt)
 [![Changelog](https://img.shields.io/badge/History-changelog-blue)](CHANGELOG.md)
 [![Maintainability](https://api.codeclimate.com/v1/badges/6f32ab9599e166bb9b59/maintainability)](https://codeclimate.com/github/vegardit/copycat/maintainability)
-[![Contributor Covenant](https://img.shields.io/badge/Contributor%20Covenant-v2.0%20adopted-ff69b4.svg)](CODE_OF_CONDUCT.md)
+[![Contributor Covenant](https://img.shields.io/badge/Contributor%20Covenant-v2.1%20adopted-ff69b4.svg)](CODE_OF_CONDUCT.md)
 
 **IMPORTANT Copycat is currently in alpha testing and may not work as expected! DO NOT USE WITH IMPORTANT DATA!**
 
