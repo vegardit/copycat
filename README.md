@@ -26,7 +26,8 @@ It's written in Java but compiled to native binaries for Windows/Linux/MacOS usi
 Advantages over robocopy:
 - supports excluding files/folders using relative paths and glob patterns
 - cross platform support
-
+- ANSI colored console output
+- desktop notifications about sync events
 
 ## <a name="installation"></a>Installation
 

@@ -133,7 +133,7 @@ jobs:
       run: |
         set -eu
 
-        sudo apt-get install --no-install-recommends -y gcc libz-dev
+        sudo apt-get install --no-install-recommends -y gcc g++ libz-dev
 
         if [ ! -e /opt/graalvm/bin/native-image ]; then
            rm -rf /opt/graalvm
@@ -261,7 +261,7 @@ jobs:
 
         cat <<EOF > install_graalvm.sh
         set -eu
-        sudo apt-get install --no-install-recommends -y gcc libz-dev
+        sudo apt-get install --no-install-recommends -y gcc g++ libz-dev
 
         if [ ! -e /opt/graalvm/bin/native-image ]; then
            rm -rf /opt/graalvm

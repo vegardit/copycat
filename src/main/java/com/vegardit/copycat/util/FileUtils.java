@@ -35,7 +35,7 @@ import net.sf.jstuff.core.io.MoreFiles;
 /**
  * @author Sebastian Thomschke, Vegard IT GmbH
  */
-public abstract class FileUtils {
+public final class FileUtils {
    private static final CopyOption[] COPY_WITH_ATTRS_OPTIONS = {StandardCopyOption.COPY_ATTRIBUTES, LinkOption.NOFOLLOW_LINKS};
    private static final LinkOption[] NOFOLLOW_LINKS = {LinkOption.NOFOLLOW_LINKS};
    private static final OpenOption[] FILE_READ_OPTIONS = { //
@@ -211,5 +211,8 @@ public abstract class FileUtils {
             return Path.of(StringUtils.capitalize(pathStr));
       }
       return path;
+   }
+
+   private FileUtils() {
    }
 }

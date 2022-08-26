@@ -285,6 +285,11 @@
          <version>2.4.0</version>
       </dependency>
       <dependency>
+         <groupId>io.github.autocomplete1</groupId>
+         <artifactId>jPowerShell2</artifactId>
+         <version>1.0.3</version>
+      </dependency>
+      <dependency>
          <groupId>net.sf.jstuff</groupId>
          <artifactId>jstuff-core</artifactId>
       </dependency>

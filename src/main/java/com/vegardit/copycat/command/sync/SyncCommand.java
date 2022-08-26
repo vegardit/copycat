@@ -4,6 +4,7 @@
  */
 package com.vegardit.copycat.command.sync;
 
+import java.awt.TrayIcon.MessageType;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.FileSystemException;
@@ -28,6 +29,7 @@ import java.util.logging.Level;
 import org.apache.commons.lang3.concurrent.BasicThreadFactory;
 import org.apache.commons.lang3.mutable.MutableLong;
 
+import com.vegardit.copycat.util.DesktopNotifications;
 import com.vegardit.copycat.util.FileUtils;
 import com.vegardit.copycat.util.JdkLoggingUtils;
 
@@ -36,6 +38,7 @@ import net.sf.jstuff.core.concurrent.Threads;
 import net.sf.jstuff.core.io.MoreFiles;
 import net.sf.jstuff.core.io.Size;
 import net.sf.jstuff.core.logging.Logger;
+import net.sf.jstuff.core.ref.MutableRef;
 import picocli.CommandLine;
 import picocli.CommandLine.Option;
 
@@ -174,6 +177,8 @@ public class SyncCommand extends AbstractSyncCommand {
       /*
        * start syncing
        */
+      DesktopNotifications.showTransient(MessageType.INFO, "Syncing started...", //
+         "FROM: " + sourceRootAbsolute + "\nTO: " + targetRootAbsolute);
       try {
          if (threads == 1) {
             sync();
@@ -182,24 +187,26 @@ public class SyncCommand extends AbstractSyncCommand {
                new BasicThreadFactory.Builder().namingPattern("sync-%d").build() //
             );
             // CHECKSTYLE:IGNORE .* FOR NEXT LINE
-            final var ex = new Exception[] {null};
+            final var ex = MutableRef.of((Exception) null);
             for (var i = 0; i < threads; i++) {
                threadPool.submit(() -> {
                   try {
                      sync();
                   } catch (final Exception e) {
-                     ex[0] = e;
+                     ex.set(e);
                   }
                });
             }
             threadPool.shutdown();
             threadPool.awaitTermination(Long.MAX_VALUE, TimeUnit.DAYS);
-            if (ex[0] != null)
-               throw ex[0];
-         }
+            if (ex.isNotNull()) {
+               DesktopNotifications.showSticky(MessageType.ERROR, "Syncing failed.", //
+                  "ERROR: " + ex.get().getMessage() + "\nFROM: " + sourceRootAbsolute + "\nTO: " + targetRootAbsolute);
+               throw ex.get();
+            }
 
-         if (state == State.ABORT_BY_SIGNAL) {
-            Thread.sleep(Long.MAX_VALUE);
+            DesktopNotifications.showSticky(MessageType.INFO, "Syncing done.", //
+               "FROM: " + sourceRootAbsolute + "\nTO: " + targetRootAbsolute);
          }
       } finally {
          JdkLoggingUtils.withRootLogLevel(Level.INFO, stats::logStats);
@@ -232,7 +239,6 @@ public class SyncCommand extends AbstractSyncCommand {
    }
 
    private void sync() throws IOException {
-
       final var sourceChildren = new HashMap<Path, Path>(); // Map<SourcePathRelativeToRoot, SourcePathAbsolute>
       final var targetChildren = new ConcurrentHashMap<Path, Path>(); // Map<TargetPathRelativeToRoot, TargetPathAbsolute>
 
