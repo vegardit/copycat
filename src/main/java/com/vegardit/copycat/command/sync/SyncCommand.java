@@ -82,14 +82,14 @@ public class SyncCommand extends AbstractSyncCommand {
 
    private final Set<LogEvent> loggableEvents = Sets.newHashSet(LogEvent.values());
 
-   @Option(names = "--no-log", description = "Don't log the given filesystem operation. Valid values: ${COMPLETION-CANDIDATES}")
+   @Option(names = "--no-log", split = ",", description = "Don't log the given sync operation. Valid values: ${COMPLETION-CANDIDATES}")
    private void setNoLog(final LogEvent[] values) {
       for (final var val : values) {
          loggableEvents.remove(val);
       }
    }
 
-   @Option(names = "--threads", defaultValue = "2", description = "Number of concurrent threads.")
+   @Option(names = "--threads", paramLabel = "count", defaultValue = "2", description = "Number of concurrent threads.")
    private int threads;
 
    private final AtomicInteger threadsWaiting = new AtomicInteger();

@@ -50,7 +50,7 @@ public abstract class AbstractSyncCommand extends AbstractCommand {
    @Option(names = "--delete-excluded", defaultValue = "false", description = "Delete excluded files/directories from target.")
    protected boolean deleteExcluded;
 
-   @Option(names = "--exclude", description = "Glob pattern for files/directories to be excluded from sync.")
+   @Option(names = "--exclude", split = ",", paramLabel = "<pattern>", description = "Glob pattern for files/directories to be excluded from sync.")
    private String[] excludes;
    private PathMatcher[] excludesSource;
    private PathMatcher[] excludesTarget;
