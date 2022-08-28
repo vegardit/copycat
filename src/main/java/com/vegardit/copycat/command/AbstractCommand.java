@@ -102,7 +102,7 @@ public abstract class AbstractCommand implements Callable<Void> {
       execute();
 
       LOG.info("");
-      LOG.info("The operation completed successfully.");
+      LOG.info("THE OPERATION COMPLETED SUCCESSFULLY.");
       return null;
    }
 
