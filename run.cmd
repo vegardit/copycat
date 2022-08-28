@@ -28,4 +28,4 @@ if not exist target\classes (
 mvn org.codehaus.mojo:exec-maven-plugin:exec ^
   -Dexec.classpathScope=runtime ^
   -Dexec.executable="java" ^
-  -Dexec.args="-cp %%classpath com.vegardit.copycat.CopyCatMain %*"
+  -Dexec.args="-XX:+HeapDumpOnOutOfMemoryError -cp %%classpath com.vegardit.copycat.CopyCatMain %*"

@@ -27,4 +27,4 @@ for /F %%I in ('dir "%ROOT%target\copycat-*-SNAPSHOT-fat-minimized.jar" /b /O-N'
 )
 :found_jar
 
-java -jar "%JAR%" %*
+java -XX:+HeapDumpOnOutOfMemoryError -jar "%JAR%" %*
