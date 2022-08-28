@@ -55,11 +55,11 @@ public final class JdkLoggingUtils {
    public static class AnsiFormatter extends Formatter {
 
       protected String ansiRender(final String text) {
-         return AnsiRenderer.render(text);
+         return text == null ? "null" : AnsiRenderer.render(text);
       }
 
-      protected String ansiRender(final String text, final Object... args) {
-         return String.format(AnsiRenderer.render(text), args);
+      protected String ansiRender(final String template, final Object... args) {
+         return String.format(AnsiRenderer.render(template), args);
       }
 
       @Override
