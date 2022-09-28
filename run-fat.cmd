@@ -18,7 +18,7 @@ if exist "%ROOT%_LOCAL\env.cmd" (
 )
 
 if not exist "%ROOT%target\copycat-*-SNAPSHOT-fat-minimized.jar" (
-  mvn -Pfast-build compile
+  call mvn -Pfast-build package
 )
 
 for /F %%I in ('dir "%ROOT%target\copycat-*-SNAPSHOT-fat-minimized.jar" /b /O-N') do (
