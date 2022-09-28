@@ -5,6 +5,8 @@
 package com.vegardit.copycat.util;
 
 import java.awt.AWTException;
+import java.awt.MenuItem;
+import java.awt.PopupMenu;
 import java.awt.SystemTray;
 import java.awt.Toolkit;
 import java.awt.TrayIcon;
@@ -44,6 +46,13 @@ public final class DesktopNotifications {
          } catch (final RuntimeException | AWTException ex) {
             LOG.warn(ex);
          }
+         final var popup = new PopupMenu();
+         popup.add("Copycat");
+         popup.addSeparator();
+         final var exitItem = new MenuItem("Exit (CTRL+C)");
+         popup.add(exitItem);
+         exitItem.addActionListener(e -> sun.misc.Signal.raise(new sun.misc.Signal("INT")));
+         TRAY_ICON.setPopupMenu(popup);
       } else {
          TRAY_ICON = null;
       }
