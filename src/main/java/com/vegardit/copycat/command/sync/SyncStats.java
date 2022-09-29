@@ -94,6 +94,20 @@ public class SyncStats {
       filesDeletedSize.add(size);
    }
 
+   public synchronized void reset() {
+      dirsScanned.reset();
+      filesScanned.reset();
+      errors.clear();
+      filesCopied.reset();
+      filesCopiedDuration.reset();
+      filesCopiedSize.reset();
+      filesDeleted.reset();
+      filesDeletedDuration.reset();
+      filesDeletedSize.reset();
+      startAt = 0;
+      statsLogged = false;
+   }
+
    public void start() {
       startAt = System.currentTimeMillis();
    }

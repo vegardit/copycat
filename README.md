@@ -11,7 +11,7 @@
 
 1. [What is it?](#what-is-it)
 1. [Installation](#installation)
-1. [Installation](#usage)
+1. [Usage](#usage)
 1. [License](#license)
 
 
@@ -24,10 +24,11 @@ It's written in Java but compiled to native binaries for Windows/Linux/MacOS usi
 ![screen](src/site/img/screen.png)
 
 Advantages over robocopy:
-- supports excluding files/folders using relative paths and glob patterns
+- exclude files/folders using relative paths and glob patterns
 - cross platform support
 - ANSI colored console output
-- desktop notifications about sync events
+- tray-icon and desktop notifications about major sync events
+- YAML config file
 
 ## <a name="installation"></a>Installation
 
@@ -48,44 +49,76 @@ Copycat understands two commands:
 $ copycat sync --help
 
 Usage: copycat sync [-hqVv] [--copy-acl] [--delete] [--delete-excluded] [--dry-run] [--exclude-hidden-files]
-                    [--exclude-hidden-system-files] [--exclude-older-files] [--exclude-system-files]
-                    [--ignore-errors] [--ignore-symlink-errors] [--log-errors-to-stdout] [--log-file <logFile>]
-                    [--threads <threads>] [--exclude <excludes>]... [--no-log <noLog>]... SOURCE TARGET
+                    [--exclude-hidden-system-files] [--exclude-older-files] [--exclude-system-files] [--ignore-errors]
+                    [--ignore-symlink-errors] [--log-errors-to-stdout] [--config <path>] [--log-file <path>]
+                    [--threads <count>] [--exclude <pattern>[,<pattern>...]]... [--no-log <op>[,<op>...]]... [SOURCE] [TARGET]
 
 Performs one-way recursive directory synchronization copying new files/directories.
 
 Positional parameters:
-*     SOURCE                 Directory to copy from files.
-*     TARGET                 Directory to copy files to.
+      [SOURCE]            Directory to copy from files.
+      [TARGET]            Directory to copy files to.
 
 Options:
-      --copy-acl             Copy file permissions (ACL) for newly copied files.
-      --delete               Delete extraneous files/directories from target.
-      --delete-excluded      Delete excluded files/directories from target.
-      --dry-run              Don't perform actual synchronization.
-      --exclude <excludes>   Glob pattern for files/directories to be excluded from sync.
-      --exclude-hidden-files Don't synchronize hidden files.
+      --config <path>     Path to a YAML config file.
+      --copy-acl          Copy file permissions (ACL) for newly copied files.
+      --delete            Delete extraneous files/directories from target.
+      --delete-excluded   Delete excluded files/directories from target.
+      --dry-run           Don't perform actual synchronization.
+      --exclude <pattern>[,<pattern>...]
+                          Glob pattern for files/directories to be excluded from sync.
+      --exclude-hidden-files
+                          Don't synchronize hidden files.
       --exclude-hidden-system-files
-                             Don't synchronize hidden system files.
-      --exclude-older-files  Don't override newer files in target with older files in source.
-      --exclude-system-files Don't synchronize system files.
-      --ignore-errors        Continue sync when errors occur.
+                          Don't synchronize hidden system files.
+      --exclude-older-files
+                          Don't override newer files in target with older files in source.
+      --exclude-system-files
+                          Don't synchronize system files.
+  -h, --help              Show this help message and exit.
+      --ignore-errors     Continue sync when errors occur.
       --ignore-symlink-errors
-                             Continue if creation of symlinks on target fails.
-      --log-errors-to-stdout Log errors to stdout instead of stderr.
-      --log-file <logFile>   Write console output also to the given log file..
-      --no-log <noLog>       Don't log the given filesystem operation. Valid values: CREATE, MODIFY, DELETE, SCAN
-  -q, --quiet                Quiet mode.
-      --threads <threads>    Number of concurrent threads.
-                               Default: 2
-  -v, --verbose              Specify multiple -v options to increase verbosity.
-                             For example `-v -v -v` or `-vvv`.
+                          Continue if creation of symlinks on target fails.
+      --log-errors-to-stdout
+                          Log errors to stdout instead of stderr.
+      --log-file <path>   Write console output also to the given log file..
+      --no-log <op>[,<op>...]
+                          Don't log the given sync operation. Valid values: CREATE, MODIFY, DELETE, SCAN
+  -q, --quiet             Quiet mode.
+      --threads <count>   Number of concurrent threads. Default: 2
+  -v, --verbose           Specify multiple -v options to increase verbosity.
+                          For example `-v -v -v` or `-vvv`.
 ```
 
 Example:
-
 ```batch
 $ copycat sync C:\myprojects X:\myprojects --delete --threads 4
+```
+
+Default values and/or multiple sync tasks can be configured using a YAML config file:
+```yaml
+# default values for sync tasks
+defaults:
+  copy-acl: false
+  delete: true
+  delete-excluded: true
+  dry-run: false
+  exclude:
+    - "**/node_modules"
+  exclude-older-files: false
+  exclude-hidden-files: false
+  exclude-system-files: true
+  exclude-hidden-system-files: false
+  ignore-errors: false
+  ignore-symlink-errors: false
+  threads: 2
+
+# sync tasks
+sync:
+- source: C:\mydata
+  target: \\myserver\mydata
+- source: D:\myotherdata
+  target: \\myserver\myotherdata
 ```
 
 
@@ -95,37 +128,63 @@ $ copycat sync C:\myprojects X:\myprojects --delete --threads 4
 $ copycat watch --help
 
 Usage: copycat watch [-hqVv] [--copy-acl] [--delete-excluded] [--exclude-hidden-files] [--exclude-hidden-system-files]
-                     [--exclude-system-files] [--log-errors-to-stdout] [--log-file <logFile>]
-                     [--exclude <excludes>]... [--no-log <noLog>]... SOURCE TARGET
+                     [--exclude-system-files] [--log-errors-to-stdout] [--config <path>] [--log-file <path>]
+                     [--exclude <pattern>[,<pattern>...]]... [--no-log <op>[,<op>...]]... [SOURCE] [TARGET]
 
 Continuously watches a directory recursively for changes and synchronizes them to another directory.
 
 Positional parameters:
-*     SOURCE                 Directory to copy from files.
-*     TARGET                 Directory to copy files to.
+      [SOURCE]            Directory to copy from files.
+      [TARGET]            Directory to copy files to.
 
 Options:
-      --copy-acl             Copy file permissions (ACL) for newly copied files.
-      --delete-excluded      Delete excluded files/directories from target.
-      --exclude <excludes>   Glob pattern for files/directories to be excluded from sync.
-      --exclude-hidden-files Don't synchronize hidden files.
+      --config <path>     Path to a YAML config file.
+      --copy-acl          Copy file permissions (ACL) for newly copied files.
+      --delete-excluded   Delete excluded files/directories from target.
+      --exclude <pattern>[,<pattern>...]
+                          Glob pattern for files/directories to be excluded from sync.
+      --exclude-hidden-files
+                          Don't synchronize hidden files.
       --exclude-hidden-system-files
-                             Don't synchronize hidden system files.
-      --exclude-system-files Don't synchronize system files.
-      --log-errors-to-stdout Log errors to stdout instead of stderr.
-      --log-file <logFile>   Write console output also to the given log file..
-      --no-log <noLog>       Don't log the given filesystem operation. Valid values: CREATE, MODIFY, DELETE
-  -q, --quiet                Quiet mode.
-  -v, --verbose              Specify multiple -v options to increase verbosity.
-                             For example `-v -v -v` or `-vvv`.
+                          Don't synchronize hidden system files.
+      --exclude-system-files
+                          Don't synchronize system files.
+  -h, --help              Show this help message and exit.
+      --log-errors-to-stdout
+                          Log errors to stdout instead of stderr.
+      --log-file <path>   Write console output also to the given log file..
+      --no-log <op>[,<op>...]
+                          Don't log the given filesystem operation. Valid values: CREATE, MODIFY, DELETE
+  -q, --quiet             Quiet mode.
+  -v, --verbose           Specify multiple -v options to increase verbosity.
+                          For example `-v -v -v` or `-vvv`.
 ```
 
 Example:
-
 ```batch
 $ copycat watch C:\myprojects X:\myprojects
 ```
 
+
+Default values and/or multiple sync tasks can be configured using a YAML config file:
+```yaml
+# default values for sync tasks
+defaults:
+  copy-acl: false
+  delete-excluded: true
+  exclude:
+    - "**/node_modules"
+  exclude-hidden-files: false
+  exclude-system-files: true
+  exclude-hidden-system-files: false
+
+# sync tasks
+sync:
+- source: C:\mydata
+  target: \\myserver\mydata
+- source: D:\myotherdata
+  target: \\myserver\myotherdata
+```
 
 ## <a name="license"></a>License
 

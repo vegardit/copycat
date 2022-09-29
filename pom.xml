@@ -290,6 +290,11 @@
          <version>1.0.3</version>
       </dependency>
       <dependency>
+         <groupId>org.yaml</groupId>
+         <artifactId>snakeyaml</artifactId>
+         <version>1.33</version>
+      </dependency>
+      <dependency>
          <groupId>net.sf.jstuff</groupId>
          <artifactId>jstuff-core</artifactId>
       </dependency>
