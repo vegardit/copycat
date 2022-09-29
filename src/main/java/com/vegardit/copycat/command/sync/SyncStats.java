@@ -39,10 +39,12 @@ public class SyncStats {
 
       statsLogged = true;
 
-      LOG.info("***************************************");
-      LOG.info("The following errors occurred during sync:");
-      for (final var error : errors) {
-         LOG.error(error);
+      if (!errors.isEmpty()) {
+         LOG.warn("***************************************");
+         LOG.warn("The following errors occurred during sync:");
+         for (final var error : errors) {
+            LOG.error(error);
+         }
       }
       LOG.info("***************************************");
       LOG.info("Source dirs scanned: %s", dirsScanned);
