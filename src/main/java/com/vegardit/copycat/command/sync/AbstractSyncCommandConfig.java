@@ -157,27 +157,29 @@ public abstract class AbstractSyncCommandConfig<THIS extends AbstractSyncCommand
             throw new IllegalArgumentException("Parent of target path [" + targetRootAbsolute.getParent() + "] is not a directory!");
       }
 
-      configureExcludePathMatchers();
+      computeExcludePathMatchers();
    }
 
-   private void configureExcludePathMatchers() {
+   private void computeExcludePathMatchers() {
       if (excludes != null && !excludes.isEmpty()) {
-         if (SystemUtils.IS_OS_WINDOWS) {
+         final var sourceExcludes = new ArrayList<>(excludes.size() * 2);
+         final var targetExcludes = new ArrayList<>(excludes.size() * 2);
+         final @SuppressWarnings("resource") var sourceFS = sourceRootAbsolute.getFileSystem();
+         final @SuppressWarnings("resource") var targetFS = targetRootAbsolute.getFileSystem();
+         for (String exclude : excludes) {
             // globbing does not work with backslash as path separator, so replacing it with slash on windows
-            excludesSource = excludes.stream() //
-               .map(exclude -> sourceRootAbsolute.getFileSystem().getPathMatcher("glob:" + Strings.replace(exclude, "\\", "/"))) //
-               .toArray(PathMatcher[]::new);
-            excludesTarget = excludes.stream() //
-               .map(exclude -> targetRootAbsolute.getFileSystem().getPathMatcher("glob:" + Strings.replace(exclude, "\\", "/"))) //
-               .toArray(PathMatcher[]::new);
-         } else {
-            excludesSource = excludes.stream() //
-               .map(exclude -> sourceRootAbsolute.getFileSystem().getPathMatcher("glob:" + exclude)) //
-               .toArray(PathMatcher[]::new);
-            excludesTarget = excludes.stream() //
-               .map(exclude -> targetRootAbsolute.getFileSystem().getPathMatcher("glob:" + exclude)) //
-               .toArray(PathMatcher[]::new);
+            if (SystemUtils.IS_OS_WINDOWS) {
+               exclude = Strings.replace(exclude, "\\", "/");
+            }
+            exclude = Strings.removeEnd(exclude, "/");
+            exclude = "glob:" + exclude;
+            sourceExcludes.add(sourceFS.getPathMatcher(exclude));
+            sourceExcludes.add(sourceFS.getPathMatcher(exclude + "/**"));
+            targetExcludes.add(targetFS.getPathMatcher(exclude));
+            targetExcludes.add(targetFS.getPathMatcher(exclude + "/**"));
          }
+         excludesSource = sourceExcludes.toArray(PathMatcher[]::new);
+         excludesTarget = targetExcludes.toArray(PathMatcher[]::new);
       }
    }
 
