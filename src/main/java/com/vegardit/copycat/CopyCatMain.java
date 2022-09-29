@@ -55,11 +55,11 @@ public class CopyCatMain extends AbstractCommand {
 
          final String replaceLastLine = new Ansi().cursorUpLine().eraseLine().toString();
 
-         String lastMessage = "";
+         String lastMessage = null;
 
          @Override
          protected String ansiRender(final String text, final Object... args) {
-            if (lastMessage.startsWith("Scanning "))
+            if (lastMessage != null && lastMessage.startsWith("Scanning "))
                return replaceLastLine + super.ansiRender(text, args);
             return super.ansiRender(text, args);
          }
