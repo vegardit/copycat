@@ -120,6 +120,8 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
 
    @Override
    protected void doExecute(final List<SyncCommandConfig> tasks) throws Exception {
+      DesktopNotifications.setTrayIconToolTip("copycat is syncing...");
+
       stats.start();
 
       try {

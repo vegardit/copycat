@@ -20,6 +20,7 @@ import java.util.concurrent.TimeUnit;
 import org.apache.commons.lang3.concurrent.BasicThreadFactory;
 
 import com.vegardit.copycat.command.sync.AbstractSyncCommand;
+import com.vegardit.copycat.util.DesktopNotifications;
 import com.vegardit.copycat.util.FileUtils;
 
 import io.methvin.watcher.DirectoryWatcher;
@@ -74,6 +75,9 @@ public class WatchCommand extends AbstractSyncCommand<WatchCommandConfig> {
 
    @Override
    protected void doExecute(final List<WatchCommandConfig> tasks) throws Exception {
+
+      DesktopNotifications.setTrayIconToolTip("copycat is watching...");
+
       final var threadPool = Executors.newFixedThreadPool(tasks.size(), //
          new BasicThreadFactory.Builder().namingPattern("sync-%d").build() //
       );

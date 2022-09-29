@@ -36,10 +36,7 @@ public final class DesktopNotifications {
 
    static {
       if (SystemTray.isSupported()) {
-         TRAY_ICON = new TrayIcon( //
-            Toolkit.getDefaultToolkit().createImage(DesktopNotifications.class.getResource("/copycat16x16.png")), //
-            "copycat is working..." //
-         );
+         TRAY_ICON = new TrayIcon(Toolkit.getDefaultToolkit().createImage(DesktopNotifications.class.getResource("/copycat16x16.png")));
          TRAY_ICON.setImageAutoSize(true);
          try {
             SystemTray.getSystemTray().add(TRAY_ICON);
@@ -79,6 +76,12 @@ public final class DesktopNotifications {
 
    public static boolean isSupported() {
       return SystemTray.isSupported();
+   }
+
+   public static void setTrayIconToolTip(final String message) {
+      if (TRAY_ICON != null) {
+         TRAY_ICON.setToolTip(message);
+      }
    }
 
    public static synchronized void showSticky(final MessageType level, final String title, final String message) {
