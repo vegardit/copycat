@@ -35,7 +35,7 @@ public final class DesktopNotifications {
    private static final Path APP_ICON;
 
    static {
-      if (SystemTray.isSupported()) {
+      if (isSupported()) {
          TRAY_ICON = new TrayIcon(Toolkit.getDefaultToolkit().createImage(DesktopNotifications.class.getResource("/copycat16x16.png")));
          TRAY_ICON.setImageAutoSize(true);
          try {
@@ -75,7 +75,13 @@ public final class DesktopNotifications {
    }
 
    public static boolean isSupported() {
-      return SystemTray.isSupported();
+      try {
+         return SystemTray.isSupported();
+      } catch (final UnsatisfiedLinkError ex) {
+         // https://github.com/oracle/graal/issues/2842
+         LOG.warn(ex);
+         return false;
+      }
    }
 
    public static void setTrayIconToolTip(final String message) {
