@@ -23,6 +23,8 @@ It's written in Java but compiled to native binaries for Windows/Linux/MacOS usi
 
 ![screen](src/site/img/screen.png)
 
+![screen](src/site/img/screen2.png)
+
 Advantages over robocopy:
 - exclude files/folders using relative paths and glob patterns
 - cross platform support
