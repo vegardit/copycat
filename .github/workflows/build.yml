@@ -112,6 +112,7 @@ jobs:
            target/copycat-fat.jar
            target/picocli-reflections.json
            target/bash/bashcompletion.sh
+           target/classes/native-image-resources.json
 
 
   ###########################################################
@@ -172,9 +173,12 @@ jobs:
       shell: bash
       run: |
         #https://www.graalvm.org/reference-manual/native-image/Options/
+        #https://www.graalvm.org/reference-manual/native-image/dynamic-features/Resources/
         native-image \
           -H:NativeLinkerOption=-no-pie \
           -H:ReflectionConfigurationFiles=picocli-reflections.json \
+          -H:ResourceConfigurationFiles=classes/native-image-resources.json \
+          -H:Log=registerResource:3 \
           -H:+ReportExceptionStackTraces \
           -H:+RemoveUnusedSymbols \
           --allow-incomplete-classpath \
@@ -304,10 +308,14 @@ jobs:
         docker exec --tty -w /workspace arm64 /bin/bash -c '
         export JAVA_HOME=/opt/graalvm
         export PATH=/opt/graalvm/bin:$PATH
+
         #https://www.graalvm.org/reference-manual/native-image/Options/
+        #https://www.graalvm.org/reference-manual/native-image/dynamic-features/Resources/
         native-image \
           -H:NativeLinkerOption=-no-pie \
           -H:ReflectionConfigurationFiles=picocli-reflections.json \
+          -H:ResourceConfigurationFiles=classes/native-image-resources.json \
+          -H:Log=registerResource:3 \
           -H:+ReportExceptionStackTraces \
           -H:+RemoveUnusedSymbols \
           --allow-incomplete-classpath \
@@ -422,9 +430,12 @@ jobs:
       run: |
         # not using "--static" because of error: DARWIN does not support building static executable images.
         #https://www.graalvm.org/reference-manual/native-image/Options/
+        #https://www.graalvm.org/reference-manual/native-image/dynamic-features/Resources/
         native-image \
           -H:NativeLinkerOption=-no-pie \
           -H:ReflectionConfigurationFiles=picocli-reflections.json \
+          -H:ResourceConfigurationFiles=classes/native-image-resources.json \
+          -H:Log=registerResource:3 \
           -H:+ReportExceptionStackTraces \
           -H:+RemoveUnusedSymbols \
           --allow-incomplete-classpath \
@@ -543,9 +554,13 @@ jobs:
       run: |
         call "C:\Program Files (x86)\Microsoft Visual Studio\2017\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
 
+        REM https://www.graalvm.org/reference-manual/native-image/Options/
+        REM https://www.graalvm.org/reference-manual/native-image/dynamic-features/Resources/
         "%JAVA_HOME%\bin\native-image" ^
           -H:NativeLinkerOption=-no-pie ^
           -H:ReflectionConfigurationFiles=picocli-reflections.json ^
+          -H:ResourceConfigurationFiles=classes/native-image-resources.json ^
+          -H:Log=registerResource:3 ^
           -H:+ReportExceptionStackTraces ^
           -H:+RemoveUnusedSymbols ^
           --allow-incomplete-classpath ^
