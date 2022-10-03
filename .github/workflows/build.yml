@@ -204,13 +204,13 @@ jobs:
         ./copycat-linux-amd64 sync --help
         ./copycat-linux-amd64 watch --help
 
-    - name: "Minify executable"
+    - name: "Compress executable"
       shell: bash
       run: |
         strip --strip-unneeded copycat-linux-amd64
         /opt/upx/upx -v -9 copycat-linux-amd64
 
-    - name: "Test executable"
+    - name: "Test compressed executable"
       shell: bash
       run: |
         chmod u+x copycat-linux-amd64
@@ -344,7 +344,7 @@ jobs:
 
         '
 
-    - name: "Minify executable"
+    - name: "Compress executable"
       shell: bash
       run: |
         docker exec --tty -w /workspace arm64 /bin/bash -c '
@@ -354,7 +354,7 @@ jobs:
 
         '
 
-    - name: "Test executable"
+    - name: "Test compressed executable"
       shell: bash
       run: |
         docker exec --tty -w /workspace arm64 /bin/bash -c '
@@ -456,14 +456,14 @@ jobs:
         ./copycat-darwin-amd64 sync --help
         ./copycat-darwin-amd64 watch --help
 
-    - name: "Minify executable"
+    - name: "Compress executable"
       shell: bash
       run: |
         # https://www.unix.com/man-page/osx/1/strip/
         strip copycat-darwin-amd64
         upx -v -9 copycat-darwin-amd64
 
-    - name: "Test executable"
+    - name: "Test compressed executable"
       shell: bash
       run: |
         chmod u+x copycat-darwin-amd64
@@ -579,12 +579,12 @@ jobs:
         copycat-windows-amd64.exe sync --help
         copycat-windows-amd64.exe watch --help
 
-    - name: "Minify executable"
+    - name: "Compress executable"
       run: |
         cp copycat-windows-amd64.exe copycat-windows-amd64-uncompressed.exe
         upx -v -9 copycat-windows-amd64.exe
 
-    - name: "Test executable"
+    - name: "Test compressed executable"
       shell: cmd
       run: |
         copycat-windows-amd64.exe --version
