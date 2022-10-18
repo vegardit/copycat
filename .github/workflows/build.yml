@@ -104,6 +104,14 @@ jobs:
 
         mv target/copycat-*-fat-minimized.jar target/copycat-fat.jar
 
+    - name: Test minimized fat jar
+      run: |
+        set -ex
+
+        java -jar target/copycat-fat.jar --help
+        java -jar target/copycat-fat.jar -V
+        java -jar target/copycat-fat.jar sync target/classes target/classes.copy -v
+
     - name: "Share: maven-build-artifacts"
       uses: actions/upload-artifact@v3
       with:
