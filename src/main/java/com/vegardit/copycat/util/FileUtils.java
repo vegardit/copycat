@@ -38,18 +38,17 @@ import net.sf.jstuff.core.io.MoreFiles;
 public final class FileUtils {
    private static final CopyOption[] COPY_WITH_ATTRS_OPTIONS = {StandardCopyOption.COPY_ATTRIBUTES, LinkOption.NOFOLLOW_LINKS};
    private static final LinkOption[] NOFOLLOW_LINKS = {LinkOption.NOFOLLOW_LINKS};
-   private static final OpenOption[] FILE_READ_OPTIONS = { //
-      ExtendedOpenOption.NOSHARE_WRITE, //
-      StandardOpenOption.READ //
-   };
-   private static final OpenOption[] FILE_WRITE_OPTIONS = { //
-      ExtendedOpenOption.NOSHARE_READ, //
-      ExtendedOpenOption.NOSHARE_WRITE, //
-      ExtendedOpenOption.NOSHARE_DELETE, //
-      StandardOpenOption.CREATE, //
-      StandardOpenOption.TRUNCATE_EXISTING, //
-      StandardOpenOption.WRITE //
-   };
+
+   private static final OpenOption[] FILE_READ_OPTIONS = SystemUtils.IS_OS_WINDOWS //
+      ? new OpenOption[] {ExtendedOpenOption.NOSHARE_WRITE, StandardOpenOption.READ}
+      : new OpenOption[] {StandardOpenOption.READ};
+
+   private static final OpenOption[] FILE_WRITE_OPTIONS = SystemUtils.IS_OS_WINDOWS //
+      ? new OpenOption[] { //
+         ExtendedOpenOption.NOSHARE_READ, ExtendedOpenOption.NOSHARE_WRITE, ExtendedOpenOption.NOSHARE_DELETE, //
+         StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE}
+      : new OpenOption[] { //
+         StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE};
 
    @SuppressWarnings("resource")
    public static void copyAttributes(final Path source, final BasicFileAttributes sourceAttrs, final Path target, final boolean copyACL)
