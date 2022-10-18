@@ -29,7 +29,7 @@ import org.apache.commons.lang3.StringUtils;
 import com.sun.nio.file.ExtendedOpenOption;
 
 import net.sf.jstuff.core.SystemUtils;
-import net.sf.jstuff.core.functional.LongBiConsumer;
+import net.sf.jstuff.core.functional.BiLongConsumer;
 import net.sf.jstuff.core.io.MoreFiles;
 
 /**
@@ -127,7 +127,7 @@ public final class FileUtils {
    }
 
    public static void copyFile(final Path source, final BasicFileAttributes sourceAttrs, final Path target, final boolean copyACL,
-      final LongBiConsumer onBytesWritten) throws IOException {
+      final BiLongConsumer onBytesWritten) throws IOException {
 
       try (var sourceCh = FileChannel.open(source, FILE_READ_OPTIONS);
            var targetCh = FileChannel.open(target, FILE_WRITE_OPTIONS)) {
