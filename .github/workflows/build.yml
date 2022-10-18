@@ -49,19 +49,6 @@ jobs:
         distribution: 'zulu'
         java-version: ${{ env.JAVA_VERSION }}
 
-    # reusing CDS archives of the same JVM randomly fails in GitHub Actions with
-    # "An error has occurred while processing the shared archive file. shared class paths mismatch"
-    #- name: Calculate Java version checksum
-    #  id: java-version-checksum
-    #  run: |
-    #    echo "::set-output name=md5sum::$(java -version 2>&1 | md5sum | cut -f1 -d" ")"
-    #- name: Cache Java CDS archive
-    #  uses: actions/cache@v3
-    #  with:
-    #    path: |
-    #      ~/.xshare/${{ steps.java-version-checksum.outputs.md5sum }}
-    #    key: ${{ runner.os }}-xshare-${{ steps.java-version-checksum.outputs.md5sum }}
-
     - name: "Cache: Local Maven Repository"
       uses: actions/cache@v3
       with:
