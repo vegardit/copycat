@@ -5,9 +5,25 @@
 #
 # @author Sebastian Thomschke, Vegard IT GmbH
 
-set -e # abort script at first error
-set -o pipefail # causes a pipeline to return the exit status of the last command in the pipe that returned a non-zero return value
-set -o nounset # treat undefined variables as errors
+#####################
+# Script init
+#####################
+set -eu
+
+# execute script with bash if loaded with other shell interpreter
+if [ -z "${BASH_VERSINFO:-}" ]; then /usr/bin/env bash "$0" "$@"; exit; fi
+
+set -o pipefail
+
+# configure stack trace reporting
+trap 'rc=$?; echo >&2 "$(date +%H:%M:%S) Error - exited with status $rc in [$BASH_SOURCE] at line $LINENO:"; cat -n $BASH_SOURCE | tail -n+$((LINENO - 3)) | head -n7' ERR
+
+SCRIPT_DIR="$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
+
+
+#####################
+# Main
+#####################
 
 if [[ -f .ci/release-trigger.sh ]]; then
    echo "Sourcing [.ci/release-trigger.sh]..."
@@ -20,32 +36,32 @@ echo
 echo "###################################################"
 echo "# Determining GIT branch......                    #"
 echo "###################################################"
-if [[ $CI == "true" && ${TRAVIS:-false} == "true" && $USER == "travis" ]]; then
-   # https://docs.travis-ci.com/user/environment-variables/#default-environment-variables
-   if [[ $TRAVIS_PULL_REQUEST == "false" ]]; then
-      GIT_BRANCH="$TRAVIS_BRANCH"
-   else
-      GIT_BRANCH="$TRAVIS_PULL_REQUEST_BRANCH"
-   fi
-else
-   GIT_BRANCH=$(git branch --show-current)
-fi
+GIT_BRANCH=$(git branch --show-current)
 echo "  -> GIT Branch: $GIT_BRANCH"; echo
 
 
-MAVEN_VERSION=3.8.6 # https://maven.apache.org/download.cgi
-if [[ ! -e $HOME/.m2/bin/apache-maven-$MAVEN_VERSION ]]; then
+if hash mvn 2>/dev/null; then
    echo
    echo "###################################################"
-   echo "# Installing Maven version $MAVEN_VERSION...               #"
+   echo "# Determinig latest Maven version...              #"
    echo "###################################################"
-   mkdir -p $HOME/.m2/bin/
-   maven_download_url="https://repo1.maven.org/maven2/org/apache/maven/apache-maven/${MAVEN_VERSION}/apache-maven-${MAVEN_VERSION}-bin.tar.gz"
-   echo "Downloading [$maven_download_url]..."
-   curl -fsSL $maven_download_url | tar zxv -C $HOME/.m2/bin/
+   #MAVEN_VERSION=$(curl -sSf https://repo1.maven.org/maven2/org/apache/maven/apache-maven/maven-metadata.xml | grep -oP '(?<=latest>).*(?=</latest)')
+   MAVEN_VERSION=$(curl -sSf https://dlcdn.apache.org/maven/maven-3/ | grep -oP '(?<=>)[0-9.]+(?=/</a)' | tail -1)
+   echo "  -> Latest Maven Version: ${MAVEN_VERSION}"
+   if [[ ! -e $HOME/.m2/bin/apache-maven-$MAVEN_VERSION ]]; then
+      echo
+      echo "###################################################"
+      echo "# Installing Maven version $MAVEN_VERSION...               #"
+      echo "###################################################"
+      mkdir -p $HOME/.m2/bin/
+      #maven_download_url="https://repo1.maven.org/maven2/org/apache/maven/apache-maven/${MAVEN_VERSION}/apache-maven-${MAVEN_VERSION}-bin.tar.gz"
+      maven_download_url="https://dlcdn.apache.org/maven/maven-3/${MAVEN_VERSION}/binaries/apache-maven-${MAVEN_VERSION}-bin.tar.gz"
+      echo "Downloading [$maven_download_url]..."
+      curl -fsSL $maven_download_url | tar zxv -C $HOME/.m2/bin/
+   fi
+   export M2_HOME=$HOME/.m2/bin/apache-maven-$MAVEN_VERSION
+   export PATH=$M2_HOME/bin:$PATH
 fi
-export M2_HOME=$HOME/.m2/bin/apache-maven-$MAVEN_VERSION
-export PATH=$M2_HOME/bin:$PATH
 
 
 echo
@@ -77,6 +93,8 @@ MAVEN_OPTS="$MAVEN_OPTS -Dorg.slf4j.simpleLogger.showDateTime=true -Dorg.slf4j.s
 export MAVEN_OPTS="$MAVEN_OPTS -Xmx1024m -Djava.awt.headless=true -Djava.net.preferIPv4Stack=true -Dhttps.protocols=TLSv1.2"
 echo "  -> MAVEN_OPTS: $MAVEN_OPTS"
 
+MAVEN_CLI_OPTS="-e -U --batch-mode --show-version --no-transfer-progress -s .ci/maven-settings.xml -t .ci/maven-toolchains.xml"
+
 
 echo
 echo "###################################################"
@@ -85,9 +103,6 @@ echo "###################################################"
 # https://stackoverflow.com/questions/3545292/how-to-get-maven-project-version-to-the-bash-command-line
 projectVersion="$(mvn -s .ci/maven-settings.xml help:evaluate -Dexpression=project.version -q -DforceStdout)"
 echo "  -> Current Version: $projectVersion"
-
-
-MAVEN_CLI_OPTS="-e -U --batch-mode --show-version --no-transfer-progress -s .ci/maven-settings.xml -t .ci/maven-toolchains.xml"
 
 #
 # decide whether to perform a release build or build+deploy a snapshot version
@@ -107,14 +122,9 @@ if [[ ${projectVersion:-foo} == ${POM_CURRENT_VERSION:-bar} && ${MAY_CREATE_RELE
    echo "  ->           Skipping Tests: ${SKIP_TESTS}"
    echo "  ->               Is Dry-Run: ${DRY_RUN}"
 
-   # workaround for "No toolchain found with specification [version:1.8, vendor:default]" during release builds
+   # workaround for "No toolchain found with specification [version:11, vendor:default]" during release builds
    cp -f .ci/maven-settings.xml $HOME/.m2/settings.xml
    cp -f .ci/maven-toolchains.xml $HOME/.m2/toolchains.xml
-
-   if [[ "${TRAVIS:-false}" == "true" ]]; then
-      # workaround for "Git fatal: ref HEAD is not a symbolic ref" during release on Travis CI
-      git checkout ${GIT_BRANCH}
-   fi
 
    export DEPLOY_RELEASES_TO_MAVEN_CENTRAL=false
 
