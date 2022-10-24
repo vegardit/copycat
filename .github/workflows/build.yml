@@ -89,11 +89,11 @@ jobs:
         git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
         bash .ci/build.sh
 
-        mv target/copycat-*-fat-minimized.jar target/copycat-fat.jar
-
     - name: Test minimized fat jar
       run: |
         set -ex
+
+        mv target/copycat-*-fat-minimized.jar target/copycat-fat.jar
 
         java -jar target/copycat-fat.jar --help
         java -jar target/copycat-fat.jar -V
