@@ -40,7 +40,7 @@ GIT_BRANCH=$(git branch --show-current)
 echo "  -> GIT Branch: $GIT_BRANCH"; echo
 
 
-if hash mvn 2>/dev/null; then
+if ! hash mvn 2>/dev/null; then
    echo
    echo "###################################################"
    echo "# Determinig latest Maven version...              #"
