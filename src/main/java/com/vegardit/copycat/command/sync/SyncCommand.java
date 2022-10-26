@@ -198,10 +198,13 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
                entry = sourceDirsToScan.poll();
                if (entry != null)
                   return entry;
+
                Threads.sleep(100);
+
+               // if all threads are waiting for a new entry we scanned all files
                if (threadsWaiting.get() == task.threads) {
                   threadsDone.set(true);
-                  break;
+                  return null;
                }
             }
          } finally {
