@@ -264,7 +264,7 @@
          <dependency>
             <groupId>net.sf.jstuff</groupId>
             <artifactId>jstuff-core</artifactId>
-            <version>7.2.0</version>
+            <version>7.3.0</version>
             <type>pom</type>
             <scope>import</scope>
          </dependency>
