@@ -154,7 +154,7 @@ jobs:
     - name: "Install: UPX"
       run: |
         mkdir /opt/upx
-        upx_download_url=$(curl -fsSL https://api.github.com/repos/upx/upx/releases/latest | grep browser_download_url | grep amd64_linux.tar.xz | cut "-d\"" -f4)
+        upx_download_url=$(curl -fsSL -H "Authorization: token ${{ github.token }}" https://api.github.com/repos/upx/upx/releases/latest | grep browser_download_url | grep amd64_linux.tar.xz | cut "-d\"" -f4)
         echo "Downloading [$upx_download_url]..."
         curl -fL $upx_download_url | tar Jxv -C /opt/upx --strip-components=1
 
@@ -285,7 +285,7 @@ jobs:
     - name: "Install: UPX"
       run: |
         mkdir /opt/upx
-        upx_download_url=$(curl -fsSL https://api.github.com/repos/upx/upx/releases/latest | grep browser_download_url | grep arm64_linux.tar.xz | cut "-d\"" -f4)
+        upx_download_url=$(curl -fsSL -H "Authorization: token ${{ github.token }}" https://api.github.com/repos/upx/upx/releases/latest | grep browser_download_url | grep arm64_linux.tar.xz | cut "-d\"" -f4)
         echo "Downloading [$upx_download_url]..."
         curl -fL $upx_download_url | tar Jxv -C /opt/upx --strip-components=1
 
@@ -523,7 +523,7 @@ jobs:
       run: |
         set -eux
 
-        upx_download_url=$(curl -fsSL https://api.github.com/repos/upx/upx/releases/latest | grep browser_download_url | grep win64.zip | cut "-d\"" -f4)
+        upx_download_url=$(curl -fsSL -H "Authorization: token ${{ github.token }}" https://api.github.com/repos/upx/upx/releases/latest | grep browser_download_url | grep win64.zip | cut "-d\"" -f4)
         echo "Downloading [$upx_download_url]..."
         curl -fL -o /tmp/upx.zip $upx_download_url
 
