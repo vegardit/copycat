@@ -10,6 +10,7 @@ import java.util.logging.FileHandler;
 import java.util.logging.LogRecord;
 
 import org.fusesource.jansi.Ansi;
+import org.fusesource.jansi.AnsiRenderer;
 
 import com.vegardit.copycat.command.AbstractCommand;
 import com.vegardit.copycat.command.LoggingOptionsMixin;
@@ -22,6 +23,7 @@ import net.sf.jstuff.core.io.StringPrintWriter;
 import net.sf.jstuff.core.logging.Logger;
 import picocli.CommandLine;
 import picocli.CommandLine.Command;
+import picocli.CommandLine.Help;
 import picocli.CommandLine.ParameterException;
 import picocli.CommandLine.RunLast;
 import picocli.CommandLine.Unmatched;
@@ -91,6 +93,13 @@ public class CopyCatMain extends AbstractCommand {
       final var handler = new CommandLine(new CopyCatMain());
       handler.setCaseInsensitiveEnumValuesAllowed(true);
       handler.setExecutionStrategy(new RunLast());
+      handler.setHelpFactory((commandSpec, colorScheme) -> new Help(commandSpec, colorScheme) {
+
+         @Override
+         public String headerHeading(final Object... params) {
+            return AnsiRenderer.render(super.headerHeading(params));
+         }
+      });
 
       /*
        * custom exception handlers that use a logger instead of directly writing to stdout/stderr

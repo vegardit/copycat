@@ -19,7 +19,7 @@ Copycat is a cross platform file synchronization tool for local file systems sim
 
 It's written in Java but compiled to native binaries for Windows/Linux/MacOS using [GraalVM](https://graalvm.org).
 
-![screen](src/site/img/screen.png)
+![screen](src/site/img/screen1.png)
 
 ![screen](src/site/img/screen2.png)
 

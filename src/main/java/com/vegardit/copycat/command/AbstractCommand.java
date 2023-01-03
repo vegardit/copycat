@@ -23,14 +23,14 @@ import picocli.CommandLine.Spec;
  * @author Sebastian Thomschke, Vegard IT GmbH
  */
 @Command( //
-   headerHeading = "" //
+   headerHeading = "@|magenta " //
       + "                                         __    /\\_/\\%n" //
       + "      _________  ____  __  ___________ _/ /_  ( o.o )%n" //
       + " -===/ ___/ __ \\/ __ \\/ / / / ___/ __ `/ __/   > ^ <%n" //
       + "  -=/ /__/ /_/ / /_/ / /_/ / /__/ /_/ / /_     / * \\%n" //
       + "-===\\___/\\____/ .___/\\__, /\\___/\\__,_/\\__/   (..)~(..)%n" //
-      + "             /_/    /____/%n" //
-      + "      https://github.com/vegardit/copycat%n" //
+      + "             /_/    /____/|@ %n" //
+      + "                   @|faint https://github.com/vegardit/copycat|@ %n" //
       + "%n", //
    mixinStandardHelpOptions = true, //
    descriptionHeading = "%n", //
