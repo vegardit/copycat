@@ -1,4 +1,4 @@
-# copycat - the fast and sweet file synchronization tool
+# copycat - the fast and sweet file syncing tool
 
 [![Build Status](https://github.com/vegardit/copycat/workflows/Build/badge.svg "GitHub Actions")](https://github.com/vegardit/copycat/actions?query=workflow%3A%22Build%22)
 [![Download](https://img.shields.io/badge/Download-latest-orange.svg)](https://github.com/vegardit/copycat/releases/tag/snapshot)
@@ -6,8 +6,6 @@
 [![Changelog](https://img.shields.io/badge/History-changelog-blue)](CHANGELOG.md)
 [![Maintainability](https://api.codeclimate.com/v1/badges/6f32ab9599e166bb9b59/maintainability)](https://codeclimate.com/github/vegardit/copycat/maintainability)
 [![Contributor Covenant](https://img.shields.io/badge/Contributor%20Covenant-v2.1%20adopted-ff69b4.svg)](CODE_OF_CONDUCT.md)
-
-**IMPORTANT Copycat is currently in alpha testing and may not work as expected! DO NOT USE WITH IMPORTANT DATA!**
 
 1. [What is it?](#what-is-it)
 1. [Installation](#installation)
