@@ -4,6 +4,7 @@
  */
 package com.vegardit.copycat.util;
 
+import java.awt.AWTError;
 import java.awt.AWTException;
 import java.awt.MenuItem;
 import java.awt.PopupMenu;
@@ -77,7 +78,7 @@ public final class DesktopNotifications {
    public static boolean isSupported() {
       try {
          return SystemTray.isSupported();
-      } catch (final UnsatisfiedLinkError ex) {
+      } catch (final UnsatisfiedLinkError | AWTError ex) {
          // https://github.com/oracle/graal/issues/2842
          LOG.warn(ex);
          return false;
