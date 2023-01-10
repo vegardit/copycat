@@ -31,7 +31,7 @@ defaults:
 
 env:
   # don't upgrade to 22.1.0.1 which breaks Windows builds https://github.com/oracle/graal/issues/4340
-  GRAALVM_VERSION: 21.3.2 # https://github.com/graalvm/graalvm-ce-builds/releases
+  GRAALVM_VERSION: 21.3.3.1 # https://github.com/graalvm/graalvm-ce-builds/releases
   JAVA_VERSION: 11 # don't upgrade to Java 17 which breaks ARM builds: https://github.com/oracle/graal/issues/4143
   RELEASE_NAME: "snapshot"
 

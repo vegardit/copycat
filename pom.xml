@@ -47,7 +47,7 @@
 
       <!-- https://search.maven.org/artifact/org.graalvm.sdk/graal-sdk -->
       <!-- don't upgrade to 22.1.0.1 which breaks Windows builds https://github.com/oracle/graal/issues/4340 -->
-      <graalvm.version>21.3.2.1</graalvm.version>
+      <graalvm.version>21.3.3.1</graalvm.version>
       <!-- https://search.maven.org/artifact/info.picocli/picocli -->
       <picocli.version>4.7.0</picocli.version>
       <!-- https://search.maven.org/artifact/com.guardsquare/proguard-core -->
