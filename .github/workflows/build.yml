@@ -391,22 +391,22 @@ jobs:
         case "${{ matrix.arch }}" in
           linux-amd64)
             strip --strip-unneeded copycat-${{ matrix.arch }}
-            /opt/upx/upx -v -9 copycat-${{ matrix.arch }}
+            /opt/upx/upx -v -9 --no-progress copycat-${{ matrix.arch }}
           ;;
           linux-arm64)
             docker exec --tty -w /workspace arm64 /bin/bash -c "
               strip --strip-unneeded copycat-${{ matrix.arch }} &&
-              /opt/upx/upx -v -9 copycat-${{ matrix.arch }}
+              /opt/upx/upx -v -9 --no-progress copycat-${{ matrix.arch }}
             "
           ;;
           darwin-amd64)
             # https://www.unix.com/man-page/osx/1/strip/
             strip copycat-${{ matrix.arch }}
-            upx -v -9 copycat-${{ matrix.arch }}
+            upx -v -9 --no-progress copycat-${{ matrix.arch }}
           ;;
           windows-amd64)
             cp copycat-${{ matrix.arch }}.exe copycat-${{ matrix.arch }}-uncompressed.exe
-            upx -v -9 copycat-${{ matrix.arch }}.exe
+            upx -v -9 --no-progress copycat-${{ matrix.arch }}.exe
           ;;
         esac
 
