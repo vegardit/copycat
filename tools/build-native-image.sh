@@ -14,7 +14,7 @@ fi
 
 cd "$(dirname ${BASH_SOURCE[0]})/../target/"
 
-input_jar=copycat-*-fat.jar
+input_jar=copycat-*-fat-minimized.jar
 output_binary=copycat-snapshot-linux-amd64
 
 native-image \
