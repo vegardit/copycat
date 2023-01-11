@@ -17,26 +17,19 @@ cd "$(dirname ${BASH_SOURCE[0]})/../target/"
 input_jar=copycat-*-fat.jar
 output_binary=copycat-snapshot-linux-amd64
 
-
 native-image \
-  -H:NativeLinkerOption=-no-pie `#do not to generate Position Independent Executables (PIE)` \
+  -H:NativeLinkerOption=-no-pie `# do not to generate Position Independent Executables (PIE)` \
   -H:ReflectionConfigurationFiles=picocli-reflections.json \
   -H:Log=registerResource:3 \
   -H:+ReportExceptionStackTraces \
   -H:+RemoveUnusedSymbols \
+  -H:+StaticExecutableWithDynamicLibC `# https://www.graalvm.org/reference-manual/native-image/StaticImages/#build-a-mostly-static-native-image` \
+  -H:DashboardDump=copycat -H:+DashboardAll `# https://www.graalvm.org/22.3/reference-manual/native-image/guides/use-graalvm-dashboard/` \
   --allow-incomplete-classpath \
   --no-fallback \
   --no-server \
   --verbose \
-  -H:+StaticExecutableWithDynamicLibC `#https://www.graalvm.org/reference-manual/native-image/StaticImages/#build-a-mostly-static-native-image` \
-  --initialize-at-build-time=org.slf4j \
-  --initialize-at-build-time=net.sf.jstuff.core.collection.WeakIdentityHashMap \
-  --initialize-at-build-time=net.sf.jstuff.core.logging \
-  --initialize-at-build-time=net.sf.jstuff.core.reflection.StackTrace \
-  --initialize-at-build-time=com.vegardit.copycat.command.sync.AbstractSyncCommand \
-  --initialize-at-build-time=com.vegardit.copycat.command.watch.WatchCommand \
   --report-unsupported-elements-at-runtime `# avoid: Unsupported type sun.awt.X11.XBaseWindow is reachable` \
-  -Dnet.sf.jstuff.core.logging.Logger.preferSLF4J=false \
   -Dfile.encoding=UTF-8 \
   --class-path $input_jar \
   com.vegardit.copycat.CopyCatMain \
