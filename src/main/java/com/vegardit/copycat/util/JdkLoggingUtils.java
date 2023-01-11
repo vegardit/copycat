@@ -67,32 +67,19 @@ public final class JdkLoggingUtils {
          final var msg = ansiRender(entry.getMessage());
          final var recordTime = new Date(entry.getMillis());
          final var threadName = Thread.currentThread().getName();
-
-         switch (entry.getLevel().intValue()) {
-            case Levels.INFO_INT:
-               return ansiRender("%1$tT @|green [%2$s]|@ %3$s%n", //
-                  recordTime, threadName, msg);
-
-            case Levels.WARNING_INT:
-               return ansiRender("@|yellow %1$tT [%2$s] WARN: %3$s%n|@", //
-                  recordTime, threadName, msg);
-
-            case Levels.SEVERE_INT:
-               return entry.getThrown() == null //
-                  ? ansiRender("@|red %1$tT [%2$s] ERROR: %3$s%n|@", //
-                     recordTime, threadName, entry.getMessage()) //
-                  : ansiRender("@|red %1$tT [%2$s] ERROR: %3$s %4$s|@", //
-                     recordTime, threadName, msg, Exceptions.getStackTrace(entry.getThrown()));
-
-            default:
-               return String.format("%1$tT [%2$s] %3$-6s: %4$s %n", //
-                  recordTime, threadName, entry.getLevel().getLocalizedName(), msg);
-         }
+         return switch (entry.getLevel().intValue()) {
+            case Levels.INFO_INT -> ansiRender("%1$tT @|green [%2$s]|@ %3$s%n", recordTime, threadName, msg); //
+            case Levels.WARNING_INT -> ansiRender("@|yellow %1$tT [%2$s] WARN: %3$s%n|@", recordTime, threadName, msg); //
+            case Levels.SEVERE_INT -> entry.getThrown() == null //
+               ? ansiRender("@|red %1$tT [%2$s] ERROR: %3$s%n|@", recordTime, threadName, entry.getMessage()) //
+               : ansiRender("@|red %1$tT [%2$s] ERROR: %3$s %4$s|@", recordTime, threadName, msg, Exceptions.getStackTrace(entry
+                  .getThrown())); // // // //
+            default -> String.format("%1$tT [%2$s] %3$-6s: %4$s %n", recordTime, threadName, entry.getLevel().getLocalizedName(), msg); //
+         };
       }
    }
 
    private static final Formatter PLAIN_FORMATTER = new Formatter() {
-
       @Override
       public synchronized String format(final LogRecord entry) {
          final var threadName = Thread.currentThread().getName();

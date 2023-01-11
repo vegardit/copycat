@@ -61,8 +61,7 @@ public final class FileUtils {
       final var sourceSupportedAttrs = sourceFS.supportedFileAttributeViews();
       final var targetSupportedAttrs = targetFS.supportedFileAttributeViews();
 
-      if (sourceAttrs instanceof DosFileAttributes) {
-         final var sourceDosAttrs = (DosFileAttributes) sourceAttrs;
+      if (sourceAttrs instanceof DosFileAttributes sourceDosAttrs) {
          final var targetDosAttrs = targetFSP.getFileAttributeView(target, DosFileAttributeView.class, NOFOLLOW_LINKS);
          targetDosAttrs.setArchive(sourceDosAttrs.isArchive());
          targetDosAttrs.setHidden(sourceDosAttrs.isHidden());
@@ -82,8 +81,7 @@ public final class FileUtils {
          return;
       }
 
-      if (sourceAttrs instanceof PosixFileAttributes) {
-         final var sourcePosixAttrs = (PosixFileAttributes) sourceAttrs;
+      if (sourceAttrs instanceof PosixFileAttributes sourcePosixAttrs) {
          final var targetPosixAttrs = targetFSP.getFileAttributeView(target, PosixFileAttributeView.class, NOFOLLOW_LINKS);
          if (copyACL) {
             targetPosixAttrs.setOwner(sourcePosixAttrs.owner());

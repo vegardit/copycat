@@ -23,15 +23,16 @@ import picocli.CommandLine.Spec;
  * @author Sebastian Thomschke, Vegard IT GmbH
  */
 @Command( //
-   headerHeading = "@|magenta " //
-      + "                                         __    /\\_/\\%n" //
-      + "      _________  ____  __  ___________ _/ /_  ( o.o )%n" //
-      + " -===/ ___/ __ \\/ __ \\/ / / / ___/ __ `/ __/   > ^ <%n" //
-      + "  -=/ /__/ /_/ / /_/ / /_/ / /__/ /_/ / /_     / * \\%n" //
-      + "-===\\___/\\____/ .___/\\__, /\\___/\\__,_/\\__/   (..)~(..)%n" //
-      + "             /_/    /____/|@ %n" //
-      + "                   @|faint https://github.com/vegardit/copycat|@ %n" //
-      + "%n", //
+   headerHeading = """
+      @|magenta\s\
+                                               __    /\\_/\\%n\
+            _________  ____  __  ___________ _/ /_  ( o.o )%n\
+       -===/ ___/ __ \\/ __ \\/ / / / ___/ __ `/ __/   > ^ <%n\
+        -=/ /__/ /_/ / /_/ / /_/ / /__/ /_/ / /_     / * \\%n\
+      -===\\___/\\____/ .___/\\__, /\\___/\\__,_/\\__/   (..)~(..)%n\
+                   /_/    /____/|@ %n\
+                         @|faint https://github.com/vegardit/copycat|@ %n\
+      %n""", //
    mixinStandardHelpOptions = true, //
    descriptionHeading = "%n", //
    commandListHeading = "%nCommands%n", //
@@ -125,19 +126,12 @@ public abstract class AbstractCommand implements Callable<Void> {
    @Option(names = {"-v", "--verbose"}, description = {"Specify multiple -v options to increase verbosity.",
       "For example `-v -v -v` or `-vvv`."})
    private void setVerbosity(final boolean[] flags) {
-      switch (flags.length) {
-         case 0:
-            Levels.setRootLevel(Level.INFO);
-            break;
-         case 1:
-            Levels.setRootLevel(Level.FINE);
-            break;
-         case 2:
-            Levels.setRootLevel(Level.FINER);
-            break;
-         default:
-            Levels.setRootLevel(Level.FINEST);
-      }
+      Levels.setRootLevel(switch (flags.length) {
+         case 0 -> Level.INFO;
+         case 1 -> Level.FINE;
+         case 2 -> Level.FINER;
+         default -> Level.FINEST;
+      });
       verbosity = flags.length;
    }
 }

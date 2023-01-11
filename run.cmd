@@ -5,8 +5,8 @@ REM Author: Sebastian Thomschke, Vegard IT GmbH
 
 for /f tokens^=2-5^ delims^=.-_^" %%j in ('java -fullversion 2^>^&1') do set "JAVA_MAJOR_VERSION=%%j"
 
-if %JAVA_MAJOR_VERSION% LSS 11 (
-  echo ERROR: Java 11 or higher must be on PATH.
+if %JAVA_MAJOR_VERSION% LSS 17 (
+  echo ERROR: Java 17 or higher must be on PATH.
   exit /b
 )
 

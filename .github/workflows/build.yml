@@ -32,7 +32,7 @@ defaults:
 env:
   # don't upgrade to 22.1.0.1 which breaks Windows builds https://github.com/oracle/graal/issues/4340
   GRAALVM_VERSION: 21.3.3.1 # https://github.com/graalvm/graalvm-ce-builds/releases
-  JAVA_VERSION: 11 # don't upgrade to Java 17 which breaks ARM builds: https://github.com/oracle/graal/issues/4143
+  JAVA_VERSION: 17
   RELEASE_NAME: "snapshot"
 
 
@@ -135,6 +135,8 @@ jobs:
 
     env:
       # https://www.graalvm.org/21.3/reference-manual/native-image/Options/
+      # --initialize-at-build-time=sun.awt.Toolkit -Djava.awt.headless=false -> https://github.com/oracle/graal/issues/1327#issuecomment-824873760
+      # -H:NativeLinkerOption=-no-pie -> do not to generate Position Independent Executables (PIE)
       NATIVE_IMAGE_ARGS:
         -H:NativeLinkerOption=-no-pie
         -H:ReflectionConfigurationFiles=picocli-reflections.json
@@ -176,7 +178,7 @@ jobs:
         docker container create --name arm64 --tty \
           -v /opt:/opt:rw \
           -v $PWD:/workspace:rw \
-          arm64v8/ubuntu:20.04
+          arm64v8/ubuntu:22.04
 
         docker container start arm64
 
@@ -189,7 +191,7 @@ jobs:
 
         case "${{ matrix.arch }}" in
           linux-amd64)
-            sudo apt-get install --no-install-recommends -y gcc g++ libz-dev
+            sudo apt-get install --no-install-recommends -y gcc g++ libz-dev 
 
             GRAAL_VM_HOME=${{ matrix.graal_install_root }}
             if [ ! -e $GRAAL_VM_HOME/bin/native-image ]; then
@@ -213,7 +215,7 @@ jobs:
           linux-arm64)
             cat <<EOF > install_graalvm.sh
               set -eu
-              sudo apt-get install --no-install-recommends -y gcc g++ libz-dev
+              sudo apt-get install --no-install-recommends -y gcc g++ libz-dev 
 
               GRAAL_VM_HOME=${{ matrix.graal_install_root }}
               if [ ! -e \$GRAAL_VM_HOME/bin/native-image ]; then
@@ -338,16 +340,26 @@ jobs:
       run: |
         case "${{ matrix.arch }}" in
           linux-amd64)
-            # https://www.graalvm.org/21.3/reference-manual/native-image/StaticImages/#build-mostly-static-native-image
-            native-image -H:+StaticExecutableWithDynamicLibC ${{ env.NATIVE_IMAGE_ARGS }}
+            /usr/bin/gcc -v
+
+            native-image \
+              -H:+StaticExecutableWithDynamicLibC `#https://www.graalvm.org/21.3/reference-manual/native-image/StaticImages/#build-mostly-static-native-image` \
+              --report-unsupported-elements-at-runtime `# avoid: Unsupported type sun.awt.X11.XBaseWindow is reachable` \
+              ${{ env.NATIVE_IMAGE_ARGS }}
           ;;
           linux-arm64)
             docker exec --tty -w /workspace arm64 /bin/bash -c "
               export JAVA_HOME=${{ matrix.graal_install_root }}
               export PATH=${{ matrix.graal_install_root }}/bin:\$PATH
 
-              # https://www.graalvm.org/21.3/reference-manual/native-image/StaticImages/#build-mostly-static-native-image
-              native-image -H:+StaticExecutableWithDynamicLibC ${{ env.NATIVE_IMAGE_ARGS }}
+              /usr/bin/gcc -v
+
+              native-image \
+                -H:+StaticExecutableWithDynamicLibC `#https://www.graalvm.org/21.3/reference-manual/native-image/StaticImages/#build-mostly-static-native-image` \
+                --report-unsupported-elements-at-runtime `# avoid: Unsupported type sun.awt.X11.XBaseWindow is reachable` \
+                -Djdk.lang.Process.launchMechanism=vfork `#https://github.com/oracle/graal/issues/4143`\
+                -H:-CheckToolchain `#https://github.com/oracle/graal/issues/4143`\
+                ${{ env.NATIVE_IMAGE_ARGS }}
             "
           ;;
           darwin-amd64)
