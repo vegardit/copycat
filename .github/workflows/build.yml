@@ -142,6 +142,9 @@ jobs:
         -H:Log=registerResource:3
         -H:+ReportExceptionStackTraces
         -H:+RemoveUnusedSymbols
+        -H:ExcludeResources=com/sun/*.properties
+        --exclude-config copycat-fat.jar META-INF/native-image/net.sf.jstuff/.*.json
+        --exclude-config copycat-fat.jar META-INF/native-image/jansi/.*.json
         --allow-incomplete-classpath
         --no-fallback
         --no-server

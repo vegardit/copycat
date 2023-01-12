@@ -42,6 +42,9 @@ native-image \
   -H:+RemoveUnusedSymbols \
   -H:+StaticExecutableWithDynamicLibC `# https://www.graalvm.org/reference-manual/native-image/StaticImages/#build-a-mostly-static-native-image` \
   -H:DashboardDump=copycat -H:+DashboardAll `# https://www.graalvm.org/22.3/reference-manual/native-image/guides/use-graalvm-dashboard/` \
+  -H:ExcludeResources=com/sun/*.properties \
+  --exclude-config $input_jar META-INF/native-image/net.sf.jstuff/.*.json \
+  --exclude-config $input_jar META-INF/native-image/jansi/.*.json \
   --allow-incomplete-classpath \
   --no-fallback \
   --no-server \
