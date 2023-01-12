@@ -147,6 +147,7 @@ jobs:
         --no-server
         --verbose
         -Dfile.encoding=UTF-8
+        --class-path native-image-metadata
         --class-path copycat-fat.jar
         com.vegardit.copycat.CopyCatMain
         copycat-${{ matrix.arch }}
@@ -327,6 +328,45 @@ jobs:
       # makes cl.exe available on PATH
       # https://github.com/marketplace/actions/enable-developer-command-prompt
       uses: ilammy/msvc-dev-cmd@v1
+
+    - name: "Collect metadata"
+      run: |
+        set -eu
+
+        # https://www.graalvm.org/22.3/reference-manual/native-image/metadata/AutomaticMetadataCollection/#tracing-agent
+        cat <<'EOF' > collect_metadata.sh
+          set -eu
+          rm -rf native-image-metadata
+          function traceCall() {
+            echo "Tracing copycat ${@}..."
+            java -agentlib:native-image-agent=config-merge-dir=native-image-metadata/META-INF/native-image/ -jar copycat-fat.jar ${@} >/dev/null
+          }
+
+          rm -rf workdir
+          mkdir -p workdir/source/dir1
+          touch workdir/source/dir1/file1
+          traceCall sync workdir/source workdir/target
+  
+          traceCall --help
+          traceCall --help
+          traceCall --version
+          traceCall sync --help
+          traceCall watch --help
+        EOF
+
+        case "${{ matrix.arch }}" in
+          linux-arm64)
+            docker exec --tty -w /workspace arm64 /bin/bash -c "
+              export JAVA_HOME=${{ matrix.graal_install_root }}
+              export PATH=${{ matrix.graal_install_root }}/bin:\$PATH
+
+              bash collect_metadata.sh
+            "
+          ;;
+          *)
+            bash collect_metadata.sh
+          ;;
+        esac
 
     - name: "Build executable"
       run: |
