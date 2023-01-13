@@ -2,8 +2,7 @@
   "resources": {
     "includes": [
       {"pattern": "copycat.png"},
-      {"pattern": "copycat16x16.png"},
-      {"pattern": "jpowershell.properties"}
+      {"pattern": "copycat16x16.png"}
     ]
   }
 }
