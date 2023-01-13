@@ -72,11 +72,14 @@ public final class JdkLoggingUtils {
          final var threadName = Thread.currentThread().getName();
          return switch (entry.getLevel().intValue()) {
             case Levels.INFO_INT -> ansiRender("%1$tT @|green [%2$s]|@ %3$s%n", recordTime, threadName, msg); //
-            case Levels.WARNING_INT -> ansiRender("@|yellow %1$tT [%2$s] WARN: %3$s%n|@", recordTime, threadName, msg); //
+            case Levels.WARNING_INT -> entry.getThrown() == null //
+               ? ansiRender("@|yellow %1$tT [%2$s] WARN: %3$s%n|@", recordTime, threadName, msg) //
+               : ansiRender("@|yellow %1$tT [%2$s] WARN: %3$s %4$s|@", recordTime, threadName, msg, Exceptions.getStackTraceNullable(entry
+                  .getThrown())); //
             case Levels.SEVERE_INT -> entry.getThrown() == null //
-               ? ansiRender("@|red %1$tT [%2$s] ERROR: %3$s%n|@", recordTime, threadName, entry.getMessage()) //
+               ? ansiRender("@|red %1$tT [%2$s] ERROR: %3$s%n|@", recordTime, threadName, msg) //
                : ansiRender("@|red %1$tT [%2$s] ERROR: %3$s %4$s|@", recordTime, threadName, msg, Exceptions.getStackTraceNullable(entry
-                  .getThrown())); // // // //
+                  .getThrown())); //
             default -> String.format("%1$tT [%2$s] %3$-6s: %4$s %n", recordTime, threadName, entry.getLevel().getLocalizedName(), msg); //
          };
       }
