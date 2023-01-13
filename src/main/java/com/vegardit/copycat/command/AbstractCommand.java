@@ -4,6 +4,8 @@
  */
 package com.vegardit.copycat.command;
 
+import static net.sf.jstuff.core.validation.NullAnalysisHelper.*;
+
 import java.util.concurrent.Callable;
 import java.util.logging.Level;
 
@@ -57,13 +59,13 @@ public abstract class AbstractCommand implements Callable<Void> {
    private static final Logger LOG = Logger.create();
 
    @Spec
-   protected CommandSpec commandSpec;
+   protected CommandSpec commandSpec = lazyNonNull();
 
    /**
     * logging options are not further evaluated, since it is already done in main entry point
     */
    @Mixin
-   private LoggingOptionsMixin loggingOptions;
+   private LoggingOptionsMixin loggingOptions = lazyNonNull();
 
    private int verbosity = 0;
 
@@ -104,7 +106,7 @@ public abstract class AbstractCommand implements Callable<Void> {
 
       LOG.info("");
       LOG.info("THE OPERATION COMPLETED SUCCESSFULLY.");
-      return null;
+      return asNonNullUnsafe((Void) null);
    }
 
    protected abstract void execute() throws Exception;

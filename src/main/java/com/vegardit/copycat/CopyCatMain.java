@@ -4,11 +4,14 @@
  */
 package com.vegardit.copycat;
 
+import static net.sf.jstuff.core.validation.NullAnalysisHelper.*;
+
 import java.io.IOException;
 import java.util.List;
 import java.util.logging.FileHandler;
 import java.util.logging.LogRecord;
 
+import org.eclipse.jdt.annotation.Nullable;
 import org.fusesource.jansi.Ansi;
 import org.fusesource.jansi.AnsiRenderer;
 
@@ -45,11 +48,12 @@ public class CopyCatMain extends AbstractCommand {
 
    public static class LoggingOptions extends LoggingOptionsMixin {
       @Unmatched
-      List<String> ignored;
+      List<String> ignored = lazyNonNull();
    }
 
    private static final Logger LOG = Logger.create();
 
+   @Nullable
    private static FileHandler configureLogging(final String[] args) throws IOException {
       final var loggingOptions = new LoggingOptions();
       CommandLine.populateCommand(loggingOptions, args);
@@ -57,6 +61,7 @@ public class CopyCatMain extends AbstractCommand {
 
          final String replaceLastLine = new Ansi().cursorUpLine().eraseLine().toString();
 
+         @Nullable
          String lastMessage = null;
 
          @Override
@@ -75,9 +80,11 @@ public class CopyCatMain extends AbstractCommand {
             }
          }
       });
-      if (loggingOptions.logFile == null)
+
+      final var logFile = loggingOptions.logFile;
+      if (logFile == null)
          return null;
-      return JdkLoggingUtils.addFileHandler(loggingOptions.logFile.toAbsolutePath().toString());
+      return JdkLoggingUtils.addFileHandler(logFile.toAbsolutePath().toString());
    }
 
    public static void main(final String[] args) throws Exception {
@@ -95,8 +102,9 @@ public class CopyCatMain extends AbstractCommand {
       handler.setExecutionStrategy(new RunLast());
       handler.setHelpFactory((commandSpec, colorScheme) -> new Help(commandSpec, colorScheme) {
 
+         @Nullable
          @Override
-         public String headerHeading(final Object... params) {
+         public String headerHeading(final Object @Nullable... params) {
             return AnsiRenderer.render(super.headerHeading(params));
          }
       });
@@ -123,6 +131,7 @@ public class CopyCatMain extends AbstractCommand {
          return 1;
       });
       handler.setExecutionExceptionHandler((ex, commandLine, parseResult) -> {
+         ex = asNonNullUnsafe(ex);
          if (LOG.isDebugEnabled()) {
             LOG.error(ex); // log with stacktrace
          } else {

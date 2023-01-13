@@ -4,7 +4,9 @@
  */
 package com.vegardit.copycat.command.sync;
 
+import static com.vegardit.copycat.util.Booleans.isTrue;
 import static com.vegardit.copycat.util.MapUtils.*;
+import static net.sf.jstuff.core.validation.NullAnalysisHelper.lazyNonNull;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -15,6 +17,8 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+
+import org.eclipse.jdt.annotation.Nullable;
 
 import com.vegardit.copycat.util.FileUtils;
 import com.vegardit.copycat.util.YamlUtils.ToYamlString;
@@ -27,22 +31,22 @@ import net.sf.jstuff.core.SystemUtils;
  */
 public abstract class AbstractSyncCommandConfig<THIS extends AbstractSyncCommandConfig<THIS>> {
 
-   public @ToYamlString(ignore = true) Path source;
-   public @ToYamlString(name = "source") Path sourceRootAbsolute; // computed value
+   public @Nullable @ToYamlString(ignore = true) Path source;
+   public @ToYamlString(name = "source") Path sourceRootAbsolute = lazyNonNull(); // computed value
 
-   public @ToYamlString(ignore = true) Path target;
-   public @ToYamlString(name = "target") Path targetRootAbsolute; // computed value
+   public @Nullable @ToYamlString(ignore = true) Path target;
+   public @ToYamlString(name = "target") Path targetRootAbsolute = lazyNonNull(); // computed value
 
-   public Boolean copyACL;
-   public Boolean deleteExcluded;
-   public List<String> excludes;
+   public @Nullable Boolean copyACL;
+   public @Nullable Boolean deleteExcluded;
+   public @Nullable List<String> excludes;
 
-   public @ToYamlString(ignore = true) PathMatcher[] excludesSource; // computed value
-   public @ToYamlString(ignore = true) PathMatcher[] excludesTarget; // computed value
+   public @ToYamlString(ignore = true) PathMatcher @Nullable [] excludesSource; // computed value
+   public @ToYamlString(ignore = true) PathMatcher @Nullable [] excludesTarget; // computed value
 
-   public Boolean excludeHiddenFiles;
-   public Boolean excludeHiddenSystemFiles;
-   public Boolean excludeSystemFiles;
+   public @Nullable Boolean excludeHiddenFiles;
+   public @Nullable Boolean excludeHiddenSystemFiles;
+   public @Nullable Boolean excludeSystemFiles;
 
    @SuppressWarnings({"unchecked", "rawtypes"})
    protected THIS newInstance() {
@@ -66,7 +70,7 @@ public abstract class AbstractSyncCommandConfig<THIS extends AbstractSyncCommand
    /**
     * Applies all non-null settings from the given config object to this config object
     */
-   public void applyFrom(final THIS other, final boolean override) {
+   public void applyFrom(final @Nullable THIS other, final boolean override) {
       if (other == null)
          return;
 
@@ -76,11 +80,13 @@ public abstract class AbstractSyncCommandConfig<THIS extends AbstractSyncCommand
       if (override && other.deleteExcluded != null || deleteExcluded == null) {
          deleteExcluded = other.deleteExcluded;
       }
-      if (override && other.excludes != null || excludes == null) {
-         excludes = other.excludes;
-      } else if (other.excludes != null) {
-         excludes = new ArrayList<>(excludes);
-         excludes.addAll(other.excludes);
+      final var excludes = this.excludes;
+      final var other_excludes = other.excludes;
+      if (override && other_excludes != null || excludes == null) {
+         this.excludes = other_excludes;
+      } else if (other_excludes != null) {
+         this.excludes = new ArrayList<>(excludes);
+         this.excludes.addAll(other_excludes);
       }
 
       if (override && other.excludesSource != null || excludesSource == null) {
@@ -109,7 +115,7 @@ public abstract class AbstractSyncCommandConfig<THIS extends AbstractSyncCommand
    /**
     * @return a map with any unused config parameters
     */
-   public Map<String, Object> applyFrom(final Map<String, Object> config, final boolean override) {
+   public Map<String, Object> applyFrom(final @Nullable Map<String, Object> config, final boolean override) {
       if (config == null || config.isEmpty())
          return Collections.emptyMap();
       final var cfg = new HashMap<>(config);
@@ -128,6 +134,7 @@ public abstract class AbstractSyncCommandConfig<THIS extends AbstractSyncCommand
 
    @SuppressWarnings("resource")
    public void compute() {
+      final var source = this.source;
       if (source == null)
          throw new IllegalArgumentException("Source is not specified!");
       sourceRootAbsolute = FileUtils.toAbsolute(source);
@@ -138,9 +145,10 @@ public abstract class AbstractSyncCommandConfig<THIS extends AbstractSyncCommand
       if (!Files.isDirectory(sourceRootAbsolute))
          throw new IllegalArgumentException("Source path [" + source + "] is not a directory!");
 
+      final var target = this.target;
       if (target == null)
          throw new IllegalArgumentException("Target is not specified!");
-      targetRootAbsolute = FileUtils.toAbsolute(target);
+      final var targetRootAbsolute = this.targetRootAbsolute = FileUtils.toAbsolute(target);
       if (targetRootAbsolute.getFileSystem().isReadOnly())
          throw new IllegalArgumentException("Target path [" + target + "] is on a read-only filesystem!");
       if (Files.exists(targetRootAbsolute)) {
@@ -161,6 +169,7 @@ public abstract class AbstractSyncCommandConfig<THIS extends AbstractSyncCommand
    }
 
    private void computeExcludePathMatchers() {
+      final var excludes = this.excludes;
       if (excludes != null && !excludes.isEmpty()) {
          final var sourceExcludes = new ArrayList<>(excludes.size() * 2);
          final var targetExcludes = new ArrayList<>(excludes.size() * 2);
@@ -184,10 +193,10 @@ public abstract class AbstractSyncCommandConfig<THIS extends AbstractSyncCommand
    }
 
    public boolean isExcludedSourcePath(final Path sourceAbsolute, final Path sourceRelative) throws IOException {
-      if (excludeHiddenSystemFiles == Boolean.TRUE && Files.isHidden(sourceAbsolute) && FileUtils.isDosSystemFile(sourceAbsolute))
+      if (isTrue(excludeHiddenSystemFiles) && Files.isHidden(sourceAbsolute) && FileUtils.isDosSystemFile(sourceAbsolute))
          return true;
-      if (excludeSystemFiles == Boolean.TRUE && FileUtils.isDosSystemFile(sourceAbsolute) //
-         || excludeHiddenFiles == Boolean.TRUE && Files.isHidden(sourceAbsolute))
+      if (isTrue(excludeSystemFiles) && FileUtils.isDosSystemFile(sourceAbsolute) //
+         || isTrue(excludeHiddenFiles) && Files.isHidden(sourceAbsolute))
          return true;
       if (excludesSource != null) {
          for (final var exclude : excludesSource) {
@@ -199,10 +208,10 @@ public abstract class AbstractSyncCommandConfig<THIS extends AbstractSyncCommand
    }
 
    public boolean isExcludedTargetPath(final Path targetAbsolute, final Path targetRelative) throws IOException {
-      if (excludeHiddenSystemFiles == Boolean.TRUE && Files.isHidden(targetAbsolute) && FileUtils.isDosSystemFile(targetAbsolute))
+      if (isTrue(excludeHiddenSystemFiles) && Files.isHidden(targetAbsolute) && FileUtils.isDosSystemFile(targetAbsolute))
          return true;
-      if (excludeSystemFiles == Boolean.TRUE && FileUtils.isDosSystemFile(targetAbsolute) //
-         || excludeHiddenFiles == Boolean.TRUE && Files.isHidden(targetAbsolute))
+      if (isTrue(excludeSystemFiles) && FileUtils.isDosSystemFile(targetAbsolute) //
+         || isTrue(excludeHiddenFiles) && Files.isHidden(targetAbsolute))
          return true;
       if (excludesTarget != null) {
          for (final var exclude : excludesTarget) {

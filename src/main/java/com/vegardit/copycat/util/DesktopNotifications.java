@@ -19,6 +19,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 
+import org.eclipse.jdt.annotation.Nullable;
+
 import io.github.autocomplete1.PowerShell;
 import io.github.autocomplete1.PowerShellNotAvailableException;
 import net.sf.jstuff.core.SystemUtils;
@@ -31,14 +33,15 @@ public final class DesktopNotifications {
 
    private static final Logger LOG = Logger.create();
 
-   private static final TrayIcon TRAY_ICON;
+   private static final @Nullable TrayIcon TRAY_ICON;
    private static final boolean IS_POWERSHELL_AVAILABLE;
-   private static final Path APP_ICON;
+   private static final @Nullable Path APP_ICON;
 
    static {
       if (isSupported()) {
-         TRAY_ICON = new TrayIcon(Toolkit.getDefaultToolkit().createImage(DesktopNotifications.class.getResource("/copycat16x16.png")));
-         TRAY_ICON.setImageAutoSize(true);
+         final var trayIcon = TRAY_ICON = new TrayIcon(Toolkit.getDefaultToolkit().createImage(DesktopNotifications.class.getResource(
+            "/copycat16x16.png")));
+         trayIcon.setImageAutoSize(true);
          try {
             SystemTray.getSystemTray().add(TRAY_ICON);
          } catch (final RuntimeException | AWTException ex) {
@@ -50,7 +53,7 @@ public final class DesktopNotifications {
          final var exitItem = new MenuItem("Exit (CTRL+C)");
          popup.add(exitItem);
          exitItem.addActionListener(e -> sun.misc.Signal.raise(new sun.misc.Signal("INT")));
-         TRAY_ICON.setPopupMenu(popup);
+         trayIcon.setPopupMenu(popup);
       } else {
          TRAY_ICON = null;
       }

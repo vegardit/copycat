@@ -10,6 +10,7 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 import java.util.Set;
 
+import org.eclipse.jdt.annotation.Nullable;
 import org.yaml.snakeyaml.DumperOptions;
 import org.yaml.snakeyaml.Yaml;
 import org.yaml.snakeyaml.introspector.Property;
@@ -72,19 +73,21 @@ public final class YamlUtils {
             return super.representJavaBean(properties, javaBean);
          }
 
+         @Nullable
          @Override
-         protected NodeTuple representJavaBeanProperty(final Object javaBean, final Property property, final Object propertyValue,
+         protected NodeTuple representJavaBeanProperty(final Object javaBean, final Property property, final @Nullable Object propertyValue,
             final Tag customTag) {
             // ignore marked properties
             final var anno = property.getAnnotation(ToYamlString.class);
-            if (anno != null) {
-               if (anno.ignore())
-                  return null;
-            }
+            if (anno != null && anno.ignore())
+               return null;
 
             // transform the java bean property name to lower-hyphen format
             final var node = super.representJavaBeanProperty(javaBean, property, propertyValue == null ? "<not configured>" : propertyValue,
                customTag);
+            if (node == null)
+               return null;
+
             final var name = anno == null || anno.name().isEmpty() ? property.getName() : anno.name();
             return new NodeTuple(representData(camelCaseToHyphen(name).toString()), node.getValueNode());
          }

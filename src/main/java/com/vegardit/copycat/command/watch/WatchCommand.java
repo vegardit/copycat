@@ -4,6 +4,8 @@
  */
 package com.vegardit.copycat.command.watch;
 
+import static com.vegardit.copycat.util.Booleans.*;
+
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.FileSystemException;
@@ -22,6 +24,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 
 import org.apache.commons.lang3.concurrent.BasicThreadFactory;
+import org.eclipse.jdt.annotation.Nullable;
 
 import com.vegardit.copycat.command.sync.AbstractSyncCommand;
 import com.vegardit.copycat.util.DesktopNotifications;
@@ -94,7 +97,7 @@ public class WatchCommand extends AbstractSyncCommand<WatchCommandConfig> {
             }
 
             @Override
-            public FileVisitResult visitFileFailed(final Path file, final IOException ex) throws IOException {
+            public FileVisitResult visitFileFailed(final Path file, final @Nullable IOException ex) throws IOException {
                if (ex != null) {
                   LOG.error(ex);
                }
@@ -102,7 +105,7 @@ public class WatchCommand extends AbstractSyncCommand<WatchCommandConfig> {
             }
 
             @Override
-            public FileVisitResult postVisitDirectory(final Path dir, final IOException ex) throws IOException {
+            public FileVisitResult postVisitDirectory(final Path dir, final @Nullable IOException ex) throws IOException {
                if (ex != null) {
                   LOG.error(ex);
                }
@@ -129,7 +132,7 @@ public class WatchCommand extends AbstractSyncCommand<WatchCommandConfig> {
    private void delDir(final Path dir) throws IOException {
       Files.walkFileTree(dir, new SimpleFileVisitor<>() {
          @Override
-         public FileVisitResult postVisitDirectory(final Path dir, final IOException exc) throws IOException {
+         public FileVisitResult postVisitDirectory(final Path dir, final @Nullable IOException exc) throws IOException {
             Files.delete(dir);
             return FileVisitResult.CONTINUE;
          }
@@ -164,7 +167,7 @@ public class WatchCommand extends AbstractSyncCommand<WatchCommandConfig> {
             if (loggableEvents.contains(LogEvent.CREATE)) {
                LOG.info("NEW [@|magenta %s%s|@]...", task.targetRootAbsolute, File.separator);
             }
-            FileUtils.copyDirShallow(task.sourceRootAbsolute, task.targetRootAbsolute, task.copyACL);
+            FileUtils.copyDirShallow(task.sourceRootAbsolute, task.targetRootAbsolute, isTrue(task.copyACL));
          }
 
          LOG.info("Preparing watching of [%s]...", task.sourceRootAbsolute);
@@ -236,7 +239,7 @@ public class WatchCommand extends AbstractSyncCommand<WatchCommandConfig> {
                break;
 
             case DELETE:
-               if (task.deleteExcluded != Boolean.TRUE && task.isExcludedTargetPath(targetAbsolute, sourceRelative)) {
+               if (not(task.deleteExcluded) && task.isExcludedTargetPath(targetAbsolute, sourceRelative)) {
                   break;
                }
                if (Files.exists(targetAbsolute, NOFOLLOW_LINKS)) {
@@ -302,7 +305,7 @@ public class WatchCommand extends AbstractSyncCommand<WatchCommandConfig> {
             LOG.error("Symlink creation failed:" + ex.getMessage(), ex);
          }
       } else {
-         FileUtils.copyDirShallow(sourcePath, sourceAttrs, targetPath, cfg.copyACL);
+         FileUtils.copyDirShallow(sourcePath, sourceAttrs, targetPath, isTrue(cfg.copyACL));
       }
    }
 
@@ -347,9 +350,9 @@ public class WatchCommand extends AbstractSyncCommand<WatchCommandConfig> {
       }
 
       if (contentChanged || !targetExists) {
-         FileUtils.copyFile(sourcePath, sourceAttrs, targetPath, cfg.copyACL, (bytesWritten, totalBytesWritten) -> { /**/ });
+         FileUtils.copyFile(sourcePath, sourceAttrs, targetPath, isTrue(cfg.copyACL), (bytesWritten, totalBytesWritten) -> { /**/ });
       } else {
-         FileUtils.copyAttributes(sourcePath, sourceAttrs, targetPath, cfg.copyACL);
+         FileUtils.copyAttributes(sourcePath, sourceAttrs, targetPath, isTrue(cfg.copyACL));
       }
    }
 }

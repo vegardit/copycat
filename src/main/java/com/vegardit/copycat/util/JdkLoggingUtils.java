@@ -4,6 +4,8 @@
  */
 package com.vegardit.copycat.util;
 
+import static net.sf.jstuff.core.validation.NullAnalysisHelper.asNonNullUnsafe;
+
 import java.io.BufferedOutputStream;
 import java.io.FileDescriptor;
 import java.io.FileOutputStream;
@@ -19,6 +21,7 @@ import java.util.logging.Handler;
 import java.util.logging.Level;
 import java.util.logging.LogRecord;
 
+import org.eclipse.jdt.annotation.Nullable;
 import org.fusesource.jansi.AnsiRenderer;
 
 import net.sf.jstuff.core.exception.Exceptions;
@@ -54,12 +57,12 @@ public final class JdkLoggingUtils {
 
    public static class AnsiFormatter extends Formatter {
 
-      protected String ansiRender(final String text) {
-         return text == null ? "null" : AnsiRenderer.render(text);
+      protected String ansiRender(final @Nullable String text) {
+         return text == null ? "null" : asNonNullUnsafe(AnsiRenderer.render(text));
       }
 
       protected String ansiRender(final String template, final Object... args) {
-         return String.format(AnsiRenderer.render(template), args);
+         return String.format(asNonNullUnsafe(AnsiRenderer.render(template)), args);
       }
 
       @Override
@@ -72,7 +75,7 @@ public final class JdkLoggingUtils {
             case Levels.WARNING_INT -> ansiRender("@|yellow %1$tT [%2$s] WARN: %3$s%n|@", recordTime, threadName, msg); //
             case Levels.SEVERE_INT -> entry.getThrown() == null //
                ? ansiRender("@|red %1$tT [%2$s] ERROR: %3$s%n|@", recordTime, threadName, entry.getMessage()) //
-               : ansiRender("@|red %1$tT [%2$s] ERROR: %3$s %4$s|@", recordTime, threadName, msg, Exceptions.getStackTrace(entry
+               : ansiRender("@|red %1$tT [%2$s] ERROR: %3$s %4$s|@", recordTime, threadName, msg, Exceptions.getStackTraceNullable(entry
                   .getThrown())); // // // //
             default -> String.format("%1$tT [%2$s] %3$-6s: %4$s %n", recordTime, threadName, entry.getLevel().getLocalizedName(), msg); //
          };
@@ -91,7 +94,7 @@ public final class JdkLoggingUtils {
       }
    };
 
-   private static Handler consoleHandler;
+   private static @Nullable Handler consoleHandler;
 
    public static FileHandler addFileHandler(final String fileNamePattern) throws IOException {
       synchronized (Loggers.ROOT_LOGGER) {

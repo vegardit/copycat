@@ -79,7 +79,7 @@ public class SyncStats {
    }
 
    public void onError(final Exception ex) {
-      errors.add(ex.getClass().getSimpleName() + ": " + Strings.trim(ex.getMessage()));
+      errors.add(ex.getClass().getSimpleName() + ": " + Strings.trimNullable(ex.getMessage()));
    }
 
    public void onFileCopied(final long duration, final long size) {

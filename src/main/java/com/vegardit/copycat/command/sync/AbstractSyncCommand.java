@@ -4,6 +4,8 @@
  */
 package com.vegardit.copycat.command.sync;
 
+import static com.vegardit.copycat.util.Booleans.isTrue;
+
 import java.io.IOException;
 import java.nio.file.CopyOption;
 import java.nio.file.Files;
@@ -16,6 +18,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Supplier;
 
+import org.eclipse.jdt.annotation.NonNull;
+import org.eclipse.jdt.annotation.Nullable;
 import org.yaml.snakeyaml.Yaml;
 
 import com.vegardit.copycat.command.AbstractCommand;
@@ -44,8 +48,8 @@ public abstract class AbstractSyncCommand<C extends AbstractSyncCommandConfig<C>
 
    private final Supplier<C> cfgInstanceFactory;
    protected final C cfgCLI;
-   private C cfgYamlDefaults;
-   private List<C> cfgYamlSyncTasks;
+   private @Nullable C cfgYamlDefaults;
+   private @Nullable List<C> cfgYamlSyncTasks;
 
    protected AbstractSyncCommand(final Supplier<C> cfgInstanceFactory) {
       this.cfgInstanceFactory = cfgInstanceFactory;
@@ -56,6 +60,8 @@ public abstract class AbstractSyncCommand<C extends AbstractSyncCommandConfig<C>
 
    @Override
    protected final void execute() throws Exception {
+      final var cfgYamlSyncTasks = this.cfgYamlSyncTasks;
+
       // if SOURCE is set, TARGET must be set too
       if (cfgCLI.source != null && cfgCLI.target == null)
          throw new ParameterException(commandSpec.commandLine(), "Missing required parameter: 'TARGET'");
@@ -86,7 +92,7 @@ public abstract class AbstractSyncCommand<C extends AbstractSyncCommandConfig<C>
             throw new ParameterException(commandSpec.commandLine(), "Source and target path point to the same filesystem entry ["
                + taskCfg.sourceRootAbsolute.toRealPath() + "]!");
 
-         if (taskCfg.copyACL && SystemUtils.IS_OS_WINDOWS && !SystemUtils.isRunningAsAdmin()) {
+         if (SystemUtils.IS_OS_WINDOWS && isTrue(taskCfg.copyACL) && !SystemUtils.isRunningAsAdmin()) {
             LOG.warn("Option --copy-acl was specified but process is not running with elevated administrative permissions."
                + " ACL will be copied but excluding ownership information.");
          }
@@ -114,7 +120,7 @@ public abstract class AbstractSyncCommand<C extends AbstractSyncCommandConfig<C>
          // process sync tasks
          final var yamlSyncTasks = (List<Map<String, Object>>) yamlCfg.remove("sync");
          if (yamlSyncTasks != null && !yamlSyncTasks.isEmpty()) {
-            cfgYamlSyncTasks = new ArrayList<>();
+            final var cfgYamlSyncTasks = this.cfgYamlSyncTasks = new ArrayList<>();
 
             for (final var yamlSyncTask : yamlSyncTasks) {
                final var taskCfg = cfgInstanceFactory.get();
@@ -144,7 +150,7 @@ public abstract class AbstractSyncCommand<C extends AbstractSyncCommandConfig<C>
    }
 
    @Option(names = "--exclude", split = ",", paramLabel = "<pattern>", description = "Glob pattern for files/directories to be excluded from sync.")
-   private void setExcludes(final String[] excludes) {
+   private void setExcludes(final @NonNull String[] excludes) {
       cfgCLI.excludes = List.of(excludes);
    }
 

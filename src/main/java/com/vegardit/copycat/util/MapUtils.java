@@ -9,26 +9,30 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 
+import org.eclipse.jdt.annotation.Nullable;
+
 /**
  * @author Sebastian Thomschke, Vegard IT GmbH
  */
 public final class MapUtils {
 
+   @Nullable
    public static <T> Boolean getBoolean(final Map<T, ?> map, final T key, final boolean remove) {
       final var value = remove ? map.remove(key) : map.get(key);
       if (value == null)
          return null; // CHECKSTYLE:IGNORE .*
-      if (value instanceof Boolean)
-         return (Boolean) value;
+      if (value instanceof final Boolean b)
+         return b;
       return Boolean.parseBoolean(value.toString());
    }
 
+   @Nullable
    public static <T> Integer getInteger(final Map<T, ?> map, final T key, final boolean remove) {
       final var value = remove ? map.remove(key) : map.get(key);
       if (value == null)
          return null;
-      if (value instanceof Number)
-         return ((Number) value).intValue();
+      if (value instanceof final Number n)
+         return n.intValue();
       try {
          return Integer.parseInt(value.toString());
       } catch (final NumberFormatException ex) {
@@ -37,6 +41,7 @@ public final class MapUtils {
       }
    }
 
+   @Nullable
    public static <T> Path getPath(final Map<T, ?> map, final T key, final boolean remove) {
       final var value = remove ? map.remove(key) : map.get(key);
       if (value == null)
@@ -49,11 +54,12 @@ public final class MapUtils {
       }
    }
 
+   @Nullable
    @SuppressWarnings("unchecked")
    public static <T> List<String> getStringList(final Map<T, ?> map, final T key, final boolean remove) {
       final var value = remove ? map.remove(key) : map.get(key);
       if (value == null)
-         return null; // CHECKSTYLE:IGNORE .*
+         return null;
       if (value instanceof List) {
          ((List<Object>) value).replaceAll(Object::toString);
          return (List<String>) value;

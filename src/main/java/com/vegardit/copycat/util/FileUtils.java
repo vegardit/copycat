@@ -24,10 +24,11 @@ import java.nio.file.attribute.PosixFileAttributes;
 import java.nio.file.attribute.UserDefinedFileAttributeView;
 
 import org.apache.commons.lang3.CharUtils;
-import org.apache.commons.lang3.StringUtils;
+import org.eclipse.jdt.annotation.NonNull;
 
 import com.sun.nio.file.ExtendedOpenOption;
 
+import net.sf.jstuff.core.Strings;
 import net.sf.jstuff.core.SystemUtils;
 import net.sf.jstuff.core.functional.BiLongConsumer;
 import net.sf.jstuff.core.io.MoreFiles;
@@ -36,8 +37,8 @@ import net.sf.jstuff.core.io.MoreFiles;
  * @author Sebastian Thomschke, Vegard IT GmbH
  */
 public final class FileUtils {
-   private static final CopyOption[] COPY_WITH_ATTRS_OPTIONS = {StandardCopyOption.COPY_ATTRIBUTES, LinkOption.NOFOLLOW_LINKS};
-   private static final LinkOption[] NOFOLLOW_LINKS = {LinkOption.NOFOLLOW_LINKS};
+   private static final @NonNull CopyOption[] COPY_WITH_ATTRS_OPTIONS = {StandardCopyOption.COPY_ATTRIBUTES, LinkOption.NOFOLLOW_LINKS};
+   private static final @NonNull LinkOption[] NOFOLLOW_LINKS = {LinkOption.NOFOLLOW_LINKS};
 
    private static final OpenOption[] FILE_READ_OPTIONS = SystemUtils.IS_OS_WINDOWS //
       ? new OpenOption[] {ExtendedOpenOption.NOSHARE_WRITE, StandardOpenOption.READ}
@@ -61,7 +62,7 @@ public final class FileUtils {
       final var sourceSupportedAttrs = sourceFS.supportedFileAttributeViews();
       final var targetSupportedAttrs = targetFS.supportedFileAttributeViews();
 
-      if (sourceAttrs instanceof DosFileAttributes sourceDosAttrs) {
+      if (sourceAttrs instanceof final DosFileAttributes sourceDosAttrs) {
          final var targetDosAttrs = targetFSP.getFileAttributeView(target, DosFileAttributeView.class, NOFOLLOW_LINKS);
          targetDosAttrs.setArchive(sourceDosAttrs.isArchive());
          targetDosAttrs.setHidden(sourceDosAttrs.isHidden());
@@ -81,7 +82,7 @@ public final class FileUtils {
          return;
       }
 
-      if (sourceAttrs instanceof PosixFileAttributes sourcePosixAttrs) {
+      if (sourceAttrs instanceof final PosixFileAttributes sourcePosixAttrs) {
          final var targetPosixAttrs = targetFSP.getFileAttributeView(target, PosixFileAttributeView.class, NOFOLLOW_LINKS);
          if (copyACL) {
             targetPosixAttrs.setOwner(sourcePosixAttrs.owner());
@@ -117,7 +118,7 @@ public final class FileUtils {
       throws IOException {
       if (copyACL) {
          Files.copy(source, target, NOFOLLOW_LINKS);
-         copyAttributes(source, sourceAttrs, target, copyACL);
+         copyAttributes(source, sourceAttrs, target, true);
       } else {
          Files.copy(source, target, COPY_WITH_ATTRS_OPTIONS);
       }
@@ -197,15 +198,13 @@ public final class FileUtils {
    }
 
    public static Path toAbsolute(Path path) {
-      if (path == null)
-         return path;
       path = path.normalize().toAbsolutePath();
 
       if (SystemUtils.IS_OS_WINDOWS) {
          // ensure drive letter is uppercase
          final var pathStr = path.toString();
          if (!CharUtils.isAsciiAlphaUpper(pathStr.charAt(0)))
-            return Path.of(StringUtils.capitalize(pathStr));
+            return Path.of(Strings.capitalize(pathStr));
       }
       return path;
    }

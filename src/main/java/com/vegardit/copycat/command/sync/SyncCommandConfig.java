@@ -10,17 +10,19 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 
+import org.eclipse.jdt.annotation.Nullable;
+
 /**
  * @author Sebastian Thomschke, Vegard IT GmbH
  */
 public class SyncCommandConfig extends AbstractSyncCommandConfig<SyncCommandConfig> {
 
-   public Boolean dryRun;
-   public Boolean delete;
-   public Boolean excludeOlderFiles;
-   public Boolean ignoreErrors;
-   public Boolean ignoreSymlinkErrors;
-   public Integer threads;
+   public @Nullable Boolean dryRun;
+   public @Nullable Boolean delete;
+   public @Nullable Boolean excludeOlderFiles;
+   public @Nullable Boolean ignoreErrors;
+   public @Nullable Boolean ignoreSymlinkErrors;
+   public @Nullable Integer threads;
 
    @Override
    protected SyncCommandConfig newInstance() {
@@ -41,7 +43,7 @@ public class SyncCommandConfig extends AbstractSyncCommandConfig<SyncCommandConf
    }
 
    @Override
-   public void applyFrom(final SyncCommandConfig other, final boolean override) {
+   public void applyFrom(final @Nullable SyncCommandConfig other, final boolean override) {
       if (other == null)
          return;
       super.applyFrom(other, override);
@@ -67,7 +69,7 @@ public class SyncCommandConfig extends AbstractSyncCommandConfig<SyncCommandConf
    }
 
    @Override
-   public Map<String, Object> applyFrom(final Map<String, Object> config, final boolean override) {
+   public Map<String, Object> applyFrom(final @Nullable Map<String, Object> config, final boolean override) {
       if (config == null || config.isEmpty())
          return Collections.emptyMap();
 
