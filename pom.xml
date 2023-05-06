@@ -195,7 +195,6 @@
 
                <!-- https://www.guardsquare.com/en/products/proguard/manual/usage -->
                <options>
-                  <option>-target ${java.version}</option>
                   <option>-printmapping ${project.build.directory}/proguard-mapping.txt</option>
                   <option>-printseeds ${project.build.directory}/proguard-keeps.txt</option>
                   <option>-printusage ${project.build.directory}/proguard-usage.txt</option>
