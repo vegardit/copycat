@@ -48,7 +48,7 @@ jobs:
     - name: Set up JDK ${{ env.JAVA_VERSION }}
       uses: actions/setup-java@v3 #https://github.com/actions/setup-java
       with:
-        distribution: 'zulu'
+        distribution: temurin
         java-version: ${{ env.JAVA_VERSION }}
 
     - name: "Cache: Local Maven Repository"
@@ -68,7 +68,7 @@ jobs:
 
     - name: Test with Maven
       id: maven-test
-      if: github.ref != 'refs/heads/main'
+      if: ${{ github.ref_name != 'main' || env.ACT }}
       env:
         GITHUB_USER: ${{ github.actor }}
         GITHUB_API_KEY: ${{ github.token }}
@@ -78,7 +78,7 @@ jobs:
 
     - name: Build with Maven
       id: maven-build
-      if: github.ref == 'refs/heads/main'
+      if: ${{ github.ref_name == 'main' && !env.ACT }}
       env:
         GITHUB_USER: ${{ github.actor }}
         GITHUB_API_KEY: ${{ secrets.GH_API_TOKEN }}
@@ -89,7 +89,7 @@ jobs:
         # https://github.community/t/github-actions-bot-email-address/17204
         git config user.name "github-actions[bot]"
         git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-        bash .ci/build.sh
+        bash .ci/build.sh ${{ github.event.inputs.additional_maven_args }}
 
     - name: Test minimized fat jar
       run: |
@@ -187,7 +187,7 @@ jobs:
 
         case "${{ matrix.arch }}" in
           linux-amd64)
-            sudo apt-get install --no-install-recommends -y gcc g++ libz-dev 
+            sudo apt-get install --no-install-recommends -y gcc g++ libz-dev
 
             GRAAL_VM_HOME=${{ matrix.graal_install_root }}
             if [ ! -e $GRAAL_VM_HOME/bin/native-image ]; then
@@ -211,7 +211,7 @@ jobs:
           linux-arm64)
             cat <<EOF > install_graalvm.sh
               set -eu
-              sudo apt-get install --no-install-recommends -y gcc g++ libz-dev 
+              sudo apt-get install --no-install-recommends -y gcc g++ libz-dev
 
               GRAAL_VM_HOME=${{ matrix.graal_install_root }}
               if [ ! -e \$GRAAL_VM_HOME/bin/native-image ]; then
@@ -495,7 +495,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: 
       - native-image
-    if: github.ref == 'refs/heads/main'
+    if: ${{ github.ref_name == 'main' && !github.event.act }}
 
     steps:
 
