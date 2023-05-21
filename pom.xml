@@ -44,12 +44,12 @@
 
       <java.version>17</java.version>
 
-      <!-- https://search.maven.org/artifact/org.graalvm.sdk/graal-sdk -->
+      <!-- https://central.sonatype.com/artifact/org.graalvm.sdk/graal-sdk -->
       <!-- don't upgrade to 22.1.0.1 which breaks Windows builds https://github.com/oracle/graal/issues/4340 -->
       <graalvm.version>21.3.3.1</graalvm.version>
-      <!-- https://search.maven.org/artifact/info.picocli/picocli -->
+      <!-- https://central.sonatype.com/artifact/info.picocli/picocli -->
       <picocli.version>4.7.1</picocli.version>
-      <!-- https://search.maven.org/artifact/com.guardsquare/proguard-core -->
+      <!-- https://central.sonatype.com/artifact/com.guardsquare/proguard-core -->
       <proguard.version>9.0.8</proguard.version>
 
       <skip.japicmp.cmp>true</skip.japicmp.cmp>
@@ -320,7 +320,7 @@
          <!-- https://github.com/gmethvin/directory-watcher -->
          <groupId>io.methvin</groupId>
          <artifactId>directory-watcher</artifactId>
-         <!-- https://search.maven.org/artifact/io.methvin/directory-watcher -->
+         <!-- https://central.sonatype.com/artifact/io.methvin/directory-watcher -->
          <version>0.18.0</version>
       </dependency>
       <dependency>
