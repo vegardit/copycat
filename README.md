@@ -37,7 +37,7 @@ For Windows/Linux/MacOS self-contained binaries can be downloaded at https://git
 No installation is required.
 
 
-## Usage <a name="usage"></a>Usage
+## <a name="usage"></a>Usage
 
 Copycat understands two commands:
 - `sync` is used to synchronize files from one directory to another
