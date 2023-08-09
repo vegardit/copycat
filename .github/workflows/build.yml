@@ -30,8 +30,7 @@ defaults:
     shell: bash
 
 env:
-  # don't upgrade to 22.1.0.1 which breaks Windows builds https://github.com/oracle/graal/issues/4340
-  GRAALVM_VERSION: 21.3.3.1 # https://github.com/graalvm/graalvm-ce-builds/releases
+  GRAALVM_VERSION: 17.0.8 # https://github.com/graalvm/graalvm-ce-builds/releases
   JAVA_VERSION: 17
   RELEASE_NAME: "snapshot"
 
@@ -194,7 +193,8 @@ jobs:
               rm -rf $GRAAL_VM_HOME
               mkdir -p $GRAAL_VM_HOME
 
-              curl -fL "https://github.com/graalvm/graalvm-ce-builds/releases/download/vm-${{ env.GRAALVM_VERSION }}/graalvm-ce-java${{ env.JAVA_VERSION}}-linux-amd64-${{ env.GRAALVM_VERSION }}.tar.gz" \
+
+              curl -fL "https://github.com/graalvm/graalvm-ce-builds/releases/download/jdk-${{ env.GRAALVM_VERSION }}/graalvm-community-jdk-${{ env.GRAALVM_VERSION }}_linux-x64_bin.tar.gz" \
                 | tar zxv -C $GRAAL_VM_HOME --strip-components=1 \
                     --exclude=*/bin/jvisualvm \
                     --exclude=*/lib/src.zip \
@@ -218,7 +218,7 @@ jobs:
                 rm -rf \$GRAAL_VM_HOME
                 mkdir -p \$GRAAL_VM_HOME
 
-                curl -fL "https://github.com/graalvm/graalvm-ce-builds/releases/download/vm-${{ env.GRAALVM_VERSION }}/graalvm-ce-java${{ env.JAVA_VERSION }}-linux-aarch64-${{ env.GRAALVM_VERSION }}.tar.gz" \
+                curl -fL "https://github.com/graalvm/graalvm-ce-builds/releases/download/jdk-${{ env.GRAALVM_VERSION }}/graalvm-community-jdk-${{ env.GRAALVM_VERSION }}_linux-aarch64_bin.tar.gz" \
                   | tar zxv -C \$GRAAL_VM_HOME --strip-components=1 \
                       --exclude=*/bin/jvisualvm \
                       --exclude=*/lib/src.zip \
@@ -239,7 +239,7 @@ jobs:
               rm -rf ${{ matrix.graal_install_root }}
               mkdir ${{ matrix.graal_install_root }}
 
-              curl -fL "https://github.com/graalvm/graalvm-ce-builds/releases/download/vm-${{ env.GRAALVM_VERSION }}/graalvm-ce-java${{ env.JAVA_VERSION }}-darwin-amd64-${{ env.GRAALVM_VERSION }}.tar.gz" \
+              curl -fL "https://github.com/graalvm/graalvm-ce-builds/releases/download/jdk-${{ env.GRAALVM_VERSION }}/graalvm-community-jdk-${{ env.GRAALVM_VERSION }}_macos-aarch64_bin.tar.gz" \
                 | tar zxv -C graalvm --strip-components=1 \
                     --exclude=*/bin/jvisualvm \
                     --exclude=*/lib/src.zip \
@@ -260,7 +260,7 @@ jobs:
               rm -rf $GRAAL_VM_HOME
 
               echo "Downloading GraalVM..."
-              curl -fL -o graalvm.zip https://github.com/graalvm/graalvm-ce-builds/releases/download/vm-${{ env.GRAALVM_VERSION }}/graalvm-ce-java${{ env.JAVA_VERSION }}-windows-amd64-${{ env.GRAALVM_VERSION }}.zip
+              curl -fL -o graalvm.zip https://github.com/graalvm/graalvm-ce-builds/releases/download/jdk-${{ env.GRAALVM_VERSION }}/graalvm-community-jdk-${{ env.GRAALVM_VERSION }}_windows-x64_bin.zip
   
               echo "Extracting GraalVM..."
               7z x graalvm.zip
