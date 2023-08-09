@@ -239,7 +239,7 @@ jobs:
               rm -rf ${{ matrix.graal_install_root }}
               mkdir ${{ matrix.graal_install_root }}
 
-              curl -fL "https://github.com/graalvm/graalvm-ce-builds/releases/download/jdk-${{ env.GRAALVM_VERSION }}/graalvm-community-jdk-${{ env.GRAALVM_VERSION }}_macos-aarch64_bin.tar.gz" \
+              curl -fL "https://github.com/graalvm/graalvm-ce-builds/releases/download/jdk-${{ env.GRAALVM_VERSION }}/graalvm-community-jdk-${{ env.GRAALVM_VERSION }}_macos-x64_bin.tar.gz" \
                 | tar zxv -C graalvm --strip-components=1 \
                     --exclude=*/bin/jvisualvm \
                     --exclude=*/lib/src.zip \
@@ -264,7 +264,7 @@ jobs:
   
               echo "Extracting GraalVM..."
               7z x graalvm.zip
-              mv graalvm-ce-* $GRAAL_VM_HOME
+              mv graalvm-* $GRAAL_VM_HOME
 
               $GRAAL_VM_HOME/bin/gu.cmd install native-image
             fi
