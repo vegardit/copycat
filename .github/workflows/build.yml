@@ -3,20 +3,28 @@
 #
 # Author: Sebastian Thomschke, Vegard IT GmbH
 #
-# https://docs.github.com/en/free-pro-team@latest/actions/reference/workflow-syntax-for-github-actions
+# https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions
 name: Build
 
 on:
   push:
-    branches:
-    - '**'
-    tags-ignore:
+    branches-ignore: # build all branches except:
+    - 'dependabot/**' # prevent GHA triggered twice (once for commit to the branch and once for opening/syncing the PR)
+    tags-ignore: # don't build tags
     - '**'
     paths-ignore:
     - '**/*.adoc'
     - '**/*.md'
+    - '.editorconfig'
+    - '.git*'
     - '.github/*.yml'
   pull_request:
+    paths-ignore:
+    - '**/*.adoc'
+    - '**/*.md'
+    - '.editorconfig'
+    - '.git*'
+    - '.github/*.yml'
   workflow_dispatch:
     # https://github.blog/changelog/2020-07-06-github-actions-manual-triggers-with-workflow_dispatch/
     inputs:
@@ -508,43 +516,30 @@ jobs:
 
     - name: "Delete previous '${{ env.RELEASE_NAME }}' release"
       if: env.RELEASE_NAME == 'snapshot'
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # https://cli.github.com/manual/gh_release_delete
       run: |
-        set -eu
-
-        creds="${{ secrets.GH_API_TOKEN }}:x-oauth-basic"
-        api_base_url="$GITHUB_API_URL/repos/$GITHUB_REPOSITORY"
-
-        # delete github release
-        release_id=$(curl -fsL $creds https://api.github.com/repos/vegardit/copycat/releases | jq -r '.[] | select(.name == "${{ env.RELEASE_NAME }}") | .id')
-        if [[ -n $release_id ]]; then
-           echo "Deleting release [$api_base_url/releases/$release_id]..."
-           curl -u $creds -fsSL -X DELETE "$api_base_url/releases/$release_id"
-        fi
-
-        # delete git tag
-        tag_url="$api_base_url/git/refs/tags/${{ env.RELEASE_NAME }}"
-        if curl -u $creds -fsLo /dev/null --head "$tag_url"; then
-           echo "Deleting tag [$tag_url]..."
-           curl -u $creds -fsSL -u $creds -X DELETE "$tag_url"
-        fi
+        GH_DEBUG=1 gh release delete "$RELEASE_NAME" --yes --cleanup-tag || true
 
     - name: "Create '${{ env.RELEASE_NAME }}' Release"
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # https://cli.github.com/manual/gh_release_create
       run: |
-        set -eu
+        GH_DEBUG=1 gh release create "$RELEASE_NAME" \
+          --prerelease \
+          --latest \
+          --notes "${{ github.event.head_commit.message }}" \
+          --target "${{ github.sha }}" \
+          maven-build-artifacts/copycat-fat.jar#copycat-${{ env.RELEASE_NAME }}-fat.jar \
+          maven-build-artifacts/bash/bashcompletion.sh#copycat-${{ env.RELEASE_NAME }}-bashcompletion.sh \
+          artifact/copycat-linux-amd64#copycat-${{ env.RELEASE_NAME }}-linux-amd64 \
+          artifact/copycat-linux-arm64#copycat-${{ env.RELEASE_NAME }}-linux-arm64 \
+          artifact/copycat-darwin-amd64#copycat-${{ env.RELEASE_NAME }}-darwin-amd64 \
+          artifact/copycat-windows-amd64.exe#copycat-${{ env.RELEASE_NAME }}-windows-amd64.exe \
+          artifact/copycat-windows-amd64-uncompressed.exe#copycat-${{ env.RELEASE_NAME }}-windows-amd64-uncompressed.exe
 
-        # https://hub.github.com/hub-release.1.html
-        hub release create \
-          --message "${{ env.RELEASE_NAME }}" "${{ env.RELEASE_NAME }}" \
-          --attach "maven-build-artifacts/copycat-fat.jar#copycat-${{ env.RELEASE_NAME }}-fat.jar" \
-          --attach "maven-build-artifacts/bash/bashcompletion.sh#copycat-${{ env.RELEASE_NAME }}-bashcompletion.sh" \
-          --attach "artifact/copycat-linux-amd64#copycat-${{ env.RELEASE_NAME }}-linux-amd64" \
-          --attach "artifact/copycat-linux-arm64#copycat-${{ env.RELEASE_NAME }}-linux-arm64" \
-          --attach "artifact/copycat-darwin-amd64#copycat-${{ env.RELEASE_NAME }}-darwin-amd64" \
-          --attach "artifact/copycat-windows-amd64.exe#copycat-${{ env.RELEASE_NAME }}-windows-amd64.exe" \
-          --attach "artifact/copycat-windows-amd64-uncompressed.exe#copycat-${{ env.RELEASE_NAME }}-windows-amd64-uncompressed.exe" \
-          --prerelease
 
     - name: "Delete intermediate build artifacts"
       uses: geekyeggo/delete-artifact@v2 # https://github.com/GeekyEggo/delete-artifact/
