@@ -528,7 +528,6 @@ jobs:
       # https://cli.github.com/manual/gh_release_create
       run: |
         GH_DEBUG=1 gh release create "$RELEASE_NAME" \
-          --prerelease \
           --latest \
           --notes "${{ github.event.head_commit.message }}" \
           --target "${{ github.sha }}" \
