@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: © Vegard IT GmbH (https://vegardit.com)
+# SPDX-FileContributor: Sebastian Thomschke (Vegard IT GmbH)
 # SPDX-License-Identifier: Apache-2.0
-#
-# Author: Sebastian Thomschke, Vegard IT GmbH
+# SPDX-ArtifactOfProjectHomePage: https://github.com/vegardit/copycat
 #
 # https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions
 name: Build
@@ -38,44 +38,49 @@ defaults:
     shell: bash
 
 env:
-  # don't upgrade to 22.1.0.1 which breaks Windows builds https://github.com/oracle/graal/issues/4340
+  # TODO don't upgrade as newer versions break Windows builds https://github.com/oracle/graal/issues/4340
   GRAALVM_VERSION: 21.3.3.1 # https://github.com/graalvm/graalvm-ce-builds/releases
   JAVA_VERSION: 17
   RELEASE_NAME: "snapshot"
 
 
 jobs:
+
   ###########################################################
   maven-build:
   ###########################################################
     runs-on: ubuntu-latest
-    steps:
-    - name: Git Checkout
-      uses: actions/checkout@v4 #https://github.com/actions/checkout
 
-    - name: Set up JDK ${{ env.JAVA_VERSION }}
-      uses: actions/setup-java@v4 #https://github.com/actions/setup-java
+    steps:
+    - name: Show environment variables
+      run: env | sort
+
+
+    - name: Git Checkout
+      uses: actions/checkout@v4 # https://github.com/actions/checkout
+
+
+    - name: "Install: JDK ${{ env.JAVA_VERSION }}"
+      uses: actions/setup-java@v4 # https://github.com/actions/setup-java
       with:
         distribution: temurin
         java-version: ${{ env.JAVA_VERSION }}
 
-    - name: "Cache: Local Maven Repository"
-      uses: actions/cache@v3
-      with:
-        path: ~/.m2/repository
-        key: ${{ runner.os }}-mvnrepo-${{ hashFiles('**/pom.xml') }}
-        restore-keys: |
-          ${{ runner.os }}-mvnrepo-
 
-    - name: "Cache: Maven Binaries"
-      uses: actions/cache@v3
+    - name: "Cache: Restore"
+      id: cache-restore
+      if: ${{ !env.ACT }} # https://github.com/nektos/act#skipping-steps
+      uses: actions/cache/restore@v3
       with:
         path: |
           ~/.m2/bin
-        key: ${{ runner.os }}-mvnbin-${{ hashFiles('.ci/build.sh') }}
+          ~/.m2/repository
+          !~/.m2/repository/com/vegardit/copycat
+        key: ${{ runner.os }}-${{ hashFiles('**/pom.xml') }}
+
 
     - name: Test with Maven
-      id: maven-test
+
       if: ${{ github.ref_name != 'main' || env.ACT }}
       env:
         GITHUB_USER: ${{ github.actor }}
@@ -84,8 +89,8 @@ jobs:
       run: |
         bash .ci/build.sh ${{ github.event.inputs.additional_maven_args }}
 
+
     - name: Build with Maven
-      id: maven-build
       if: ${{ github.ref_name == 'main' && !env.ACT }}
       env:
         GITHUB_USER: ${{ github.actor }}
@@ -99,6 +104,7 @@ jobs:
         git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
         bash .ci/build.sh ${{ github.event.inputs.additional_maven_args }}
 
+
     - name: Test minimized fat jar
       run: |
         set -ex
@@ -109,6 +115,7 @@ jobs:
         java -jar target/copycat-fat.jar -V
         java -jar target/copycat-fat.jar sync target/classes target/classes.copy -v
 
+
     - name: "Share: maven-build-artifacts"
       uses: actions/upload-artifact@v3
       with:
@@ -117,6 +124,31 @@ jobs:
            target/copycat-fat.jar
            target/picocli-reflections.json
            target/bash/bashcompletion.sh
+
+
+    ##################################################
+    # Cache Update
+    # See https://github.com/actions/cache/issues/342
+    ##################################################
+    - name: "Cache: Delete Previous"
+      if: ${{ steps.cache-restore.outputs.cache-hit && !env.ACT }}
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        gh extension install actions/gh-actions-cache
+        # "|| true" is to avoid "Error: Resource not accessible by integration" from failing the job 
+        gh actions-cache delete ${{ steps.cache-restore.outputs.cache-primary-key }} --confirm || true
+
+    - name: "Cache: Update"
+      uses: actions/cache/save@v3
+      if: ${{ always() && !cancelled() && !env.ACT }} # save cache even fails
+      with:
+        path: |
+          ~/.m2/bin
+          ~/.m2/repository
+          !~/.m2/repository/com/vegardit/maven
+          !~/.m2/repository/*SNAPSHOT*
+        key: ${{ steps.cache-restore.outputs.cache-primary-key }}
 
 
   ###########################################################
@@ -164,13 +196,13 @@ jobs:
         copycat-${{ matrix.arch }}
 
     steps:
-
     - name: "Cache: GraalVM binaries"
       uses: actions/cache@v3
       with:
         path: |
           ${{ matrix.graal_install_root }}
         key: ${{ matrix.arch }}-graalvm-${{ env.GRAALVM_VERSION }}-java-${{ env.JAVA_VERSION }}
+
 
     - name: "Create arm64 container"
       if: matrix.arch == 'linux-arm64'
@@ -188,6 +220,7 @@ jobs:
 
         docker exec --tty arm64 apt-get update -y
         docker exec --tty arm64 apt-get install -y curl sudo
+
 
     - name: "Install: GraalVM"
       run: |
@@ -284,6 +317,7 @@ jobs:
           ;; 
         esac
 
+
     - name: "Install: binutils (strip)"
       run: |
         case "${{ matrix.arch }}" in
@@ -295,6 +329,7 @@ jobs:
             sudo apt-get --no-install-recommends install -y binutils
           ;;
         esac
+
 
     - name: "Install: UPX"
       run: |
@@ -329,16 +364,19 @@ jobs:
           ;;
         esac
 
+
     - name: "Get: maven-build-artifacts"
       uses: actions/download-artifact@v3
       with:
         name: maven-build-artifacts
+
 
     - name: Enable Developer Command Prompt
       if: matrix.arch == 'windows-amd64'
       # makes cl.exe available on PATH
       # https://github.com/marketplace/actions/enable-developer-command-prompt
       uses: ilammy/msvc-dev-cmd@v1
+
 
     - name: "Collect metadata"
       run: |
@@ -379,6 +417,7 @@ jobs:
           ;;
         esac
 
+
     - name: "Build executable"
       run: |
         case "${{ matrix.arch }}" in
@@ -415,6 +454,7 @@ jobs:
           ;;
         esac
 
+
     - name: "Test executable"
       run: |
         case "${{ matrix.arch }}" in
@@ -435,6 +475,7 @@ jobs:
             ./copycat-${{ matrix.arch }} --help
           ;;
         esac
+
 
     - name: "Compress executable"
       run: |
@@ -461,6 +502,7 @@ jobs:
           ;;
         esac
 
+
     - name: "Test compressed executable"
       run: |
         case "${{ matrix.arch }}" in
@@ -482,11 +524,13 @@ jobs:
           ;;
         esac
 
+
     - name: "Share: native binary"
       uses: actions/upload-artifact@v3
       if: matrix.arch != 'windows-amd64'
       with:
         path: copycat-${{ matrix.arch }}
+
 
     - name: "Share: native binary"
       uses: actions/upload-artifact@v3
@@ -506,13 +550,14 @@ jobs:
     if: ${{ github.ref_name == 'main' && !github.event.act }}
 
     steps:
-
     - name: "SCM Checkout" 
       # only required by "hub release create" to prevent "fatal: Not a git repository"
       uses: actions/checkout@v4 #https://github.com/actions/checkout
 
+
     - name: "Get: all build artifacts"
       uses: actions/download-artifact@v3
+
 
     - name: "Delete previous '${{ env.RELEASE_NAME }}' release"
       if: env.RELEASE_NAME == 'snapshot'
@@ -521,6 +566,7 @@ jobs:
       # https://cli.github.com/manual/gh_release_delete
       run: |
         GH_DEBUG=1 gh release delete "$RELEASE_NAME" --yes --cleanup-tag || true
+
 
     - name: "Create '${{ env.RELEASE_NAME }}' Release"
       env:

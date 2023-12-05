@@ -6,24 +6,26 @@ updates:
     schedule:
       interval: weekly
       day: monday
-      time: "09:00"
+      time: "10:00"
     commit-message:
       prefix: fix
       prefix-development: chore
       include: scope
     labels:
-      - gha
+      - pinned
       - dependencies
+      - gha
   - package-ecosystem: maven
     directory: /
     schedule:
       interval: weekly
       day: monday
-      time: "09:00"
+      time: "10:00"
     commit-message:
       prefix: fix
       prefix-development: chore
       include: scope
     labels:
-      - mvn
+      - pinned
       - dependencies
+      - mvn
