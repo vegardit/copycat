@@ -117,7 +117,7 @@ jobs:
 
 
     - name: "Share: maven-build-artifacts"
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: maven-build-artifacts
         path: |
@@ -526,14 +526,14 @@ jobs:
 
 
     - name: "Share: native binary"
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       if: matrix.arch != 'windows-amd64'
       with:
         path: copycat-${{ matrix.arch }}
 
 
     - name: "Share: native binary"
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       if: matrix.arch == 'windows-amd64'
       with:
         path: |
