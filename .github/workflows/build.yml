@@ -117,7 +117,7 @@ jobs:
 
 
     - name: "Share: maven-build-artifacts"
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: maven-build-artifacts
         path: |
@@ -366,7 +366,7 @@ jobs:
 
 
     - name: "Get: maven-build-artifacts"
-      uses: actions/download-artifact@v3
+      uses: actions/download-artifact@v4
       with:
         name: maven-build-artifacts
 
@@ -526,16 +526,18 @@ jobs:
 
 
     - name: "Share: native binary"
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       if: matrix.arch != 'windows-amd64'
       with:
+        name: binaries-${{ matrix.arch }}
         path: copycat-${{ matrix.arch }}
 
 
     - name: "Share: native binary"
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       if: matrix.arch == 'windows-amd64'
       with:
+        name: binaries-${{ matrix.arch }}
         path: |
           copycat-${{ matrix.arch }}.exe
           copycat-${{ matrix.arch }}-uncompressed.exe
@@ -556,7 +558,10 @@ jobs:
 
 
     - name: "Get: all build artifacts"
-      uses: actions/download-artifact@v3
+      uses: actions/download-artifact@v4
+      with:
+        path: artifacts
+        merge-multiple: true
 
 
     - name: "Delete previous '${{ env.RELEASE_NAME }}' release"
@@ -577,13 +582,13 @@ jobs:
           --latest \
           --notes "${{ github.event.head_commit.message }}" \
           --target "${{ github.sha }}" \
-          maven-build-artifacts/copycat-fat.jar#copycat-${{ env.RELEASE_NAME }}-fat.jar \
-          maven-build-artifacts/bash/bashcompletion.sh#copycat-${{ env.RELEASE_NAME }}-bashcompletion.sh \
-          artifact/copycat-linux-amd64#copycat-${{ env.RELEASE_NAME }}-linux-amd64 \
-          artifact/copycat-linux-arm64#copycat-${{ env.RELEASE_NAME }}-linux-arm64 \
-          artifact/copycat-darwin-amd64#copycat-${{ env.RELEASE_NAME }}-darwin-amd64 \
-          artifact/copycat-windows-amd64.exe#copycat-${{ env.RELEASE_NAME }}-windows-amd64.exe \
-          artifact/copycat-windows-amd64-uncompressed.exe#copycat-${{ env.RELEASE_NAME }}-windows-amd64-uncompressed.exe
+          artifacts/copycat-fat.jar#copycat-${{ env.RELEASE_NAME }}-fat.jar \
+          artifacts/bash/bashcompletion.sh#copycat-${{ env.RELEASE_NAME }}-bashcompletion.sh \
+          artifacts/copycat-linux-amd64#copycat-${{ env.RELEASE_NAME }}-linux-amd64 \
+          artifacts/copycat-linux-arm64#copycat-${{ env.RELEASE_NAME }}-linux-arm64 \
+          artifacts/copycat-darwin-amd64#copycat-${{ env.RELEASE_NAME }}-darwin-amd64 \
+          artifacts/copycat-windows-amd64.exe#copycat-${{ env.RELEASE_NAME }}-windows-amd64.exe \
+          artifacts/copycat-windows-amd64-uncompressed.exe#copycat-${{ env.RELEASE_NAME }}-windows-amd64-uncompressed.exe
 
 
     - name: "Delete intermediate build artifacts"
