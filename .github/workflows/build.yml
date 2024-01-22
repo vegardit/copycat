@@ -70,7 +70,7 @@ jobs:
     - name: "Cache: Restore"
       id: cache-restore
       if: ${{ !env.ACT }} # https://github.com/nektos/act#skipping-steps
-      uses: actions/cache/restore@v3
+      uses: actions/cache/restore@v4
       with:
         path: |
           ~/.m2/bin
@@ -140,7 +140,7 @@ jobs:
         gh actions-cache delete ${{ steps.cache-restore.outputs.cache-primary-key }} --confirm || true
 
     - name: "Cache: Update"
-      uses: actions/cache/save@v3
+      uses: actions/cache/save@v4
       if: ${{ always() && !cancelled() && !env.ACT }} # save cache even fails
       with:
         path: |
@@ -197,7 +197,7 @@ jobs:
 
     steps:
     - name: "Cache: GraalVM binaries"
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       with:
         path: |
           ${{ matrix.graal_install_root }}
