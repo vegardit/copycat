@@ -164,7 +164,7 @@
          <plugin>
             <groupId>com.github.wvengen</groupId>
             <artifactId>proguard-maven-plugin</artifactId>
-            <version>2.6.0</version>
+            <version>2.6.1</version>
             <executions>
                <execution>
                   <id>shrink-fat-jar</id>
@@ -204,6 +204,8 @@
 
                   <option>-dontnote **</option>
                   <option>-ignorewarnings</option>
+
+                  <option>-optimizations !field/generalization/class</option> <!-- workaround for Exception in thread "main" java.lang.IllegalAccessError: failed to access class X from Y (X and Y are in unnamed module of loader 'app') -->
 
                   <option>-keep public class ${mainClass} { public static void main(java.lang.String[]); }</option>
 
@@ -248,6 +250,13 @@
             </configuration>
             <dependencies>
                <dependency>
+                  <!-- https://github.com/Guardsquare/proguard -->
+                  <groupId>com.guardsquare</groupId>
+                  <artifactId>proguard-base</artifactId>
+                  <version>7.4.2</version>
+               </dependency>
+               <dependency>
+                  <!-- https://github.com/Guardsquare/proguard-core -->
                   <groupId>com.guardsquare</groupId>
                   <artifactId>proguard-core</artifactId>
                   <version>${proguard.version}</version>
