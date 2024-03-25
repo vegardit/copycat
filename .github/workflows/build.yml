@@ -39,8 +39,7 @@ defaults:
     shell: bash
 
 env:
-  # TODO don't upgrade as newer versions break Windows builds https://github.com/oracle/graal/issues/4340
-  GRAALVM_VERSION: 21.3.3.1 # https://github.com/graalvm/graalvm-ce-builds/releases
+  GRAALVM_VERSION: 22.0.0 # https://github.com/graalvm/graalvm-ce-builds/releases
   JAVA_VERSION: 17
   RELEASE_NAME: "snapshot"
 
@@ -179,9 +178,10 @@ jobs:
       # -H:NativeLinkerOption=-no-pie -> do not to generate Position Independent Executables (PIE)
       NATIVE_IMAGE_ARGS:
         -H:NativeLinkerOption=-no-pie
+        -H:+ReportExceptionStackTraces
+        -H:+UnlockExperimentalVMOptions
         -H:ReflectionConfigurationFiles=picocli-reflections.json
         -H:Log=registerResource:3
-        -H:+ReportExceptionStackTraces
         -H:+RemoveUnusedSymbols
         -H:ExcludeResources=com/sun/.*.properties
         --exclude-config copycat-fat.jar META-INF/native-image/net.sf.jstuff/.*.json
@@ -236,13 +236,11 @@ jobs:
               rm -rf $GRAAL_VM_HOME
               mkdir -p $GRAAL_VM_HOME
 
-              curl -fL "https://github.com/graalvm/graalvm-ce-builds/releases/download/vm-${{ env.GRAALVM_VERSION }}/graalvm-ce-java${{ env.JAVA_VERSION}}-linux-amd64-${{ env.GRAALVM_VERSION }}.tar.gz" \
+              curl -fL "https://github.com/graalvm/graalvm-ce-builds/releases/download/jdk-${GRAALVM_VERSION}/graalvm-community-jdk-${GRAALVM_VERSION}_linux-x64_bin.tar.gz" \
                 | tar zxv -C $GRAAL_VM_HOME --strip-components=1 \
                     --exclude=*/bin/jvisualvm \
                     --exclude=*/lib/src.zip \
                     --exclude=*/lib/visualvm
-
-               $GRAAL_VM_HOME/bin/gu install native-image
             fi
 
             $GRAAL_VM_HOME/bin/native-image --version
@@ -260,13 +258,11 @@ jobs:
                 rm -rf \$GRAAL_VM_HOME
                 mkdir -p \$GRAAL_VM_HOME
 
-                curl -fL "https://github.com/graalvm/graalvm-ce-builds/releases/download/vm-${{ env.GRAALVM_VERSION }}/graalvm-ce-java${{ env.JAVA_VERSION }}-linux-aarch64-${{ env.GRAALVM_VERSION }}.tar.gz" \
+                curl -fL "https://github.com/graalvm/graalvm-ce-builds/releases/download/jdk-${GRAALVM_VERSION}/graalvm-community-jdk-${GRAALVM_VERSION}_linux-aarch64_bin.tar.gz" \
                   | tar zxv -C \$GRAAL_VM_HOME --strip-components=1 \
                       --exclude=*/bin/jvisualvm \
                       --exclude=*/lib/src.zip \
                       --exclude=*/lib/visualvm
-  
-                 \$GRAAL_VM_HOME/bin/gu install native-image
               fi
 
               \$GRAAL_VM_HOME/bin/native-image --version
@@ -281,13 +277,11 @@ jobs:
               rm -rf ${{ matrix.graal_install_root }}
               mkdir ${{ matrix.graal_install_root }}
 
-              curl -fL "https://github.com/graalvm/graalvm-ce-builds/releases/download/vm-${{ env.GRAALVM_VERSION }}/graalvm-ce-java${{ env.JAVA_VERSION }}-darwin-amd64-${{ env.GRAALVM_VERSION }}.tar.gz" \
+              curl -fL "https://github.com/graalvm/graalvm-ce-builds/releases/download/jdk-${GRAALVM_VERSION}/graalvm-community-jdk-${GRAALVM_VERSION}_macos-x64_bin.tar.gz" \
                 | tar zxv -C graalvm --strip-components=1 \
                     --exclude=*/bin/jvisualvm \
                     --exclude=*/lib/src.zip \
                     --exclude=*/lib/visualvm
-
-              $GRAAL_VM_HOME/bin/gu install native-image
             fi
 
             $GRAAL_VM_HOME/bin/native-image --version
@@ -302,13 +296,11 @@ jobs:
               rm -rf $GRAAL_VM_HOME
 
               echo "Downloading GraalVM..."
-              curl -fL -o graalvm.zip https://github.com/graalvm/graalvm-ce-builds/releases/download/vm-${{ env.GRAALVM_VERSION }}/graalvm-ce-java${{ env.JAVA_VERSION }}-windows-amd64-${{ env.GRAALVM_VERSION }}.zip
+              curl -fL -o graalvm.zip "https://github.com/graalvm/graalvm-ce-builds/releases/download/jdk-${GRAALVM_VERSION}/graalvm-community-jdk-${GRAALVM_VERSION}_windows-x64_bin.zip"
   
               echo "Extracting GraalVM..."
               7z x graalvm.zip
-              mv graalvm-ce-* $GRAAL_VM_HOME
-
-              $GRAAL_VM_HOME/bin/gu.cmd install native-image
+              mv graalvm-* $GRAAL_VM_HOME
             fi
 
             $GRAAL_VM_HOME/bin/native-image.cmd --version
@@ -388,7 +380,7 @@ jobs:
           set -eu
           rm -rf native-image-metadata
           function traceCall() {
-            echo "Tracing copycat ${@}..."
+            echo "Tracing [copycat ${@}]..."
             java -agentlib:native-image-agent=config-merge-dir=native-image-metadata/META-INF/native-image/ -jar copycat-fat.jar ${@} >/dev/null
           }
 
@@ -446,35 +438,32 @@ jobs:
             "
           ;;
           darwin-amd64)
-            # not using "--static" because of error: DARWIN does not support building static executable images.
+            # not using "--static" because of "Error: Invalid option '--static'. Building static executable images is currently only supported on Linux. Remove the '--static' option or build on a Linux machine."
             native-image ${{ env.NATIVE_IMAGE_ARGS }}
           ;;
           windows-amd64)
-            # https://www.graalvm.org/21.3/reference-manual/native-image/StaticImages/
-            native-image.cmd --static ${{ env.NATIVE_IMAGE_ARGS }}
+            # not using "--static" because of "Error: Invalid option '--static'. Building static executable images is currently only supported on Linux. Remove the '--static' option or build on a Linux machine."
+            native-image.cmd ${{ env.NATIVE_IMAGE_ARGS }}
           ;;
         esac
 
 
     - name: "Test executable"
       run: |
+        test_commands="
+          set -x &&
+          chmod u+x copycat-${{ matrix.arch }} &&
+          ./copycat-${{ matrix.arch }} --version &&
+          ./copycat-${{ matrix.arch }} --help &&
+          ./copycat-${{ matrix.arch }} sync --help &&
+          ./copycat-${{ matrix.arch }} watch --help &&
+          ./copycat-${{ matrix.arch }} sync native-image-metadata native-image-metadata.copy -v &&
+          rm -rf native-image-metadata.copy
+        "
+   
         case "${{ matrix.arch }}" in
-          linux-arm64)
-            docker exec --tty -w /workspace arm64 /bin/bash -c "   
-              chmod u+x copycat-${{ matrix.arch }} &&
-              ./copycat-${{ matrix.arch }} --version &&
-              ./copycat-${{ matrix.arch }} --help &&
-              ./copycat-${{ matrix.arch }} sync --help &&
-              ./copycat-${{ matrix.arch }} watch --help
-             "
-          ;;
-          *)
-            chmod u+x copycat-${{ matrix.arch }}
-            ./copycat-${{ matrix.arch }} --version
-            ./copycat-${{ matrix.arch }} --help
-            ./copycat-${{ matrix.arch }} sync --help
-            ./copycat-${{ matrix.arch }} --help
-          ;;
+          linux-arm64) docker exec --tty -w /workspace arm64 /bin/bash -c "$test_commands" ;;
+          *)           /bin/bash -c "$test_commands" ;;
         esac
 
 
@@ -506,23 +495,20 @@ jobs:
 
     - name: "Test compressed executable"
       run: |
+        test_commands="
+          set -x &&
+          chmod u+x copycat-${{ matrix.arch }} &&
+          ./copycat-${{ matrix.arch }} --version &&
+          ./copycat-${{ matrix.arch }} --help &&
+          ./copycat-${{ matrix.arch }} sync --help &&
+          ./copycat-${{ matrix.arch }} watch --help &&
+          ./copycat-${{ matrix.arch }} sync native-image-metadata native-image-metadata.copy -v &&
+          rm -rf native-image-metadata.copy
+        "
+
         case "${{ matrix.arch }}" in
-          linux-arm64)
-            docker exec --tty -w /workspace arm64 /bin/bash -c "
-              chmod u+x copycat-${{ matrix.arch }} &&
-              ./copycat-${{ matrix.arch }} --version &&
-              ./copycat-${{ matrix.arch }} --help &&
-              ./copycat-${{ matrix.arch }} sync --help &&
-              ./copycat-${{ matrix.arch }} watch --help
-             "
-          ;;
-          *)
-            chmod u+x copycat-${{ matrix.arch }}
-            ./copycat-${{ matrix.arch }} --version
-            ./copycat-${{ matrix.arch }} --help
-            ./copycat-${{ matrix.arch }} sync --help
-            ./copycat-${{ matrix.arch }} --help
-          ;;
+          linux-arm64) docker exec --tty -w /workspace arm64 /bin/bash -c "$test_commands" ;;
+          *)           /bin/bash -c "$test_commands" ;;
         esac
 
 
