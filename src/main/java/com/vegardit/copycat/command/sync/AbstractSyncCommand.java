@@ -16,9 +16,9 @@ import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.function.Supplier;
 
-import org.eclipse.jdt.annotation.NonNull;
 import org.eclipse.jdt.annotation.Nullable;
 import org.yaml.snakeyaml.Yaml;
 
@@ -150,9 +150,16 @@ public abstract class AbstractSyncCommand<C extends AbstractSyncCommandConfig<C>
       cfgCLI.deleteExcluded = deleteExcluded;
    }
 
-   @Option(names = "--exclude", split = ",", paramLabel = "<pattern>", description = "Glob pattern for files/directories to be excluded from sync.")
-   private void setExcludes(final @NonNull String[] excludes) {
-      cfgCLI.excludes = List.of(excludes);
+   private boolean isDeprecatedExcludeUsed;
+
+   @Option(names = "--exclude", split = ",", paramLabel = "<pattern>", hidden = true, //
+      description = "[DEPRECATED] Glob pattern for files/directories to be excluded from sync. Use --filters instead")
+   private void setExcludes(final List<String> excludes) {
+      if (!isDeprecatedExcludeUsed && cfgCLI.fileFilters != null)
+         throw new IllegalArgumentException("--exclude cannot be used together with --filters");
+      isDeprecatedExcludeUsed = true;
+      LOG.warn("Option --exclude is deprecated. Please use new --filters option.");
+      cfgCLI.fileFilters = excludes.stream().map(exclude -> "ex:" + exclude).filter(Objects::nonNull).toList();
    }
 
    @Option(names = "--exclude-hidden-files", description = "Don't synchronize hidden files.")
@@ -168,6 +175,14 @@ public abstract class AbstractSyncCommand<C extends AbstractSyncCommandConfig<C>
    @Option(names = "--exclude-system-files", description = "Don't synchronize system files.")
    private void setExcludeSystemFiles(final boolean excludeSystemFiles) {
       cfgCLI.excludeSystemFiles = excludeSystemFiles;
+   }
+
+   @Option(names = "--filter", paramLabel = "in|ex:<pattern>", //
+      description = "Glob pattern for files/directories to be excluded from or included in sync.")
+   private void setFilters(final List<String> fileFilters) {
+      if (isDeprecatedExcludeUsed)
+         throw new IllegalArgumentException("Option --filter cannot be used togther with --exclude.");
+      cfgCLI.fileFilters = fileFilters;
    }
 
    @Parameters(index = "0", arity = "0..1", paramLabel = "SOURCE", description = "Directory to copy from files.")

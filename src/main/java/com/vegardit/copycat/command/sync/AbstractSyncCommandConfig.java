@@ -17,6 +17,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 import org.eclipse.jdt.annotation.Nullable;
 
@@ -25,11 +26,20 @@ import com.vegardit.copycat.util.YamlUtils.ToYamlString;
 
 import net.sf.jstuff.core.Strings;
 import net.sf.jstuff.core.SystemUtils;
+import net.sf.jstuff.core.collection.tuple.Tuple2;
+import net.sf.jstuff.core.logging.Logger;
 
 /**
  * @author Sebastian Thomschke, Vegard IT GmbH
  */
 public abstract class AbstractSyncCommandConfig<THIS extends AbstractSyncCommandConfig<THIS>> {
+
+   private static final Logger LOG = Logger.create();
+
+   protected enum FileFilterAction {
+      EXCLUDE,
+      INCLUDE
+   }
 
    public @Nullable @ToYamlString(ignore = true) Path source;
    public @ToYamlString(name = "source") Path sourceRootAbsolute = lazyNonNull(); // computed value
@@ -39,10 +49,10 @@ public abstract class AbstractSyncCommandConfig<THIS extends AbstractSyncCommand
 
    public @Nullable Boolean copyACL;
    public @Nullable Boolean deleteExcluded;
-   public @Nullable List<String> excludes;
+   public @Nullable @ToYamlString(name = "filters") List<String> fileFilters;
 
-   public @ToYamlString(ignore = true) PathMatcher @Nullable [] excludesSource; // computed value
-   public @ToYamlString(ignore = true) PathMatcher @Nullable [] excludesTarget; // computed value
+   protected @ToYamlString(ignore = true) Tuple2<FileFilterAction, PathMatcher> @Nullable [] fileFiltersSource; // computed value
+   protected @ToYamlString(ignore = true) Tuple2<FileFilterAction, PathMatcher> @Nullable [] fileFiltersTarget; // computed value
 
    public @Nullable Boolean excludeHiddenFiles;
    public @Nullable Boolean excludeHiddenSystemFiles;
@@ -60,7 +70,7 @@ public abstract class AbstractSyncCommandConfig<THIS extends AbstractSyncCommand
       final THIS defaults = newInstance();
       defaults.copyACL = false;
       defaults.deleteExcluded = false;
-      defaults.excludes = Collections.emptyList();
+      defaults.fileFilters = Collections.emptyList();
       defaults.excludeHiddenFiles = false;
       defaults.excludeHiddenSystemFiles = false;
       defaults.excludeSystemFiles = false;
@@ -80,20 +90,15 @@ public abstract class AbstractSyncCommandConfig<THIS extends AbstractSyncCommand
       if (override && other.deleteExcluded != null || deleteExcluded == null) {
          deleteExcluded = other.deleteExcluded;
       }
-      final var excludes = this.excludes;
-      final var other_excludes = other.excludes;
-      if (override && other_excludes != null || excludes == null) {
-         this.excludes = other_excludes;
-      } else if (other_excludes != null) {
-         this.excludes = new ArrayList<>(excludes);
-         this.excludes.addAll(other_excludes);
+      final var other_fileFilters = other.fileFilters;
+      if (override && other_fileFilters != null || fileFilters == null) {
+         fileFilters = other_fileFilters;
       }
-
-      if (override && other.excludesSource != null || excludesSource == null) {
-         excludesSource = other.excludesSource;
+      if (override && other.fileFiltersSource != null || fileFiltersSource == null) {
+         fileFiltersSource = other.fileFiltersSource;
       }
-      if (override && other.excludesTarget != null || excludesTarget == null) {
-         excludesTarget = other.excludesTarget;
+      if (override && other.fileFiltersTarget != null || fileFiltersTarget == null) {
+         fileFiltersTarget = other.fileFiltersTarget;
       }
       if (override && other.excludeHiddenFiles != null || excludeHiddenFiles == null) {
          excludeHiddenFiles = other.excludeHiddenFiles;
@@ -122,12 +127,31 @@ public abstract class AbstractSyncCommandConfig<THIS extends AbstractSyncCommand
       final THIS defaults = newInstance();
       defaults.copyACL = getBoolean(cfg, "copy-acl", true);
       defaults.deleteExcluded = getBoolean(cfg, "delete-excluded", true);
-      defaults.excludes = getStringList(cfg, "exclude", true);
       defaults.excludeHiddenFiles = getBoolean(cfg, "exclude-hidden-files", true);
       defaults.excludeHiddenSystemFiles = getBoolean(cfg, "exclude-hidden-system-files", true);
       defaults.excludeSystemFiles = getBoolean(cfg, "exclude-system-files", true);
       defaults.source = getPath(cfg, "source", true);
       defaults.target = getPath(cfg, "target", true);
+
+      var filters = getStringList(cfg, "filters", true);
+      final var filter = getStringList(cfg, "filter", true); // mutual exclusive alias for "filters"
+      final var excludes = getStringList(cfg, "exclude", true); // deprecated excludes option
+
+      if (filter != null) {
+         if (filters != null)
+            throw new IllegalArgumentException("Duplicate option 'filters:' and 'filter:' found in config.");
+         LOG.warn("Option 'filter:' found in config should be named 'filters:'.");
+         filters = filter;
+      }
+      if (excludes != null) {
+         if (filters != null)
+            throw new IllegalArgumentException(
+               "Option 'filters:' and deprecated option 'exclude:' found in config cannot be specified at the same time.");
+         LOG.warn("Deprecated 'exclude:' option found in config. Please migrate to new 'filters:' option.");
+         filters = excludes.stream().map(exclude -> "ex:" + exclude).filter(Objects::nonNull).toList();
+      }
+
+      defaults.fileFilters = filters;
       applyFrom(defaults, override);
       return cfg;
    }
@@ -168,55 +192,70 @@ public abstract class AbstractSyncCommandConfig<THIS extends AbstractSyncCommand
       computeExcludePathMatchers();
    }
 
+   @SuppressWarnings("resource")
    private void computeExcludePathMatchers() {
-      final var excludes = this.excludes;
-      if (excludes != null && !excludes.isEmpty()) {
-         final var sourceExcludes = new ArrayList<>(excludes.size() * 2);
-         final var targetExcludes = new ArrayList<>(excludes.size() * 2);
-         final @SuppressWarnings("resource") var sourceFS = sourceRootAbsolute.getFileSystem();
-         final @SuppressWarnings("resource") var targetFS = targetRootAbsolute.getFileSystem();
-         for (String exclude : excludes) {
+      final var filters = fileFilters;
+      if (filters != null && !filters.isEmpty()) {
+         final var sourceExcludes = new ArrayList<Tuple2<FileFilterAction, PathMatcher>>(filters.size() * 2);
+         final var targetExcludes = new ArrayList<Tuple2<FileFilterAction, PathMatcher>>(filters.size() * 2);
+         final var sourceFS = sourceRootAbsolute.getFileSystem();
+         final var targetFS = targetRootAbsolute.getFileSystem();
+         for (final String filterSpec : filters) {
+            final FileFilterAction action;
+            if (Strings.startsWithIgnoreCase(filterSpec, "in:")) {
+               action = FileFilterAction.INCLUDE;
+            } else if (Strings.startsWithIgnoreCase(filterSpec, "ex:")) {
+               action = FileFilterAction.EXCLUDE;
+            } else
+               throw new IllegalArgumentException("Illegal filter definition \"" + filterSpec
+                  + "\". Must start with action prefix \"in:\" or \"ex:\".");
+
+            var globPattern = Strings.substringAfter(filterSpec, ":");
+
             // globbing does not work with backslash as path separator, so replacing it with slash on windows
             if (SystemUtils.IS_OS_WINDOWS) {
-               exclude = Strings.replace(exclude, "\\", "/");
+               globPattern = Strings.replace(globPattern, "\\", "/");
             }
-            exclude = Strings.removeEnd(exclude, "/");
-            exclude = "glob:" + exclude;
-            sourceExcludes.add(sourceFS.getPathMatcher(exclude));
-            sourceExcludes.add(sourceFS.getPathMatcher(exclude + "/**"));
-            targetExcludes.add(targetFS.getPathMatcher(exclude));
-            targetExcludes.add(targetFS.getPathMatcher(exclude + "/**"));
+            globPattern = Strings.removeEnd(globPattern, "/");
+            globPattern = "glob:" + globPattern;
+
+            sourceExcludes.add(Tuple2.create(action, sourceFS.getPathMatcher(globPattern)));
+            sourceExcludes.add(Tuple2.create(action, sourceFS.getPathMatcher(globPattern + "/**")));
+            targetExcludes.add(Tuple2.create(action, targetFS.getPathMatcher(globPattern)));
+            targetExcludes.add(Tuple2.create(action, targetFS.getPathMatcher(globPattern + "/**")));
          }
-         excludesSource = sourceExcludes.toArray(PathMatcher[]::new);
-         excludesTarget = targetExcludes.toArray(PathMatcher[]::new);
+         fileFiltersSource = sourceExcludes.toArray(new Tuple2[sourceExcludes.size()]);
+         fileFiltersTarget = targetExcludes.toArray(new Tuple2[targetExcludes.size()]);
       }
    }
 
    public boolean isExcludedSourcePath(final Path sourceAbsolute, final Path sourceRelative) throws IOException {
-      if (isTrue(excludeHiddenSystemFiles) && Files.isHidden(sourceAbsolute) && FileUtils.isDosSystemFile(sourceAbsolute) //
-         || isTrue(excludeSystemFiles) && FileUtils.isDosSystemFile(sourceAbsolute) //
-         || isTrue(excludeHiddenFiles) && Files.isHidden(sourceAbsolute))
-         return true;
-
-      if (excludesSource != null) {
-         for (final var exclude : excludesSource) {
-            if (exclude.matches(sourceRelative))
-               return true;
-         }
-      }
-      return false;
+      return isExcludedPath(sourceAbsolute, sourceRelative, fileFiltersSource);
    }
 
    public boolean isExcludedTargetPath(final Path targetAbsolute, final Path targetRelative) throws IOException {
-      if (isTrue(excludeHiddenSystemFiles) && Files.isHidden(targetAbsolute) && FileUtils.isDosSystemFile(targetAbsolute) //
-         || isTrue(excludeSystemFiles) && FileUtils.isDosSystemFile(targetAbsolute) //
-         || isTrue(excludeHiddenFiles) && Files.isHidden(targetAbsolute))
+      return isExcludedPath(targetAbsolute, targetRelative, fileFiltersTarget);
+   }
+
+   private boolean isExcludedPath(final Path absolutePath, final Path relativePath,
+      final Tuple2<FileFilterAction, PathMatcher> @Nullable [] fileFilters) throws IOException {
+      if (isTrue(excludeHiddenSystemFiles) && Files.isHidden(absolutePath) && FileUtils.isDosSystemFile(absolutePath) //
+         || isTrue(excludeSystemFiles) && FileUtils.isDosSystemFile(absolutePath) //
+         || isTrue(excludeHiddenFiles) && Files.isHidden(absolutePath))
          return true;
 
-      if (excludesTarget != null) {
-         for (final var exclude : excludesTarget) {
-            if (exclude.matches(targetRelative))
-               return true;
+      if (fileFilters != null) {
+         for (final var filter : fileFilters) {
+            switch (filter.get1()) {
+               case EXCLUDE:
+                  if (filter.get2().matches(relativePath))
+                     return true;
+                  break;
+               case INCLUDE:
+                  if (filter.get2().matches(relativePath))
+                     return false;
+                  break;
+            }
          }
       }
       return false;

@@ -131,7 +131,7 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
       try {
          for (final var task : tasks) {
             JdkLoggingUtils.withRootLogLevel(Level.INFO, () -> {
-               LOG.info("Effective Config:\n%s", YamlUtils.toYamlString(task));
+               LOG.info("Executing sync task with effective config:\n%s", YamlUtils.toYamlString(task));
             });
 
             int task_threads = asNonNull(task.threads);
@@ -482,7 +482,7 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
             if (sourceAttrs.isSymbolicLink() && targetAttrs.isSymbolicLink()) { // both are symlinks
                copyCause = null;
 
-            } else if (sourceAttrs.isSymbolicLink() == targetAttrs.isSymbolicLink()) { // non are symlinks
+            } else if (sourceAttrs.isSymbolicLink() == targetAttrs.isSymbolicLink()) { // neither is a symlink
                final var timeCompare = sourceAttrs.lastModifiedTime().compareTo(targetAttrs.lastModifiedTime());
                if (timeCompare > 0) {
                   copyCause = "NEWER";
@@ -500,6 +500,7 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
                   } else if (sizeCompare < 0) {
                      copyCause = "SMALLER";
                   } else {
+                     LOG.trace("Source file [@|magenta %s|@] is in sync...", relativePath);
                      copyCause = null;
                   }
                }
