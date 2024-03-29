@@ -193,11 +193,11 @@ public abstract class AbstractSyncCommandConfig<THIS extends AbstractSyncCommand
    }
 
    public boolean isExcludedSourcePath(final Path sourceAbsolute, final Path sourceRelative) throws IOException {
-      if (isTrue(excludeHiddenSystemFiles) && Files.isHidden(sourceAbsolute) && FileUtils.isDosSystemFile(sourceAbsolute))
-         return true;
-      if (isTrue(excludeSystemFiles) && FileUtils.isDosSystemFile(sourceAbsolute) //
+      if (isTrue(excludeHiddenSystemFiles) && Files.isHidden(sourceAbsolute) && FileUtils.isDosSystemFile(sourceAbsolute) //
+         || isTrue(excludeSystemFiles) && FileUtils.isDosSystemFile(sourceAbsolute) //
          || isTrue(excludeHiddenFiles) && Files.isHidden(sourceAbsolute))
          return true;
+
       if (excludesSource != null) {
          for (final var exclude : excludesSource) {
             if (exclude.matches(sourceRelative))
@@ -208,11 +208,11 @@ public abstract class AbstractSyncCommandConfig<THIS extends AbstractSyncCommand
    }
 
    public boolean isExcludedTargetPath(final Path targetAbsolute, final Path targetRelative) throws IOException {
-      if (isTrue(excludeHiddenSystemFiles) && Files.isHidden(targetAbsolute) && FileUtils.isDosSystemFile(targetAbsolute))
-         return true;
-      if (isTrue(excludeSystemFiles) && FileUtils.isDosSystemFile(targetAbsolute) //
+      if (isTrue(excludeHiddenSystemFiles) && Files.isHidden(targetAbsolute) && FileUtils.isDosSystemFile(targetAbsolute) //
+         || isTrue(excludeSystemFiles) && FileUtils.isDosSystemFile(targetAbsolute) //
          || isTrue(excludeHiddenFiles) && Files.isHidden(targetAbsolute))
          return true;
+
       if (excludesTarget != null) {
          for (final var exclude : excludesTarget) {
             if (exclude.matches(targetRelative))
