@@ -237,7 +237,7 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
       cfgCLI.delete = value;
    }
 
-   @Option(names = "--dry-run", defaultValue = "false", description = "Don't perform actual synchronization.")
+   @Option(names = "--dry-run", description = "Don't perform actual synchronization.")
    private void setDryRun(final boolean dryRun) {
       cfgCLI.dryRun = dryRun;
    }
