@@ -134,9 +134,9 @@ public abstract class AbstractSyncCommand<C extends AbstractSyncCommandConfig<C>
             }
          }
 
-         if (!yamlCfg.isEmpty()) {
-            LOG.warn("The following settings found in the config file are unknown:\n" + YamlUtils.toYamlString(yamlCfg));
-         }
+         if (!yamlCfg.isEmpty())
+            throw new IllegalArgumentException("The following settings found in the config file are unknown:\n" + YamlUtils.toYamlString(
+               yamlCfg));
       }
    }
 
