@@ -53,7 +53,7 @@ public abstract class AbstractSyncCommand<C extends AbstractSyncCommandConfig<C>
 
    protected AbstractSyncCommand(final Supplier<C> cfgInstanceFactory) {
       this.cfgInstanceFactory = cfgInstanceFactory;
-      this.cfgCLI = cfgInstanceFactory.get();
+      cfgCLI = cfgInstanceFactory.get();
    }
 
    protected abstract void doExecute(List<C> tasks) throws Exception;
@@ -104,6 +104,7 @@ public abstract class AbstractSyncCommand<C extends AbstractSyncCommandConfig<C>
    @SuppressWarnings("unchecked")
    @Option(names = "--config", paramLabel = "<path>", description = "Path to a YAML config file.")
    private void setConfig(final String configPath) throws IOException {
+      LOG.info("Loading config [%s]...", configPath);
       try (var in = Files.newBufferedReader(Path.of(configPath))) {
          final Map<String, Object> yamlCfg = new Yaml().load(in);
 
