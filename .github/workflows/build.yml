@@ -18,6 +18,7 @@ on:
     - '.editorconfig'
     - '.git*'
     - '.github/*.yml'
+    - '.github/workflows/stale.yml'
   pull_request:
     paths-ignore:
     - '**/*.adoc'
