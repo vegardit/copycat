@@ -157,6 +157,7 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
              */
             DesktopNotifications.showTransient(MessageType.INFO, "Syncing started...", //
                "FROM: " + task.sourceRootAbsolute + "\nTO: " + task.targetRootAbsolute);
+            threadsDone.set(false);
             if (task_threads == 1) {
                sync(task);
             } else {
@@ -276,6 +277,7 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
       while (state == State.NORMAL) {
          final var source = getNextSourceEntry(task);
          if (source == null) {
+            LOG.debug("Done.");
             break;
          }
 
