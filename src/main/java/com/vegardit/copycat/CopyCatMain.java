@@ -132,7 +132,7 @@ public class CopyCatMain extends AbstractCommand {
       });
       handler.setExecutionExceptionHandler((ex, commandLine, parseResult) -> {
          ex = asNonNullUnsafe(ex);
-         if (LOG.isDebugEnabled()) {
+         if (LOG.isDebugEnabled() || ex instanceof UnsupportedOperationException || ex instanceof NullPointerException) {
             LOG.error(ex); // log with stacktrace
          } else {
             LOG.error(ex.getMessage());
