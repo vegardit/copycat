@@ -1,8 +1,3 @@
-# SPDX-FileCopyrightText: © Vegard IT GmbH (https://vegardit.com)
-# SPDX-FileContributor: Sebastian Thomschke (Vegard IT GmbH)
-# SPDX-License-Identifier: Apache-2.0
-# SPDX-ArtifactOfProjectHomePage: https://github.com/vegardit/copycat
-#
 # https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions
 name: Stale issues
 

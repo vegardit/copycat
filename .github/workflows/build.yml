@@ -8,9 +8,9 @@ name: Build
 
 on:
   push:
-    branches-ignore: # build all branches except:
-    - 'dependabot/**' # prevent GHA triggered twice (once for commit to the branch and once for opening/syncing the PR)
-    tags-ignore: # don't build tags
+    branches-ignore:  # build all branches except:
+    - 'dependabot/**'  # prevent GHA triggered twice (once for commit to the branch and once for opening/syncing the PR)
+    tags-ignore:  # don't build tags
     - '**'
     paths-ignore:
     - '**/*.adoc'
@@ -58,30 +58,17 @@ jobs:
 
 
     - name: Git Checkout
-      uses: actions/checkout@v4 # https://github.com/actions/checkout
+      uses: actions/checkout@v4  # https://github.com/actions/checkout
 
 
     - name: "Install: JDK ${{ env.JAVA_VERSION }}"
-      uses: actions/setup-java@v4 # https://github.com/actions/setup-java
+      uses: actions/setup-java@v4  # https://github.com/actions/setup-java
       with:
         distribution: temurin
         java-version: ${{ env.JAVA_VERSION }}
-
-
-    - name: "Cache: Restore"
-      id: cache-restore
-      if: ${{ !env.ACT }} # https://github.com/nektos/act#skipping-steps
-      uses: actions/cache/restore@v4
-      with:
-        path: |
-          ~/.m2/bin
-          ~/.m2/repository
-          !~/.m2/repository/com/vegardit/copycat
-        key: ${{ runner.os }}-${{ hashFiles('**/pom.xml') }}
-
+        cache: maven
 
     - name: Test with Maven
-
       if: ${{ github.ref_name != 'main' || env.ACT }}
       env:
         GITHUB_USER: ${{ github.actor }}
@@ -125,31 +112,6 @@ jobs:
            target/copycat-fat.jar
            target/picocli-reflections.json
            target/bash/bashcompletion.sh
-
-
-    ##################################################
-    # Cache Update
-    # See https://github.com/actions/cache/issues/342
-    ##################################################
-    - name: "Cache: Delete Previous"
-      if: ${{ steps.cache-restore.outputs.cache-hit && !env.ACT }}
-      env:
-        GH_TOKEN: ${{ github.token }}
-      run: |
-        gh extension install actions/gh-actions-cache
-        # "|| true" is to avoid "Error: Resource not accessible by integration" from failing the job 
-        gh actions-cache delete ${{ steps.cache-restore.outputs.cache-primary-key }} --confirm || true
-
-    - name: "Cache: Update"
-      uses: actions/cache/save@v4
-      if: ${{ always() && !cancelled() && !env.ACT }} # save cache even fails
-      with:
-        path: |
-          ~/.m2/bin
-          ~/.m2/repository
-          !~/.m2/repository/com/vegardit/maven
-          !~/.m2/repository/*SNAPSHOT*
-        key: ${{ steps.cache-restore.outputs.cache-primary-key }}
 
 
   ###########################################################
