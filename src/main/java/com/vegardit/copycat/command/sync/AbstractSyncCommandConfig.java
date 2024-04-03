@@ -189,15 +189,15 @@ public abstract class AbstractSyncCommandConfig<THIS extends AbstractSyncCommand
             throw new IllegalArgumentException("Parent of target path [" + targetRootAbsolute.getParent() + "] is not a directory!");
       }
 
-      computeExcludePathMatchers();
+      computePathMatchers();
    }
 
    @SuppressWarnings("resource")
-   private void computeExcludePathMatchers() {
+   private void computePathMatchers() {
       final var filters = fileFilters;
       if (filters != null && !filters.isEmpty()) {
-         final var sourceExcludes = new ArrayList<Tuple2<FileFilterAction, PathMatcher>>(filters.size() * 2);
-         final var targetExcludes = new ArrayList<Tuple2<FileFilterAction, PathMatcher>>(filters.size() * 2);
+         final var sourceFilters = new ArrayList<Tuple2<FileFilterAction, PathMatcher>>(filters.size() * 2);
+         final var targetFilters = new ArrayList<Tuple2<FileFilterAction, PathMatcher>>(filters.size() * 2);
          final var sourceFS = sourceRootAbsolute.getFileSystem();
          final var targetFS = targetRootAbsolute.getFileSystem();
          for (final String filterSpec : filters) {
@@ -212,20 +212,23 @@ public abstract class AbstractSyncCommandConfig<THIS extends AbstractSyncCommand
 
             var globPattern = Strings.substringAfter(filterSpec, ":");
 
-            // globbing does not work with backslash as path separator, so replacing it with slash on windows
+            // globbing does not work with backslash as path separator, so replacing it with slash on Windows
             if (SystemUtils.IS_OS_WINDOWS) {
                globPattern = Strings.replace(globPattern, "\\", "/");
             }
             globPattern = Strings.removeEnd(globPattern, "/");
             globPattern = "glob:" + globPattern;
 
-            sourceExcludes.add(Tuple2.create(action, sourceFS.getPathMatcher(globPattern)));
-            sourceExcludes.add(Tuple2.create(action, sourceFS.getPathMatcher(globPattern + "/**")));
-            targetExcludes.add(Tuple2.create(action, targetFS.getPathMatcher(globPattern)));
-            targetExcludes.add(Tuple2.create(action, targetFS.getPathMatcher(globPattern + "/**")));
+            sourceFilters.add(Tuple2.create(action, sourceFS.getPathMatcher(globPattern)));
+            targetFilters.add(Tuple2.create(action, targetFS.getPathMatcher(globPattern)));
+
+            if (!globPattern.endsWith("/**")) {
+               sourceFilters.add(Tuple2.create(action, sourceFS.getPathMatcher(globPattern + "/**")));
+               targetFilters.add(Tuple2.create(action, targetFS.getPathMatcher(globPattern + "/**")));
+            }
          }
-         fileFiltersSource = sourceExcludes.toArray(new Tuple2[sourceExcludes.size()]);
-         fileFiltersTarget = targetExcludes.toArray(new Tuple2[targetExcludes.size()]);
+         fileFiltersSource = sourceFilters.toArray(new Tuple2[sourceFilters.size()]);
+         fileFiltersTarget = targetFilters.toArray(new Tuple2[targetFilters.size()]);
       }
    }
 
