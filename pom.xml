@@ -50,7 +50,7 @@
       <!-- https://central.sonatype.com/artifact/info.picocli/picocli -->
       <picocli.version>4.7.5</picocli.version>
       <!-- https://central.sonatype.com/artifact/com.guardsquare/proguard-core -->
-      <proguard.version>9.1.1</proguard.version>
+      <proguard.version>9.1.2</proguard.version>
 
       <skip.japicmp.cmp>true</skip.japicmp.cmp>
    </properties>
