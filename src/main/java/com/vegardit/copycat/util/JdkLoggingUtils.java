@@ -73,13 +73,13 @@ public final class JdkLoggingUtils {
          return switch (entry.getLevel().intValue()) {
             case Levels.INFO_INT -> ansiRender("%1$tT @|green [%2$s]|@ %3$s%n", recordTime, threadName, msg); //
             case Levels.WARNING_INT -> entry.getThrown() == null //
-               ? ansiRender("@|yellow %1$tT [%2$s] WARN: %3$s%n|@", recordTime, threadName, msg) //
-               : ansiRender("@|yellow %1$tT [%2$s] WARN: %3$s %4$s|@", recordTime, threadName, msg, Exceptions.getStackTraceNullable(entry
-                  .getThrown())); //
+                  ? ansiRender("@|yellow %1$tT [%2$s] WARN: %3$s%n|@", recordTime, threadName, msg) //
+                  : ansiRender("@|yellow %1$tT [%2$s] WARN: %3$s %4$s|@", recordTime, threadName, msg, Exceptions.getStackTraceNullable(
+                     entry.getThrown())); //
             case Levels.SEVERE_INT -> entry.getThrown() == null //
-               ? ansiRender("@|red %1$tT [%2$s] ERROR: %3$s%n|@", recordTime, threadName, msg) //
-               : ansiRender("@|red %1$tT [%2$s] ERROR: %3$s %4$s|@", recordTime, threadName, msg, Exceptions.getStackTraceNullable(entry
-                  .getThrown())); //
+                  ? ansiRender("@|red %1$tT [%2$s] ERROR: %3$s%n|@", recordTime, threadName, msg) //
+                  : ansiRender("@|red %1$tT [%2$s] ERROR: %3$s %4$s|@", recordTime, threadName, msg, Exceptions.getStackTraceNullable(entry
+                     .getThrown())); //
             default -> String.format("%1$tT [%2$s] %3$-6s: %4$s %n", recordTime, threadName, entry.getLevel().getLocalizedName(), msg); //
          };
       }
@@ -90,7 +90,10 @@ public final class JdkLoggingUtils {
       public synchronized String format(final LogRecord entry) {
          final var threadName = Thread.currentThread().getName();
          final var recordTime = new Date(entry.getMillis());
-         final var msg = entry.getMessage().replaceAll("(@\\|[a-z]+\\s)|(\\|@)", ""); // remove ansi keywords
+         final var msg = entry.getMessage();
+         if (msg != null) {
+            msg.replaceAll("(@\\|[a-z]+\\s)|(\\|@)", ""); // remove ANSI keywords
+         }
 
          return String.format("%1$tT [%2$s] %3$-6s: %4$s %n", //
             recordTime, threadName, entry.getLevel().getLocalizedName(), msg);
@@ -127,10 +130,11 @@ public final class JdkLoggingUtils {
             }
             Loggers.ROOT_LOGGER.removeHandler(handler);
          }
+         final Handler consoleHandler;
          if (useStdErr) {
-            consoleHandler = new DualPrintStreamHandler(System.out, System.err, consoleFormatter);
+            consoleHandler = JdkLoggingUtils.consoleHandler = new DualPrintStreamHandler(System.out, System.err, consoleFormatter);
          } else {
-            consoleHandler = new PrintStreamHandler(System.out, consoleFormatter);
+            consoleHandler = JdkLoggingUtils.consoleHandler = new PrintStreamHandler(System.out, consoleFormatter);
          }
          Loggers.ROOT_LOGGER.addHandler(consoleHandler);
       }

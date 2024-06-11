@@ -90,9 +90,10 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
 
       Files.walkFileTree(dir, new SimpleFileVisitor<>() {
          @Override
-         public FileVisitResult postVisitDirectory(final Path dir, final @Nullable IOException exc) throws IOException {
+         public FileVisitResult postVisitDirectory(final Path subdir, final @Nullable IOException exc) throws IOException {
+            LOG.info("Deleting [@|magenta %s%s|@]...", dir.relativize(subdir), File.separator);
             if (not(task.dryRun)) {
-               Files.delete(dir);
+               Files.delete(subdir);
             }
             filesDeleted.increment();
             return FileVisitResult.CONTINUE;
@@ -100,6 +101,7 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
 
          @Override
          public FileVisitResult visitFile(final Path file, final BasicFileAttributes attrs) throws IOException {
+            LOG.info("Deleting [@|magenta %s|@]...", dir.relativize(file));
             if (not(task.dryRun)) {
                Files.delete(file);
             }
@@ -519,7 +521,7 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
              * target path points to directory
              */
          } else {
-            LOG.debug("Deleting target directory [@|magenta %s|@] because source is file...", targetPath);
+            LOG.info("Deleting target directory [@|magenta %s|@] because source is file...", targetPath);
             if (Files.isSymbolicLink(targetPath)) {
                delFile(task, targetPath, true);
             } else {

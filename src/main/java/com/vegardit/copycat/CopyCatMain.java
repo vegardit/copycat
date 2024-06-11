@@ -66,7 +66,8 @@ public class CopyCatMain extends AbstractCommand {
 
          @Override
          protected String ansiRender(final String text, final Object... args) {
-            if (lastMessage != null && lastMessage.startsWith("Scanning "))
+            final var lastMessage = this.lastMessage;
+            if (lastMessage != null && (lastMessage.startsWith("Scanning ") || lastMessage.startsWith("Deleting ")))
                return replaceLastLine + super.ansiRender(text, args);
             return super.ansiRender(text, args);
          }
