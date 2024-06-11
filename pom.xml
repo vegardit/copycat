@@ -42,7 +42,7 @@
    <properties>
       <mainClass>com.vegardit.copycat.CopyCatMain</mainClass>
 
-      <java.version>17</java.version>
+      <java.version>21</java.version>
 
       <!-- https://central.sonatype.com/artifact/org.graalvm.sdk/graal-sdk -->
       <graalvm-sdk.version>24.0.1</graalvm-sdk.version>
