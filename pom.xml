@@ -42,9 +42,9 @@
    <properties>
       <mainClass>com.vegardit.copycat.CopyCatMain</mainClass>
 
-      <java.version>21</java.version>
+      <java.version>17</java.version>
 
-      <!-- https://central.sonatype.com/artifact/org.graalvm.sdk/graal-sdk -->
+      <!-- https://central.sonatype.com/artifact/org.graalvm.sdk/graal-sdk https://github.com/oracle/graal/blob/master/sdk/CHANGELOG.md -->
       <graalvm-sdk.version>24.0.1</graalvm-sdk.version>
       <!-- https://central.sonatype.com/artifact/info.picocli/picocli -->
       <picocli.version>4.7.6</picocli.version>

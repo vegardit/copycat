@@ -39,8 +39,8 @@ defaults:
     shell: bash
 
 env:
+  JAVA_VERSION: 17
   GRAALVM_VERSION: 22.0.1 # https://github.com/graalvm/graalvm-ce-builds/releases
-  JAVA_VERSION: 22
   RELEASE_NAME: "snapshot"
 
 
@@ -129,7 +129,7 @@ jobs:
             os: "ubuntu-latest"
             graal_install_root: "/opt/graalvm"
           - arch: "darwin-amd64"
-            os: "macos-latest"
+            os: "macos-12" # x64
             graal_install_root: "graalvm"
           - arch: "windows-amd64"
             os: "windows-latest"
@@ -163,7 +163,7 @@ jobs:
       with:
         path: |
           ${{ matrix.graal_install_root }}
-        key: ${{ matrix.arch }}-graalvm-${{ env.GRAALVM_VERSION }}-java-${{ env.JAVA_VERSION }}
+        key: ${{ matrix.arch }}-graalvm-${{ env.GRAALVM_VERSION }}
 
 
     - name: "Create arm64 container"
