@@ -262,8 +262,6 @@ jobs:
               echo "Extracting GraalVM..."
               7z x graalvm.zip
               mv graalvm-* $GRAAL_VM_HOME
-
-              $GRAAL_VM_HOME/bin/gu.cmd install native-image
             fi
 
             $GRAAL_VM_HOME/bin/native-image.cmd --version
