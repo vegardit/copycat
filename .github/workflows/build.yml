@@ -379,7 +379,7 @@ jobs:
             /usr/bin/gcc -v
 
             native-image \
-              -H:+StaticExecutableWithDynamicLibC `# https://www.graalvm.org/21.3/reference-manual/native-image/StaticImages/#build-mostly-static-native-image` \
+              -H:+StaticExecutableWithDynamicLibC `# https://www.graalvm.org/latest/reference-manual/native-image/guides/build-static-executables/#build-a-mostly-static-native-executable` \
               --report-unsupported-elements-at-runtime `# avoid: Unsupported type sun.awt.X11.XBaseWindow is reachable` \
               ${{ env.NATIVE_IMAGE_ARGS }}
           ;;
@@ -391,7 +391,7 @@ jobs:
               /usr/bin/gcc -v
 
               native-image \
-                -H:+StaticExecutableWithDynamicLibC `# https://www.graalvm.org/21.3/reference-manual/native-image/StaticImages/#build-mostly-static-native-image` \
+                -H:+StaticExecutableWithDynamicLibC `# https://www.graalvm.org/latest/reference-manual/native-image/guides/build-static-executables/#build-a-mostly-static-native-executable` \
                 --report-unsupported-elements-at-runtime `# avoid: Unsupported type sun.awt.X11.XBaseWindow is reachable` \
                 -Djdk.lang.Process.launchMechanism=vfork `# https://github.com/oracle/graal/issues/4143`\
                 -H:-CheckToolchain `#https://github.com/oracle/graal/issues/4143`\
@@ -399,12 +399,12 @@ jobs:
             "
           ;;
           darwin-amd64)
-            # not using "--static" because of error: DARWIN does not support building static executable images.
+            # not using "--static" because of error: Invalid option '--static'. Building static executable images is currently only supported on Linux.
             native-image ${{ env.NATIVE_IMAGE_ARGS }}
           ;;
           windows-amd64)
-            # https://www.graalvm.org/21.3/reference-manual/native-image/StaticImages/
-            native-image.cmd --static ${{ env.NATIVE_IMAGE_ARGS }}
+            # not using "--static" because of error: Invalid option '--static'. Building static executable images is currently only supported on Linux.
+            native-image.cmd ${{ env.NATIVE_IMAGE_ARGS }}
           ;;
         esac
 
@@ -426,7 +426,7 @@ jobs:
             ./copycat-${{ matrix.arch }} --version
             ./copycat-${{ matrix.arch }} --help
             ./copycat-${{ matrix.arch }} sync --help
-            ./copycat-${{ matrix.arch }} --help
+            ./copycat-${{ matrix.arch }} watch --help
           ;;
         esac
 
