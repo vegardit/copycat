@@ -202,8 +202,6 @@ jobs:
                     --exclude=*/bin/jvisualvm \
                     --exclude=*/lib/src.zip \
                     --exclude=*/lib/visualvm
-
-               $GRAAL_VM_HOME/bin/gu install native-image
             fi
 
             $GRAAL_VM_HOME/bin/native-image --version
@@ -226,8 +224,6 @@ jobs:
                       --exclude=*/bin/jvisualvm \
                       --exclude=*/lib/src.zip \
                       --exclude=*/lib/visualvm
-  
-                 \$GRAAL_VM_HOME/bin/gu install native-image
               fi
 
               \$GRAAL_VM_HOME/bin/native-image --version
@@ -247,8 +243,6 @@ jobs:
                     --exclude=*/bin/jvisualvm \
                     --exclude=*/lib/src.zip \
                     --exclude=*/lib/visualvm
-
-              $GRAAL_VM_HOME/bin/gu install native-image
             fi
 
             $GRAAL_VM_HOME/bin/native-image --version
