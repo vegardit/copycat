@@ -46,7 +46,7 @@
 
       <!-- https://central.sonatype.com/artifact/org.graalvm.sdk/graal-sdk -->
       <!-- TODO don't upgrade as newer versions break Windows builds https://github.com/oracle/graal/issues/4340 -->
-      <graalvm.version>21.3.3.1</graalvm.version>
+      <graalvm.version>24.0.2</graalvm.version>
       <!-- https://central.sonatype.com/artifact/info.picocli/picocli -->
       <picocli.version>4.7.6</picocli.version>
       <!-- https://central.sonatype.com/artifact/com.guardsquare/proguard-core -->
