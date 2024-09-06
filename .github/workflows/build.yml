@@ -40,7 +40,7 @@ defaults:
 
 env:
   # TODO don't upgrade as newer versions break Windows builds https://github.com/oracle/graal/issues/4340
-  GRAALVM_VERSION: 21.3.3.1 # https://github.com/graalvm/graalvm-ce-builds/releases
+  GRAALVM_VERSION: 21.3.3.1 # https://github.com/graalvm/graalvm-ce-builds/releases/tag/vm-21.3.3.1
   JAVA_VERSION: 17
   RELEASE_NAME: "snapshot"
 
@@ -122,6 +122,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # https://github.com/actions/runner-images#available-images
         include:
           - arch: "linux-amd64"
             os: "ubuntu-latest"
@@ -130,7 +131,7 @@ jobs:
             os: "ubuntu-latest"
             graal_install_root: "/opt/graalvm"
           - arch: "darwin-amd64"
-            os: "macos-latest"
+            os: "macos-13"
             graal_install_root: "graalvm"
           - arch: "windows-amd64"
             os: "windows-latest"
