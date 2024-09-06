@@ -13,7 +13,7 @@
    <parent>
       <groupId>com.vegardit.maven</groupId>
       <artifactId>vegardit-maven-parent</artifactId>
-      <version>RELEASE</version>
+      <version>5.0.0</version>
    </parent>
 
    <groupId>com.vegardit</groupId>
