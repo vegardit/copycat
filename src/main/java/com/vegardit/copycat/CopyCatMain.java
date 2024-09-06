@@ -48,7 +48,7 @@ public class CopyCatMain extends AbstractCommand {
 
    public static class LoggingOptions extends LoggingOptionsMixin {
       @Unmatched
-      List<String> ignored = lazyNonNull();
+      List<String> ignored = lateNonNull();
    }
 
    private static final Logger LOG = Logger.create();

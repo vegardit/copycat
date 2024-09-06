@@ -310,7 +310,7 @@ public class WatchCommand extends AbstractSyncCommand<WatchCommandConfig> {
    }
 
    private void syncFile(final WatchCommandConfig cfg, final Path sourcePath, final Path targetPath, final boolean contentChanged)
-      throws IOException {
+         throws IOException {
       final var sourceAttrs = MoreFiles.readAttributes(sourcePath);
 
       final boolean targetExists;

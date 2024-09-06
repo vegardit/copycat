@@ -76,7 +76,7 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
    private final AtomicBoolean threadsDone = new AtomicBoolean();
 
    private final SyncStats stats = new SyncStats();
-   private Queue<Path> sourceDirsToScan = lazyNonNull();
+   private Queue<Path> sourceDirsToScan = lateNonNull();
    private volatile State state = State.NORMAL;
 
    public SyncCommand() {
@@ -167,22 +167,22 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
                   new BasicThreadFactory.Builder().namingPattern("sync-%d").build() //
                );
                // CHECKSTYLE:IGNORE .* FOR NEXT LINE
-               final var ex = MutableRef.of((Exception) null);
+               final var exRef = MutableRef.create();
                for (var i = 0; i < task_threads; i++) {
                   threadPool.submit(() -> {
                      try {
                         sync(task);
                      } catch (final Exception e) {
-                        ex.set(e);
+                        exRef.set(e);
                      }
                   });
                }
                threadPool.shutdown();
                threadPool.awaitTermination(Long.MAX_VALUE, TimeUnit.DAYS);
-               if (ex.isNotNull()) {
+               if (exRef.get() instanceof final Exception ex) {
                   DesktopNotifications.showSticky(MessageType.ERROR, "Syncing failed.", //
-                     "ERROR: " + ex.get().getMessage() + "\nFROM: " + task.sourceRootAbsolute + "\nTO: " + task.targetRootAbsolute);
-                  throw ex.get();
+                     "ERROR: " + ex.getMessage() + "\nFROM: " + task.sourceRootAbsolute + "\nTO: " + task.targetRootAbsolute);
+                  throw ex;
                }
 
                DesktopNotifications.showSticky(MessageType.INFO, "Syncing done.", //
@@ -406,7 +406,7 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
     * @param targetPath null, if target path does not exist yet
     */
    private void syncDirShallow(final SyncCommandConfig task, final Path sourcePath, final @Nullable Path targetPath,
-      final Path relativePath) throws IOException {
+         final Path relativePath) throws IOException {
       final var sourceAttrs = Files.readAttributes(sourcePath, BasicFileAttributes.class, NOFOLLOW_LINKS);
 
       final Path resolvedTargetPath;
@@ -464,7 +464,7 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
     * @param targetPath null, if target path does not exist yet
     */
    private void syncFile(final SyncCommandConfig task, final Path sourcePath, @Nullable Path targetPath, final Path relativePath)
-      throws IOException {
+         throws IOException {
       final String copyCause;
 
       final var sourceAttrs = MoreFiles.readAttributes(sourcePath);

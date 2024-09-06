@@ -41,19 +41,19 @@ public final class FileUtils {
    private static final @NonNull LinkOption[] NOFOLLOW_LINKS = {LinkOption.NOFOLLOW_LINKS};
 
    private static final OpenOption[] FILE_READ_OPTIONS = SystemUtils.IS_OS_WINDOWS //
-      ? new OpenOption[] {ExtendedOpenOption.NOSHARE_WRITE, StandardOpenOption.READ}
-      : new OpenOption[] {StandardOpenOption.READ};
+         ? new OpenOption[] {ExtendedOpenOption.NOSHARE_WRITE, StandardOpenOption.READ}
+         : new OpenOption[] {StandardOpenOption.READ};
 
    private static final OpenOption[] FILE_WRITE_OPTIONS = SystemUtils.IS_OS_WINDOWS //
-      ? new OpenOption[] { //
-         ExtendedOpenOption.NOSHARE_READ, ExtendedOpenOption.NOSHARE_WRITE, ExtendedOpenOption.NOSHARE_DELETE, //
-         StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE}
-      : new OpenOption[] { //
-         StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE};
+         ? new OpenOption[] { //
+            ExtendedOpenOption.NOSHARE_READ, ExtendedOpenOption.NOSHARE_WRITE, ExtendedOpenOption.NOSHARE_DELETE, //
+            StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE}
+         : new OpenOption[] { //
+            StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE};
 
    @SuppressWarnings("resource")
    public static void copyAttributes(final Path source, final BasicFileAttributes sourceAttrs, final Path target, final boolean copyACL)
-      throws IOException {
+         throws IOException {
       final var sourceFS = source.getFileSystem();
       final var targetFS = target.getFileSystem();
 
@@ -115,7 +115,7 @@ public final class FileUtils {
    }
 
    public static void copyDirShallow(final Path source, final BasicFileAttributes sourceAttrs, final Path target, final boolean copyACL)
-      throws IOException {
+         throws IOException {
       if (copyACL) {
          Files.copy(source, target, NOFOLLOW_LINKS);
          copyAttributes(source, sourceAttrs, target, true);
@@ -125,7 +125,7 @@ public final class FileUtils {
    }
 
    public static void copyFile(final Path source, final BasicFileAttributes sourceAttrs, final Path target, final boolean copyACL,
-      final BiLongConsumer onBytesWritten) throws IOException {
+         final BiLongConsumer onBytesWritten) throws IOException {
 
       try (var sourceCh = FileChannel.open(source, FILE_READ_OPTIONS);
            var targetCh = FileChannel.open(target, FILE_WRITE_OPTIONS)) {

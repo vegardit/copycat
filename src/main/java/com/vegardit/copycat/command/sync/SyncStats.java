@@ -52,12 +52,12 @@ public class SyncStats {
       LOG.info("Source files copied: %s (%s) @ %s/s", filesCopied, //
          FileUtils.byteCountToDisplaySize(filesCopiedSize.longValue()), //
          filesCopiedSize.longValue() == 0 ? "0 bytes"
-            : FileUtils.byteCountToDisplaySize((long) (filesCopiedSize.longValue() / (filesCopiedDuration.longValue() / 1000.0))) //
+               : FileUtils.byteCountToDisplaySize((long) (filesCopiedSize.longValue() / (filesCopiedDuration.longValue() / 1000.0))) //
       );
       LOG.info("Target files deleted: %s (%s) @ %s/s", filesDeleted, //
          FileUtils.byteCountToDisplaySize(filesDeletedSize.longValue()), //
          filesDeletedSize.longValue() == 0 ? "0 bytes"
-            : FileUtils.byteCountToDisplaySize((long) (filesDeletedSize.longValue() / (filesDeletedDuration.longValue() / 1000.0))) //
+               : FileUtils.byteCountToDisplaySize((long) (filesDeletedSize.longValue() / (filesDeletedDuration.longValue() / 1000.0))) //
       );
       LOG.info("Errors: %s", errors.size());
       LOG.info("Duration: %s", DurationFormatUtils.formatDurationWords(System.currentTimeMillis() - startAt, true, true));

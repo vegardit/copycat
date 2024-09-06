@@ -90,11 +90,11 @@ public abstract class AbstractSyncCommand<C extends AbstractSyncCommandConfig<C>
          if (Files.exists(taskCfg.targetRootAbsolute, NOFOLLOW_LINKS) && Files.isSameFile(taskCfg.sourceRootAbsolute,
             taskCfg.targetRootAbsolute))
             throw new ParameterException(commandSpec.commandLine(), "Source and target path point to the same filesystem entry ["
-               + taskCfg.sourceRootAbsolute.toRealPath() + "]!");
+                  + taskCfg.sourceRootAbsolute.toRealPath() + "]!");
 
          if (SystemUtils.IS_OS_WINDOWS && isTrue(taskCfg.copyACL) && !SystemUtils.isRunningAsAdmin()) {
             LOG.warn("Option --copy-acl was specified but process is not running with elevated administrative permissions."
-               + " ACL will be copied but excluding ownership information.");
+                  + " ACL will be copied but excluding ownership information.");
          }
       }
 

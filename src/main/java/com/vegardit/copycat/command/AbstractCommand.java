@@ -59,13 +59,13 @@ public abstract class AbstractCommand implements Callable<Void> {
    private static final Logger LOG = Logger.create();
 
    @Spec
-   protected CommandSpec commandSpec = lazyNonNull();
+   protected CommandSpec commandSpec = lateNonNull();
 
    /**
     * logging options are not further evaluated, since it is already done in main entry point
     */
    @Mixin
-   private LoggingOptionsMixin loggingOptions = lazyNonNull();
+   private LoggingOptionsMixin loggingOptions = lateNonNull();
 
    private int verbosity = 0;
 

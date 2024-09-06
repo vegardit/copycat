@@ -6,7 +6,7 @@ package com.vegardit.copycat.command.sync;
 
 import static com.vegardit.copycat.util.Booleans.isTrue;
 import static com.vegardit.copycat.util.MapUtils.*;
-import static net.sf.jstuff.core.validation.NullAnalysisHelper.lazyNonNull;
+import static net.sf.jstuff.core.validation.NullAnalysisHelper.lateNonNull;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -42,10 +42,10 @@ public abstract class AbstractSyncCommandConfig<THIS extends AbstractSyncCommand
    }
 
    public @Nullable @ToYamlString(ignore = true) Path source;
-   public @ToYamlString(name = "source") Path sourceRootAbsolute = lazyNonNull(); // computed value
+   public @ToYamlString(name = "source") Path sourceRootAbsolute = lateNonNull(); // computed value
 
    public @Nullable @ToYamlString(ignore = true) Path target;
-   public @ToYamlString(name = "target") Path targetRootAbsolute = lazyNonNull(); // computed value
+   public @ToYamlString(name = "target") Path targetRootAbsolute = lateNonNull(); // computed value
 
    public @Nullable Boolean copyACL;
    public @Nullable Boolean deleteExcluded;
@@ -208,7 +208,7 @@ public abstract class AbstractSyncCommandConfig<THIS extends AbstractSyncCommand
                action = FileFilterAction.EXCLUDE;
             } else
                throw new IllegalArgumentException("Illegal filter definition \"" + filterSpec
-                  + "\". Must start with action prefix \"in:\" or \"ex:\".");
+                     + "\". Must start with action prefix \"in:\" or \"ex:\".");
 
             var globPattern = Strings.substringAfter(filterSpec, ":");
 
@@ -241,10 +241,10 @@ public abstract class AbstractSyncCommandConfig<THIS extends AbstractSyncCommand
    }
 
    private boolean isExcludedPath(final Path absolutePath, final Path relativePath,
-      final Tuple2<FileFilterAction, PathMatcher> @Nullable [] fileFilters) throws IOException {
+         final Tuple2<FileFilterAction, PathMatcher> @Nullable [] fileFilters) throws IOException {
       if (isTrue(excludeHiddenSystemFiles) && Files.isHidden(absolutePath) && FileUtils.isDosSystemFile(absolutePath) //
-         || isTrue(excludeSystemFiles) && FileUtils.isDosSystemFile(absolutePath) //
-         || isTrue(excludeHiddenFiles) && Files.isHidden(absolutePath))
+            || isTrue(excludeSystemFiles) && FileUtils.isDosSystemFile(absolutePath) //
+            || isTrue(excludeHiddenFiles) && Files.isHidden(absolutePath))
          return true;
 
       if (fileFilters != null) {

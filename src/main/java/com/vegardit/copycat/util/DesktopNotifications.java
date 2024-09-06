@@ -99,19 +99,19 @@ public final class DesktopNotifications {
       if (IS_POWERSHELL_AVAILABLE) {
          try (PowerShell powerShell = PowerShell.openSession()) {
             powerShell.executeScript(new BufferedReader(new StringReader("" //
-               + "Add-Type -AssemblyName System.Windows.Forms;" //
-               + "Add-Type -AssemblyName System.Drawing;" //
-               + "$msg=New-Object System.Windows.Forms.NotifyIcon;" //
-               + (APP_ICON == null //
-                  ? "$msg.Icon=[System.Drawing.SystemIcons]::Application;" //  https://docs.microsoft.com/en-us/dotnet/api/system.drawing.systemicons
-                  : "$appIcon=[System.Drawing.Image]::FromFile('" + APP_ICON + "');" //
-                     + "$msg.Icon=[System.Drawing.Icon]::FromHandle($appIcon.GetHicon());" //
-               ) //
-               + "$msg.BalloonTipTitle='[copycat] " + title.replace("'", "\\'") + "';" //
-               + "$msg.BalloonTipText='" + message.replace("'", "\\'") + "';" //
-               + "$msg.BalloonTipIcon='" + level + "';" // https://docs.microsoft.com/en-us/dotnet/api/system.windows.forms.tooltipicon
-               + "$msg.Visible=$True;" //
-               + "$msg.ShowBalloonTip(5000);" //
+                  + "Add-Type -AssemblyName System.Windows.Forms;" //
+                  + "Add-Type -AssemblyName System.Drawing;" //
+                  + "$msg=New-Object System.Windows.Forms.NotifyIcon;" //
+                  + (APP_ICON == null //
+                        ? "$msg.Icon=[System.Drawing.SystemIcons]::Application;" //  https://docs.microsoft.com/en-us/dotnet/api/system.drawing.systemicons
+                        : "$appIcon=[System.Drawing.Image]::FromFile('" + APP_ICON + "');" //
+                              + "$msg.Icon=[System.Drawing.Icon]::FromHandle($appIcon.GetHicon());" //
+                  ) //
+                  + "$msg.BalloonTipTitle='[copycat] " + title.replace("'", "\\'") + "';" //
+                  + "$msg.BalloonTipText='" + message.replace("'", "\\'") + "';" //
+                  + "$msg.BalloonTipIcon='" + level + "';" // https://docs.microsoft.com/en-us/dotnet/api/system.windows.forms.tooltipicon
+                  + "$msg.Visible=$True;" //
+                  + "$msg.ShowBalloonTip(5000);" //
             )));
             return;
          } catch (final RuntimeException ex) {
