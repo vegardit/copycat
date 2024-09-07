@@ -181,14 +181,12 @@ jobs:
         include:
           - arch: "linux-amd64"
             os: "ubuntu-latest"
-            # not using newer graalvm release which produces considerably larger binaries
-            graal_version: 21.3.3.1 # https://github.com/graalvm/graalvm-ce-builds/releases/tag/vm-21.3.3.1
+            graal_version: 22.0.2 # https://github.com/graalvm/graalvm-ce-builds/releases/tag/jdk-22.0.2
             graal_install_root: "/opt/graalvm"
 
           - arch: "linux-arm64"
             os: "ubuntu-latest"
-            # not using newer graalvm release which produces considerably larger binaries
-            graal_version: 21.3.3.1 # https://github.com/graalvm/graalvm-ce-builds/releases/tag/vm-21.3.3.1
+            graal_version: 22.0.2 # https://github.com/graalvm/graalvm-ce-builds/releases/tag/jdk-22.0.2
             graal_install_root: "/opt/graalvm"
 
           - arch: "darwin-arm64"
@@ -198,15 +196,12 @@ jobs:
 
           - arch: "darwin-amd64"
             os: "macos-12" # x64 -> TODO not using macos-13 because of https://github.com/upx/upx/issues/612
-            # not using newer graalvm release which produces considerably larger binaries
-            graal_version: 21.3.3.1 # https://github.com/graalvm/graalvm-ce-builds/releases/tag/vm-21.3.3.1
+            graal_version: 22.0.2 # https://github.com/graalvm/graalvm-ce-builds/releases/tag/jdk-22.0.2
             graal_install_root: "graalvm"
 
           - arch: "windows-amd64"
             os: "windows-latest"
-            # TODO don't upgrade as newer versions break Windows builds https://github.com/oracle/graal/issues/4340
-            # not using newer graalvm release which produces considerably larger binaries
-            graal_version: 21.3.3.1 # https://github.com/graalvm/graalvm-ce-builds/releases/tag/vm-21.3.3.1
+            graal_version: 22.0.2 # https://github.com/graalvm/graalvm-ce-builds/releases/tag/jdk-22.0.2
             graal_install_root: "graalvm"
 
     env:
@@ -271,13 +266,11 @@ jobs:
               rm -rf $GRAAL_VM_HOME
               mkdir -p $GRAAL_VM_HOME
 
-              curl -fL "https://github.com/graalvm/graalvm-ce-builds/releases/download/vm-${{ matrix.graal_version }}/graalvm-ce-java${{ env.JAVA_VERSION}}-linux-amd64-${{ matrix.graal_version }}.tar.gz" \
+              curl -fL "https://github.com/graalvm/graalvm-ce-builds/releases/download/jdk-${{ matrix.graal_version }}/graalvm-community-jdk-${{ matrix.graal_version }}_linux-x64_bin.tar.gz" \
                 | tar zxv -C $GRAAL_VM_HOME --strip-components=1 \
                     --exclude=*/bin/jvisualvm \
                     --exclude=*/lib/src.zip \
                     --exclude=*/lib/visualvm
-
-               $GRAAL_VM_HOME/bin/gu install native-image
             fi
 
             $GRAAL_VM_HOME/bin/native-image --version
@@ -295,13 +288,11 @@ jobs:
                 rm -rf \$GRAAL_VM_HOME
                 mkdir -p \$GRAAL_VM_HOME
 
-                curl -fL "https://github.com/graalvm/graalvm-ce-builds/releases/download/vm-${{ matrix.graal_version }}/graalvm-ce-java${{ env.JAVA_VERSION }}-linux-aarch64-${{ matrix.graal_version }}.tar.gz" \
+                curl -fL "https://github.com/graalvm/graalvm-ce-builds/releases/download/jdk-${{ matrix.graal_version }}/graalvm-community-jdk-${{ matrix.graal_version }}_linux-aarch64_bin.tar.gz" \
                   | tar zxv -C \$GRAAL_VM_HOME --strip-components=1 \
                       --exclude=*/bin/jvisualvm \
                       --exclude=*/lib/src.zip \
                       --exclude=*/lib/visualvm
-  
-                 \$GRAAL_VM_HOME/bin/gu install native-image
               fi
 
               \$GRAAL_VM_HOME/bin/native-image --version
@@ -335,13 +326,11 @@ jobs:
               rm -rf ${{ matrix.graal_install_root }}
               mkdir ${{ matrix.graal_install_root }}
 
-              curl -fL "https://github.com/graalvm/graalvm-ce-builds/releases/download/vm-${{ matrix.graal_version }}/graalvm-ce-java${{ env.JAVA_VERSION }}-darwin-amd64-${{ matrix.graal_version }}.tar.gz" \
+              curl -fL "https://github.com/graalvm/graalvm-ce-builds/releases/download/jdk-${{ matrix.graal_version }}/graalvm-community-jdk-${{ matrix.graal_version }}_macos-x64_bin.tar.gz" \
                 | tar zxv -C graalvm --strip-components=1 \
                     --exclude=*/bin/jvisualvm \
                     --exclude=*/lib/src.zip \
                     --exclude=*/lib/visualvm
-
-              $GRAAL_VM_HOME/bin/gu install native-image
             fi
 
             $GRAAL_VM_HOME/bin/native-image --version
@@ -356,13 +345,11 @@ jobs:
               rm -rf $GRAAL_VM_HOME
 
               echo "Downloading GraalVM..."
-              curl -fL -o graalvm.zip https://github.com/graalvm/graalvm-ce-builds/releases/download/vm-${{ matrix.graal_version }}/graalvm-ce-java${{ env.JAVA_VERSION }}-windows-amd64-${{ matrix.graal_version }}.zip
+              curl -fL -o graalvm.zip https://github.com/graalvm/graalvm-ce-builds/releases/download/jdk-${{ matrix.graal_version }}/graalvm-community-jdk-${{ matrix.graal_version }}_windows-x64_bin.zip
   
               echo "Extracting GraalVM..."
               7z x graalvm.zip
-              mv graalvm-ce-* $GRAAL_VM_HOME
-
-              $GRAAL_VM_HOME/bin/gu.cmd install native-image
+              mv graalvm-* $GRAAL_VM_HOME
             fi
 
             $GRAAL_VM_HOME/bin/native-image.cmd --version
@@ -495,7 +482,7 @@ jobs:
             /usr/bin/gcc -v
 
             native-image \
-              -H:+StaticExecutableWithDynamicLibC `# https://www.graalvm.org/21.3/reference-manual/native-image/StaticImages/#build-mostly-static-native-image` \
+              -H:+StaticExecutableWithDynamicLibC `# https://www.graalvm.org/latest/reference-manual/native-image/guides/build-static-executables/#build-a-mostly-static-native-executable` \
               --report-unsupported-elements-at-runtime `# avoid: Unsupported type sun.awt.X11.XBaseWindow is reachable` \
               ${{ env.NATIVE_IMAGE_ARGS }}
           ;;
@@ -507,7 +494,7 @@ jobs:
               /usr/bin/gcc -v
 
               native-image \
-                -H:+StaticExecutableWithDynamicLibC `# https://www.graalvm.org/21.3/reference-manual/native-image/StaticImages/#build-mostly-static-native-image` \
+                -H:+StaticExecutableWithDynamicLibC `# https://www.graalvm.org/latest/reference-manual/native-image/guides/build-static-executables/#build-a-mostly-static-native-executable` \
                 --report-unsupported-elements-at-runtime `# avoid: Unsupported type sun.awt.X11.XBaseWindow is reachable` \
                 -Djdk.lang.Process.launchMechanism=vfork `# https://github.com/oracle/graal/issues/4143`\
                 -H:-CheckToolchain `#https://github.com/oracle/graal/issues/4143`\
