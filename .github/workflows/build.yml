@@ -53,7 +53,13 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Show environment variables
+    - name: "Show: GitHub context"
+      env:
+        GITHUB_CONTEXT: ${{ toJSON(github) }}
+      run: echo $GITHUB_CONTEXT
+
+
+    - name: "Show: environment variables"
       run: env | sort
 
 
@@ -61,14 +67,39 @@ jobs:
       uses: actions/checkout@v4  # https://github.com/actions/checkout
 
 
-    - name: "Install: JDK ${{ env.JAVA_VERSION }}"
+    - name: "Install: JDK ${{ env.JAVA_VERSION }} ☕"
       uses: actions/setup-java@v4  # https://github.com/actions/setup-java
       with:
         distribution: temurin
         java-version: ${{ env.JAVA_VERSION }}
-        cache: maven
 
-    - name: Test with Maven
+
+    - name: "Cache: Restore"
+      id: cache-restore
+      uses: actions/cache/restore@v4  # https://github.com/actions/cache/blob/main/restore/README.md
+      with:
+        # IMPORTANT: path must have exactly the same value as in the cache save step otherwise restore will fail with cache key not found 
+        path: |
+          ~/.m2/bin
+          ~/.m2/repository
+          !~/.m2/repository/.cache
+          !~/.m2/repository/.meta
+          !~/.m2/repository/com/vegardit/maven
+          !~/.m2/repository/*SNAPSHOT*
+        key: ${{ runner.os }}-${{ runner.arch }}-mvn-repo-${{ hashFiles('**/pom.xml') }}
+        restore-keys: |
+          ${{ runner.os }}-${{ runner.arch }}-mvn-repo-
+
+
+    - name: "Move Restored Repo"
+      if: ${{ steps.cache-restore.outputs.cache-hit }}
+      run: |
+         RESTORED_REPO_PATH=$HOME/.m2/repository-restored
+         mv -v ~/.m2/repository $RESTORED_REPO_PATH
+         echo "RESTORED_REPO_PATH=$RESTORED_REPO_PATH" >> $GITHUB_ENV
+
+
+    - name: "Test with Maven 🔨"
       if: ${{ github.ref_name != 'main' || env.ACT }}
       env:
         GITHUB_USER: ${{ github.actor }}
@@ -78,7 +109,7 @@ jobs:
         bash .ci/build.sh ${{ github.event.inputs.additional_maven_args }}
 
 
-    - name: Build with Maven
+    - name: "Build with Maven 🔨"
       if: ${{ github.ref_name == 'main' && !env.ACT }}
       env:
         GITHUB_USER: ${{ github.actor }}
@@ -88,9 +119,35 @@ jobs:
         set -eu
 
         # https://github.community/t/github-actions-bot-email-address/17204
-        git config user.name "github-actions[bot]"
-        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        git config --global user.name "github-actions[bot]"
+        git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
         bash .ci/build.sh ${{ github.event.inputs.additional_maven_args }}
+
+
+    ##################################################
+    # Cache Update
+    # See https://github.com/actions/cache/issues/342#issuecomment-1399442670
+    ##################################################
+    - name: "Cache: Delete Previous"
+      if: ${{ steps.cache-restore.outputs.cache-hit && !env.ACT }}
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        gh extension install actions/gh-actions-cache
+        # "|| true" is to avoid "Error: Resource not accessible by integration" from failing the job 
+        gh actions-cache delete ${{ steps.cache-restore.outputs.cache-primary-key }} --confirm || true
+
+    - name: "Cache: Update"
+      uses: actions/cache/save@v4  # https://github.com/actions/cache/blob/main/save/README.md
+      with:
+        path: |
+          ~/.m2/bin
+          ~/.m2/repository
+          !~/.m2/repository/.cache
+          !~/.m2/repository/.meta
+          !~/.m2/repository/com/vegardit/maven
+          !~/.m2/repository/*SNAPSHOT*
+        key: ${{ steps.cache-restore.outputs.cache-primary-key }}
 
 
     - name: Test minimized fat jar
@@ -329,17 +386,17 @@ jobs:
         esac
 
 
-    - name: "Get: maven-build-artifacts"
-      uses: actions/download-artifact@v4
-      with:
-        name: maven-build-artifacts
-
-
     - name: Enable Developer Command Prompt
       if: matrix.arch == 'windows-amd64'
       # makes cl.exe available on PATH
       # https://github.com/marketplace/actions/enable-developer-command-prompt
       uses: ilammy/msvc-dev-cmd@v1
+
+
+    - name: "Get: maven-build-artifacts"
+      uses: actions/download-artifact@v4
+      with:
+        name: maven-build-artifacts
 
 
     - name: "Collect metadata"

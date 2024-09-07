@@ -7,5 +7,71 @@
          <username>${env.GITHUB_USER}</username>
          <password>${env.GITHUB_API_KEY}</password>
       </server>
+      <server>
+         <id>central</id>
+         <configuration>
+            <!-- https://maven.apache.org/guides/mini/guide-resolver-transport.html#timeouts -->
+            <connectTimeout>10000</connectTimeout>
+            <requestTimeout>30000</requestTimeout>
+         </configuration>
+      </server>
    </servers>
+
+   <profiles>
+      <profile>
+         <id>prefer-repo-restored-from-cache</id>
+         <activation>
+            <property>
+               <name>env.RESTORED_REPO_PATH</name>
+            </property>
+         </activation>
+
+         <repositories>
+            <repository>
+               <id>repository-restored-from-cache</id>
+               <url>file://${RESTORED_REPO_PATH}</url>
+               <releases>
+                  <enabled>true</enabled>
+               </releases>
+               <snapshots>
+                  <enabled>true</enabled>
+               </snapshots>
+            </repository>
+            <repository>
+               <id>central</id>
+               <url>https://repo.maven.apache.org/maven2</url>
+               <releases>
+                  <enabled>true</enabled>
+               </releases>
+               <snapshots>
+                  <enabled>false</enabled>
+               </snapshots>
+            </repository>
+         </repositories>
+
+         <pluginRepositories>
+            <pluginRepository>
+               <id>repository-restored-from-cache</id>
+               <url>file://${RESTORED_REPO_PATH}</url>
+               <releases>
+                  <enabled>true</enabled>
+               </releases>
+               <snapshots>
+                  <enabled>true</enabled>
+               </snapshots>
+            </pluginRepository>
+            <pluginRepository>
+               <id>central</id>
+               <url>https://repo.maven.apache.org/maven2</url>
+               <releases>
+                  <enabled>true</enabled>
+               </releases>
+               <snapshots>
+                  <enabled>false</enabled>
+               </snapshots>
+            </pluginRepository>
+         </pluginRepositories>
+      </profile>
+   </profiles>
+
 </settings>

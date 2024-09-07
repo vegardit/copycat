@@ -1,19 +1,19 @@
-<?xml version="1.0"?>
+<?xml version="1.0" encoding="UTF-8"?>
 <!--
    SPDX-FileCopyrightText: © Vegard IT GmbH (https://vegardit.com)
+   SPDX-FileContributor: Sebastian Thomschke
    SPDX-License-Identifier: Apache-2.0
-
-   @author Sebastian Thomschke, Vegard IT GmbH
+   SPDX-ArtifactOfProjectHomePage: https://github.com/vegardit/copycat
 -->
-<project xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd" xmlns="http://maven.apache.org/POM/4.0.0"
-   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+   xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
 
    <modelVersion>4.0.0</modelVersion>
 
    <parent>
       <groupId>com.vegardit.maven</groupId>
       <artifactId>vegardit-maven-parent</artifactId>
-      <version>5.0.0</version>
+      <version>5.1.0</version>
    </parent>
 
    <groupId>com.vegardit</groupId>
@@ -24,18 +24,17 @@
    <name>copycat</name>
    <description>Directory synchronization tool.</description>
    <url>https://github.com/vegardit/copycat</url>
+   <inceptionYear>2020</inceptionYear>
    <organization>
+      <!-- used as Specification/Implementation-Vendor in MANIFEST.MF -->
       <name>Vegard IT GmbH, Germany</name>
       <url>https://vegardit.com/</url>
    </organization>
-   <inceptionYear>2020</inceptionYear>
-
-
    <licenses>
       <license>
          <name>Apache License 2.0</name>
          <distribution>repo</distribution>
-         <url>https://spdx.org/licenses/Apache-2.0.html</url>
+         <url>https://spdx.org/licenses/Apache-2.0</url>
       </license>
    </licenses>
 
@@ -65,16 +64,16 @@
    </scm>
 
 
-   <ciManagement>
-      <system>github.com</system>
-      <url>https://github.com/vegardit/copycat/actions</url>
-   </ciManagement>
-
-
    <issueManagement>
       <system>github.com</system>
       <url>https://github.com/vegardit/copycat/issues</url>
    </issueManagement>
+
+
+   <ciManagement>
+      <system>github.com</system>
+      <url>https://github.com/vegardit/copycat/actions</url>
+   </ciManagement>
 
 
    <build>
@@ -279,7 +278,6 @@
    </dependencyManagement>
 
    <dependencies>
-
       <dependency>
           <groupId>org.eclipse.jdt</groupId>
           <artifactId>org.eclipse.jdt.annotation</artifactId>
