@@ -46,7 +46,8 @@ import picocli.jansi.graalvm.AnsiConsole;
 )
 public class CopyCatMain extends AbstractCommand {
 
-   public static class LoggingOptions extends LoggingOptionsMixin {
+   @Command
+   static final class LoggingOptions extends LoggingOptionsMixin {
       @Unmatched
       List<String> ignored = lateNonNull();
    }
