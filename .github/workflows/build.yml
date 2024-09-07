@@ -39,8 +39,6 @@ defaults:
     shell: bash
 
 env:
-  # TODO don't upgrade as newer versions break Windows builds https://github.com/oracle/graal/issues/4340
-  GRAALVM_VERSION: 21.3.3.1 # https://github.com/graalvm/graalvm-ce-builds/releases/tag/vm-21.3.3.1
   JAVA_VERSION: 17
   RELEASE_NAME: "snapshot"
 
@@ -183,15 +181,32 @@ jobs:
         include:
           - arch: "linux-amd64"
             os: "ubuntu-latest"
+            # not using newer graalvm release which produces considerably larger binaries
+            graal_version: 21.3.3.1 # https://github.com/graalvm/graalvm-ce-builds/releases/tag/vm-21.3.3.1
             graal_install_root: "/opt/graalvm"
+
           - arch: "linux-arm64"
             os: "ubuntu-latest"
+            # not using newer graalvm release which produces considerably larger binaries
+            graal_version: 21.3.3.1 # https://github.com/graalvm/graalvm-ce-builds/releases/tag/vm-21.3.3.1
             graal_install_root: "/opt/graalvm"
-          - arch: "darwin-amd64"
-            os: "macos-13"
+
+          - arch: "darwin-arm64"
+            os: "macos-latest" # ARM
+            graal_version: 22.0.2 # https://github.com/graalvm/graalvm-ce-builds/releases/tag/jdk-22.0.2
             graal_install_root: "graalvm"
+
+          - arch: "darwin-amd64"
+            os: "macos-12" # x64 -> TODO not using macos-13 because of https://github.com/upx/upx/issues/612
+            # not using newer graalvm release which produces considerably larger binaries
+            graal_version: 21.3.3.1 # https://github.com/graalvm/graalvm-ce-builds/releases/tag/vm-21.3.3.1
+            graal_install_root: "graalvm"
+
           - arch: "windows-amd64"
             os: "windows-latest"
+            # TODO don't upgrade as newer versions break Windows builds https://github.com/oracle/graal/issues/4340
+            # not using newer graalvm release which produces considerably larger binaries
+            graal_version: 21.3.3.1 # https://github.com/graalvm/graalvm-ce-builds/releases/tag/vm-21.3.3.1
             graal_install_root: "graalvm"
 
     env:
@@ -222,7 +237,7 @@ jobs:
       with:
         path: |
           ${{ matrix.graal_install_root }}
-        key: ${{ matrix.arch }}-graalvm-${{ env.GRAALVM_VERSION }}-java-${{ env.JAVA_VERSION }}
+        key: ${{ matrix.arch }}-graalvm-${{ matrix.graal_version }}
 
 
     - name: "Create arm64 container"
@@ -256,7 +271,7 @@ jobs:
               rm -rf $GRAAL_VM_HOME
               mkdir -p $GRAAL_VM_HOME
 
-              curl -fL "https://github.com/graalvm/graalvm-ce-builds/releases/download/vm-${{ env.GRAALVM_VERSION }}/graalvm-ce-java${{ env.JAVA_VERSION}}-linux-amd64-${{ env.GRAALVM_VERSION }}.tar.gz" \
+              curl -fL "https://github.com/graalvm/graalvm-ce-builds/releases/download/vm-${{ matrix.graal_version }}/graalvm-ce-java${{ env.JAVA_VERSION}}-linux-amd64-${{ matrix.graal_version }}.tar.gz" \
                 | tar zxv -C $GRAAL_VM_HOME --strip-components=1 \
                     --exclude=*/bin/jvisualvm \
                     --exclude=*/lib/src.zip \
@@ -280,7 +295,7 @@ jobs:
                 rm -rf \$GRAAL_VM_HOME
                 mkdir -p \$GRAAL_VM_HOME
 
-                curl -fL "https://github.com/graalvm/graalvm-ce-builds/releases/download/vm-${{ env.GRAALVM_VERSION }}/graalvm-ce-java${{ env.JAVA_VERSION }}-linux-aarch64-${{ env.GRAALVM_VERSION }}.tar.gz" \
+                curl -fL "https://github.com/graalvm/graalvm-ce-builds/releases/download/vm-${{ matrix.graal_version }}/graalvm-ce-java${{ env.JAVA_VERSION }}-linux-aarch64-${{ matrix.graal_version }}.tar.gz" \
                   | tar zxv -C \$GRAAL_VM_HOME --strip-components=1 \
                       --exclude=*/bin/jvisualvm \
                       --exclude=*/lib/src.zip \
@@ -294,6 +309,25 @@ jobs:
 
             docker exec --tty -w /workspace arm64 /bin/bash ./install_graalvm.sh
           ;;
+          darwin-arm64)
+            GRAAL_VM_HOME=${{ matrix.graal_install_root }}/Contents/Home
+
+            if [ ! -e $GRAAL_VM_HOME/bin/native-image ]; then
+              rm -rf ${{ matrix.graal_install_root }}
+              mkdir ${{ matrix.graal_install_root }}
+
+                curl -fL "https://github.com/graalvm/graalvm-ce-builds/releases/download/jdk-${{ matrix.graal_version }}/graalvm-community-jdk-${{ matrix.graal_version }}_macos-aarch64_bin.tar.gz" \
+                | tar zxv -C graalvm --strip-components=1 \
+                    --exclude=*/bin/jvisualvm \
+                    --exclude=*/lib/src.zip \
+                    --exclude=*/lib/visualvm
+            fi
+
+            $GRAAL_VM_HOME/bin/native-image --version
+
+            echo "JAVA_HOME=$GRAAL_VM_HOME" >> $GITHUB_ENV
+            echo "$GRAAL_VM_HOME/bin" >> $GITHUB_PATH
+          ;;
           darwin-amd64)
             GRAAL_VM_HOME=${{ matrix.graal_install_root }}/Contents/Home
 
@@ -301,7 +335,7 @@ jobs:
               rm -rf ${{ matrix.graal_install_root }}
               mkdir ${{ matrix.graal_install_root }}
 
-              curl -fL "https://github.com/graalvm/graalvm-ce-builds/releases/download/vm-${{ env.GRAALVM_VERSION }}/graalvm-ce-java${{ env.JAVA_VERSION }}-darwin-amd64-${{ env.GRAALVM_VERSION }}.tar.gz" \
+              curl -fL "https://github.com/graalvm/graalvm-ce-builds/releases/download/vm-${{ matrix.graal_version }}/graalvm-ce-java${{ env.JAVA_VERSION }}-darwin-amd64-${{ matrix.graal_version }}.tar.gz" \
                 | tar zxv -C graalvm --strip-components=1 \
                     --exclude=*/bin/jvisualvm \
                     --exclude=*/lib/src.zip \
@@ -322,7 +356,7 @@ jobs:
               rm -rf $GRAAL_VM_HOME
 
               echo "Downloading GraalVM..."
-              curl -fL -o graalvm.zip https://github.com/graalvm/graalvm-ce-builds/releases/download/vm-${{ env.GRAALVM_VERSION }}/graalvm-ce-java${{ env.JAVA_VERSION }}-windows-amd64-${{ env.GRAALVM_VERSION }}.zip
+              curl -fL -o graalvm.zip https://github.com/graalvm/graalvm-ce-builds/releases/download/vm-${{ matrix.graal_version }}/graalvm-ce-java${{ env.JAVA_VERSION }}-windows-amd64-${{ matrix.graal_version }}.zip
   
               echo "Extracting GraalVM..."
               7z x graalvm.zip
@@ -352,29 +386,44 @@ jobs:
         esac
 
 
+    - name: "Install: MacPorts"
+      uses: melusina-org/setup-macports@v1
+      if: runner.os == 'macOS'
+
+
     - name: "Install: UPX"
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
       run: |
         case "${{ matrix.arch }}" in
           linux-amd64)
-            mkdir /opt/upx
-            upx_download_url=$(curl -fsSL -H "Authorization: token ${{ github.token }}" https://api.github.com/repos/upx/upx/releases/latest | grep browser_download_url | grep amd64_linux.tar.xz | cut "-d\"" -f4)
-            echo "Downloading [$upx_download_url]..."
-            curl -fL $upx_download_url | tar Jxv -C /opt/upx --strip-components=1
+            if [[ ! -x /opt/upx/upx ]]; then # check for re-running a job in nektos/act
+              rm -rf /opt/upx
+              mkdir /opt/upx
+              upx_download_url=$(curl -fsSL ${GITHUB_TOKEN:+-H "Authorization: token $GITHUB_TOKEN"} https://api.github.com/repos/upx/upx/releases/latest | grep browser_download_url | grep amd64_linux.tar.xz | cut "-d\"" -f4)
+              echo "Downloading [$upx_download_url]..."
+              curl -fL $upx_download_url | tar Jxv -C /opt/upx --strip-components=1
+            fi
           ;;
           linux-arm64)
-            mkdir /opt/upx
-            upx_download_url=$(curl -fsSL -H "Authorization: token ${{ github.token }}" https://api.github.com/repos/upx/upx/releases/latest | grep browser_download_url | grep arm64_linux.tar.xz | cut "-d\"" -f4)
-            echo "Downloading [$upx_download_url]..."
-            curl -fL $upx_download_url | tar Jxv -C /opt/upx --strip-components=1
+            if [[ ! -x /opt/upx/upx ]]; then # check for re-running a job in nektos/act
+              rm -rf /opt/upx
+              mkdir /opt/upx
+              upx_download_url=$(curl -fsSL ${GITHUB_TOKEN:+-H "Authorization: token $GITHUB_TOKEN"} https://api.github.com/repos/upx/upx/releases/latest | grep browser_download_url | grep arm64_linux.tar.xz | cut "-d\"" -f4)
+              echo "Downloading [$upx_download_url]..."
+              curl -fL $upx_download_url | tar Jxv -C /opt/upx --strip-components=1
+            fi
           ;;
-          darwin-amd64)
-            brew install upx
+          darwin-*)
+            # TODO https://github.com/upx/upx/issues/612 https://github.com/Homebrew/homebrew-core/pull/183634
+            # brew install upx
+            sudo port install upx
           ;;
           windows-amd64)
             # first choco install in a build takes 3+ minutes
             # choco install -y upx
 
-            upx_download_url=$(curl -fsSL -H "Authorization: token ${{ github.token }}" https://api.github.com/repos/upx/upx/releases/latest | grep browser_download_url | grep win64.zip | cut "-d\"" -f4)
+            upx_download_url=$(curl -fsSL ${GITHUB_TOKEN:+-H "Authorization: token $GITHUB_TOKEN"} https://api.github.com/repos/upx/upx/releases/latest | grep browser_download_url | grep win64.zip | cut "-d\"" -f4)
             echo "Downloading [$upx_download_url]..."
             curl -fL -o /tmp/upx.zip $upx_download_url
 
@@ -465,7 +514,7 @@ jobs:
                 ${{ env.NATIVE_IMAGE_ARGS }}
             "
           ;;
-          darwin-amd64)
+          darwin-*)
             # not using "--static" because of error: DARWIN does not support building static executable images.
             native-image ${{ env.NATIVE_IMAGE_ARGS }}
           ;;
@@ -493,7 +542,7 @@ jobs:
             ./copycat-${{ matrix.arch }} --version
             ./copycat-${{ matrix.arch }} --help
             ./copycat-${{ matrix.arch }} sync --help
-            ./copycat-${{ matrix.arch }} --help
+            ./copycat-${{ matrix.arch }} watch --help
           ;;
         esac
 
@@ -512,19 +561,21 @@ jobs:
               /opt/upx/upx -v -9 --no-progress copycat-${{ matrix.arch }}
             "
           ;;
-          darwin-amd64)
+          darwin-*)
             # https://www.unix.com/man-page/osx/1/strip/
             strip copycat-${{ matrix.arch }}
-            upx -v -9 --no-progress copycat-${{ matrix.arch }}
+            cp copycat-${{ matrix.arch }} copycat-${{ matrix.arch }}-upx
+            upx -v -9 --force-macos --no-progress copycat-${{ matrix.arch }}-upx
           ;;
           windows-amd64)
-            cp copycat-${{ matrix.arch }}.exe copycat-${{ matrix.arch }}-uncompressed.exe
-            upx -v -9 --no-progress copycat-${{ matrix.arch }}.exe
+            cp copycat-${{ matrix.arch }}.exe copycat-${{ matrix.arch }}-upx.exe
+            upx -v -9 --no-progress copycat-${{ matrix.arch }}-upx.exe
           ;;
         esac
 
 
     - name: "Test compressed executable"
+      if: ${{ matrix.arch != 'darwin-arm64' }} # TODO compressed files not working on MacOS 13+ https://github.com/upx/upx/issues/612
       run: |
         case "${{ matrix.arch }}" in
           linux-arm64)
@@ -548,20 +599,9 @@ jobs:
 
     - name: "Share: native binary"
       uses: actions/upload-artifact@v4
-      if: matrix.arch != 'windows-amd64'
       with:
         name: binaries-${{ matrix.arch }}
-        path: copycat-${{ matrix.arch }}
-
-
-    - name: "Share: native binary"
-      uses: actions/upload-artifact@v4
-      if: matrix.arch == 'windows-amd64'
-      with:
-        name: binaries-${{ matrix.arch }}
-        path: |
-          copycat-${{ matrix.arch }}.exe
-          copycat-${{ matrix.arch }}-uncompressed.exe
+        path: copycat-${{ matrix.arch }}*
 
 
   ###########################################################
@@ -608,9 +648,11 @@ jobs:
           artifacts/copycat-linux-amd64#copycat-${{ env.RELEASE_NAME }}-linux-amd64 \
           artifacts/copycat-linux-arm64#copycat-${{ env.RELEASE_NAME }}-linux-arm64 \
           artifacts/copycat-darwin-amd64#copycat-${{ env.RELEASE_NAME }}-darwin-amd64 \
+          artifacts/copycat-darwin-arm64#copycat-${{ env.RELEASE_NAME }}-darwin-arm64 \
+          artifacts/copycat-darwin-amd64-upx#copycat-${{ env.RELEASE_NAME }}-darwin-amd64-upx \
+          artifacts/copycat-darwin-arm64-upx#copycat-${{ env.RELEASE_NAME }}-darwin-arm64-upx \
           artifacts/copycat-windows-amd64.exe#copycat-${{ env.RELEASE_NAME }}-windows-amd64.exe \
-          artifacts/copycat-windows-amd64-uncompressed.exe#copycat-${{ env.RELEASE_NAME }}-windows-amd64-uncompressed.exe
-
+          artifacts/copycat-windows-amd64-upx.exe#copycat-${{ env.RELEASE_NAME }}-windows-amd64-upx.exe
 
     - name: "Delete intermediate build artifacts"
       uses: geekyeggo/delete-artifact@v5 # https://github.com/GeekyEggo/delete-artifact/
