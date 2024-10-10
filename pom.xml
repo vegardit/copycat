@@ -13,7 +13,7 @@
    <parent>
       <groupId>com.vegardit.maven</groupId>
       <artifactId>vegardit-maven-parent</artifactId>
-      <version>5.1.0</version>
+      <version>6.1.3</version>
    </parent>
 
    <groupId>com.vegardit</groupId>
@@ -270,7 +270,7 @@
          <dependency>
             <groupId>net.sf.jstuff</groupId>
             <artifactId>jstuff-core</artifactId>
-            <version>7.14.0</version>
+            <version>8.0.0</version>
             <type>pom</type>
             <scope>import</scope>
          </dependency>
@@ -279,11 +279,18 @@
 
    <dependencies>
       <dependency>
-          <groupId>org.eclipse.jdt</groupId>
-          <artifactId>org.eclipse.jdt.annotation</artifactId>
-          <version>2.3.0</version>
+         <groupId>org.eclipse.jdt</groupId>
+         <artifactId>org.eclipse.jdt.annotation</artifactId>
+         <version>2.3.0</version>
          <scope>provided</scope>
       </dependency>
+      <!--External Eclipse null Annotations, see https://github.com/vegardit/no-npe-->
+      <dependency>
+         <groupId>com.vegardit.no-npe</groupId>
+         <artifactId>no-npe-eea-all</artifactId>
+         <version>1.2.0</version>
+         <scope>provided</scope>
+       </dependency>
 
       <dependency>
          <!-- command line parsing https://github.com/remkop/picocli -->
