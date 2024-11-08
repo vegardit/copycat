@@ -13,7 +13,7 @@
    <parent>
       <groupId>com.vegardit.maven</groupId>
       <artifactId>vegardit-maven-parent</artifactId>
-      <version>6.1.3</version>
+      <version>6.1.4</version>
    </parent>
 
    <groupId>com.vegardit</groupId>
@@ -270,7 +270,7 @@
          <dependency>
             <groupId>net.sf.jstuff</groupId>
             <artifactId>jstuff-core</artifactId>
-            <version>8.0.0</version>
+            <version>8.0.1</version>
             <type>pom</type>
             <scope>import</scope>
          </dependency>
