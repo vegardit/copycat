@@ -192,12 +192,12 @@ jobs:
             graal_install_root: "/opt/graalvm"
 
           - arch: "darwin-arm64"
-            os: "macos-latest" # ARM
-            graal_version: 22.0.2 # https://github.com/graalvm/graalvm-ce-builds/releases/tag/jdk-22.0.2
+            os: "macos-latest"  # ARM
+            graal_version: 22.0.2  # https://github.com/graalvm/graalvm-ce-builds/releases/tag/jdk-22.0.2
             graal_install_root: "graalvm"
 
           - arch: "darwin-amd64"
-            os: "macos-12" # x64 -> TODO not using macos-13 because of https://github.com/upx/upx/issues/612
+            os: "macos-12"  # x64 -> TODO not using macos-13 because of https://github.com/upx/upx/issues/612
             # not using newer graalvm release which produces considerably larger binaries
             graal_version: 21.3.3.1 # https://github.com/graalvm/graalvm-ce-builds/releases/tag/vm-21.3.3.1
             graal_install_root: "graalvm"
@@ -575,7 +575,7 @@ jobs:
 
 
     - name: "Test compressed executable"
-      if: ${{ matrix.arch != 'darwin-arm64' }} # TODO compressed files not working on MacOS 13+ https://github.com/upx/upx/issues/612
+      if: ${{ matrix.arch != 'darwin-arm64' }}  # TODO compressed files not working on MacOS 13+ https://github.com/upx/upx/issues/612
       run: |
         case "${{ matrix.arch }}" in
           linux-arm64)
@@ -615,7 +615,7 @@ jobs:
     steps:
     - name: "SCM Checkout" 
       # only required by "hub release create" to prevent "fatal: Not a git repository"
-      uses: actions/checkout@v4 #https://github.com/actions/checkout
+      uses: actions/checkout@v4  # https://github.com/actions/checkout
 
 
     - name: "Get: all build artifacts"
@@ -655,7 +655,7 @@ jobs:
           artifacts/copycat-windows-amd64-upx.exe#copycat-${{ env.RELEASE_NAME }}-windows-amd64-upx.exe
 
     - name: "Delete intermediate build artifacts"
-      uses: geekyeggo/delete-artifact@v5 # https://github.com/GeekyEggo/delete-artifact/
+      uses: geekyeggo/delete-artifact@v5  # https://github.com/GeekyEggo/delete-artifact/
       with:
         name: "*"
         failOnError: false
