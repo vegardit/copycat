@@ -48,7 +48,7 @@ jobs:
   ###########################################################
   maven-build:
   ###########################################################
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
     - name: "Show: GitHub context"
@@ -180,13 +180,13 @@ jobs:
         # https://github.com/actions/runner-images#available-images
         include:
           - arch: "linux-amd64"
-            os: "ubuntu-latest"
+            os: "ubuntu-24.04"
             # not using newer graalvm release which produces considerably larger binaries
             graal_version: 21.3.3.1 # https://github.com/graalvm/graalvm-ce-builds/releases/tag/vm-21.3.3.1
             graal_install_root: "/opt/graalvm"
 
           - arch: "linux-arm64"
-            os: "ubuntu-latest"
+            os: "ubuntu-24.04"
             # not using newer graalvm release which produces considerably larger binaries
             graal_version: 21.3.3.1 # https://github.com/graalvm/graalvm-ce-builds/releases/tag/vm-21.3.3.1
             graal_install_root: "/opt/graalvm"
@@ -250,7 +250,7 @@ jobs:
         docker container create --name arm64 --tty \
           -v /opt:/opt:rw \
           -v $PWD:/workspace:rw \
-          arm64v8/ubuntu:22.04
+          arm64v8/ubuntu:24.04
 
         docker container start arm64
 
