@@ -40,7 +40,7 @@ defaults:
 
 env:
   JAVA_VERSION: 17
-  RELEASE_NAME: "snapshot"
+  RELEASE_NAME: "latest"
 
 
 jobs:
@@ -193,11 +193,12 @@ jobs:
 
           - arch: "darwin-arm64"
             os: "macos-latest"  # ARM
+            # using newer graalvm release because 21.3.3.1 is not available for ARM
             graal_version: 23.0.1  # https://github.com/graalvm/graalvm-ce-builds/releases/tag/jdk-23.0.1
             graal_install_root: "graalvm"
 
           - arch: "darwin-amd64"
-            os: "macos-12"  # x64 -> TODO not using macos-13 because of https://github.com/upx/upx/issues/612
+            os: "macos-13"  # x64
             # not using newer graalvm release which produces considerably larger binaries
             graal_version: 21.3.3.1 # https://github.com/graalvm/graalvm-ce-builds/releases/tag/vm-21.3.3.1
             graal_install_root: "graalvm"
@@ -387,14 +388,10 @@ jobs:
         esac
 
 
-    - name: "Install: MacPorts"
-      uses: melusina-org/setup-macports@v1
-      if: runner.os == 'macOS'
-
-
     - name: "Install: UPX"
       env:
         GITHUB_TOKEN: ${{ github.token }}
+      if: runner.os != 'macOS'  # https://github.com/upx/upx/issues/612
       run: |
         case "${{ matrix.arch }}" in
           linux-amd64)
@@ -416,9 +413,8 @@ jobs:
             fi
           ;;
           darwin-*)
-            # TODO https://github.com/upx/upx/issues/612 https://github.com/Homebrew/homebrew-core/pull/183634
-            # brew install upx
-            sudo port install upx
+            # https://github.com/Homebrew/homebrew-core/pull/183634
+            brew install upx
           ;;
           windows-amd64)
             # first choco install in a build takes 3+ minutes
@@ -549,6 +545,7 @@ jobs:
 
 
     - name: "Compress executable"
+      if: runner.os != 'macOS'  # https://github.com/upx/upx/issues/612
       run: |
         set -eu
         case "${{ matrix.arch }}" in
@@ -565,8 +562,7 @@ jobs:
           darwin-*)
             # https://www.unix.com/man-page/osx/1/strip/
             strip copycat-${{ matrix.arch }}
-            cp copycat-${{ matrix.arch }} copycat-${{ matrix.arch }}-upx
-            upx -v -9 --force-macos --no-progress copycat-${{ matrix.arch }}-upx
+            upx -v -9 --force-macos --no-progress copycat-${{ matrix.arch }}
           ;;
           windows-amd64)
             cp copycat-${{ matrix.arch }}.exe copycat-${{ matrix.arch }}-upx.exe
@@ -576,7 +572,7 @@ jobs:
 
 
     - name: "Test compressed executable"
-      if: ${{ matrix.arch != 'darwin-arm64' }}  # TODO compressed files not working on MacOS 13+ https://github.com/upx/upx/issues/612
+      if: runner.os != 'macOS'  # https://github.com/upx/upx/issues/612
       run: |
         case "${{ matrix.arch }}" in
           linux-arm64)
@@ -588,12 +584,19 @@ jobs:
               ./copycat-${{ matrix.arch }} watch --help
              "
           ;;
+          windows-*)
+            chmod u+x copycat-${{ matrix.arch }}-upx
+            ./copycat-${{ matrix.arch }}-upx --version
+            ./copycat-${{ matrix.arch }}-upx --help
+            ./copycat-${{ matrix.arch }}-upx sync --help
+            ./copycat-${{ matrix.arch }}-upx watch --help
+          ;;
           *)
             chmod u+x copycat-${{ matrix.arch }}
             ./copycat-${{ matrix.arch }} --version
             ./copycat-${{ matrix.arch }} --help
             ./copycat-${{ matrix.arch }} sync --help
-            ./copycat-${{ matrix.arch }} --help
+            ./copycat-${{ matrix.arch }} watch --help
           ;;
         esac
 
@@ -627,7 +630,7 @@ jobs:
 
 
     - name: "Delete previous '${{ env.RELEASE_NAME }}' release"
-      if: env.RELEASE_NAME == 'snapshot'
+      if: env.RELEASE_NAME == 'latest'
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       # https://cli.github.com/manual/gh_release_delete
@@ -642,6 +645,7 @@ jobs:
       run: |
         GH_DEBUG=1 gh release create "$RELEASE_NAME" \
           --latest \
+          --title "$RELEASE_NAME" \
           --notes "${{ github.event.head_commit.message }}" \
           --target "${{ github.sha }}" \
           artifacts/copycat-fat.jar#copycat-${{ env.RELEASE_NAME }}-fat.jar \
@@ -650,8 +654,6 @@ jobs:
           artifacts/copycat-linux-arm64#copycat-${{ env.RELEASE_NAME }}-linux-arm64 \
           artifacts/copycat-darwin-amd64#copycat-${{ env.RELEASE_NAME }}-darwin-amd64 \
           artifacts/copycat-darwin-arm64#copycat-${{ env.RELEASE_NAME }}-darwin-arm64 \
-          artifacts/copycat-darwin-amd64-upx#copycat-${{ env.RELEASE_NAME }}-darwin-amd64-upx \
-          artifacts/copycat-darwin-arm64-upx#copycat-${{ env.RELEASE_NAME }}-darwin-arm64-upx \
           artifacts/copycat-windows-amd64.exe#copycat-${{ env.RELEASE_NAME }}-windows-amd64.exe \
           artifacts/copycat-windows-amd64-upx.exe#copycat-${{ env.RELEASE_NAME }}-windows-amd64-upx.exe
 
