@@ -193,7 +193,7 @@ jobs:
 
           - arch: "darwin-arm64"
             os: "macos-latest"  # ARM
-            graal_version: 22.0.2  # https://github.com/graalvm/graalvm-ce-builds/releases/tag/jdk-22.0.2
+            graal_version: 23.0.1  # https://github.com/graalvm/graalvm-ce-builds/releases/tag/jdk-23.0.1
             graal_install_root: "graalvm"
 
           - arch: "darwin-amd64"
