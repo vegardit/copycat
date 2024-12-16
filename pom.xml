@@ -49,7 +49,7 @@
       <!-- https://central.sonatype.com/artifact/info.picocli/picocli -->
       <picocli.version>4.7.6</picocli.version>
       <!-- https://central.sonatype.com/artifact/com.guardsquare/proguard-core -->
-      <proguard.version>9.1.6</proguard.version>
+      <proguard.version>9.1.7</proguard.version>
 
       <skip.japicmp.cmp>true</skip.japicmp.cmp>
    </properties>
