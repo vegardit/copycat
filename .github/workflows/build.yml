@@ -40,7 +40,6 @@ defaults:
 
 env:
   JAVA_VERSION: 17
-  RELEASE_NAME: "latest"
 
 
 jobs:
@@ -614,10 +613,10 @@ jobs:
     runs-on: ubuntu-latest
     needs: 
       - native-image
-    if: ${{ github.ref_name == 'main' && !github.event.act }}
+    if: ${{ (github.ref_name == 'main' || github.ref_name == 'release') && !github.event.act }}
 
     steps:
-    - name: "SCM Checkout" 
+    - name: Git Checkout 
       # only required by "hub release create" to prevent "fatal: Not a git repository"
       uses: actions/checkout@v4  # https://github.com/actions/checkout
 
@@ -629,36 +628,90 @@ jobs:
         merge-multiple: true
 
 
-    - name: "Delete previous '${{ env.RELEASE_NAME }}' release"
-      if: env.RELEASE_NAME == 'latest'
+    - name: "Determine release name"
+      id: release
+      run: |
+        case "$GITHUB_REF_NAME" in
+          main)
+            echo "name=preview" >>"$GITHUB_OUTPUT"
+            ;;
+          release)
+            echo "name=latest" >>"$GITHUB_OUTPUT"
+            ;;
+        esac
+
+
+    - name: "Delete previous '${{ steps.release.outputs.name }}' release"
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        RELEASE_NAME: ${{ steps.release.outputs.name }}
       # https://cli.github.com/manual/gh_release_delete
       run: |
         GH_DEBUG=1 gh release delete "$RELEASE_NAME" --yes --cleanup-tag || true
 
-
-    - name: "Create '${{ env.RELEASE_NAME }}' Release"
+    - name: "Create '${{ steps.release.outputs.name }}' Release"
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        RELEASE_NAME: ${{ steps.release.outputs.name }}
+        COMMIT_MSG: ${{ github.event.head_commit.message }} # https://stackoverflow.com/a/78420438/5116073
       # https://cli.github.com/manual/gh_release_create
       run: |
         GH_DEBUG=1 gh release create "$RELEASE_NAME" \
-          --latest \
           --title "$RELEASE_NAME" \
-          --notes "${{ github.event.head_commit.message }}" \
+          ${{ steps.release.outputs.name == 'latest' && '--latest' || '' }} \
+          ${{ steps.release.outputs.name == 'preview' && '--prerelease' || '' }} \
+          --notes "$COMMIT_MSG" \
           --target "${{ github.sha }}" \
-          artifacts/copycat-fat.jar#copycat-${{ env.RELEASE_NAME }}-fat.jar \
-          artifacts/bash/bashcompletion.sh#copycat-${{ env.RELEASE_NAME }}-bashcompletion.sh \
-          artifacts/copycat-linux-amd64#copycat-${{ env.RELEASE_NAME }}-linux-amd64 \
-          artifacts/copycat-linux-arm64#copycat-${{ env.RELEASE_NAME }}-linux-arm64 \
-          artifacts/copycat-darwin-amd64#copycat-${{ env.RELEASE_NAME }}-darwin-amd64 \
-          artifacts/copycat-darwin-arm64#copycat-${{ env.RELEASE_NAME }}-darwin-arm64 \
-          artifacts/copycat-windows-amd64.exe#copycat-${{ env.RELEASE_NAME }}-windows-amd64.exe \
-          artifacts/copycat-windows-amd64-upx.exe#copycat-${{ env.RELEASE_NAME }}-windows-amd64-upx.exe
+          artifacts/copycat-fat.jar#copycat-$RELEASE_NAME-fat.jar \
+          artifacts/bash/bashcompletion.sh#copycat-$RELEASE_NAME-bashcompletion.sh \
+          artifacts/copycat-linux-amd64#copycat-$RELEASE_NAME-linux-amd64 \
+          artifacts/copycat-linux-arm64#copycat-$$RELEASE_NAME-linux-arm64 \
+          artifacts/copycat-darwin-amd64#copycat-$RELEASE_NAME-darwin-amd64 \
+          artifacts/copycat-darwin-arm64#copycat-$RELEASE_NAME-darwin-arm64 \
+          artifacts/copycat-windows-amd64.exe#copycat-$RELEASE_NAME-windows-amd64.exe \
+          artifacts/copycat-windows-amd64-upx.exe#copycat-$RELEASE_NAME-windows-amd64-upx.exe
 
     - name: "Delete intermediate build artifacts"
       uses: geekyeggo/delete-artifact@v5  # https://github.com/GeekyEggo/delete-artifact/
       with:
         name: "*"
         failOnError: false
+
+
+  ###########################################################
+  dependabot-pr-auto-merge:
+  ###########################################################
+    needs: maven-build
+    if: ${{ github.event_name == 'pull_request' && github.actor == 'dependabot[bot]' }}
+    runs-on: ubuntu-latest
+
+    concurrency: dependabot-pr-auto-merge
+
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+    - name: Dependabot metadata
+      id: metadata
+      uses: dependabot/fetch-metadata@v2  # https://github.com/dependabot/fetch-metadata/
+      with:
+        github-token: "${{ secrets.GITHUB_TOKEN }}"
+
+
+    - name: Enable auto-merge for Dependabot PRs
+      if: |
+        ${{
+          (
+            steps.dependabot-metadata.outputs.package-ecosystem == 'github-actions' && 
+            steps.metadata.outputs.update-type == 'version-update:semver-major'
+          ) || (
+            steps.dependabot-metadata.outputs.package-ecosystem == 'maven' && 
+            steps.metadata.outputs.update-type == 'version-update:semver-minor'
+          )
+        }}
+      run: |
+        gh pr merge --auto --rebase "$PR_URL"
+      env:
+        PR_URL: ${{github.event.pull_request.html_url}}
+        GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
