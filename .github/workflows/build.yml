@@ -614,10 +614,21 @@ jobs:
     needs: 
       - native-image
     if: ${{ (github.ref_name == 'main' || github.ref_name == 'release') && !github.event.act }}
+    concurrency: publish-${{ github.ref_name }}-release # https://docs.github.com/en/actions/reference/workflow-syntax-for-github-actions#jobsjob_idconcurrency
 
     steps:
+    - name: "Show: GitHub context"
+      env:
+        GITHUB_CONTEXT: ${{ toJSON(github) }}
+      run: echo $GITHUB_CONTEXT
+
+
+    - name: "Show: environment variables"
+      run: env | sort
+
+
     - name: Git Checkout 
-      # only required by "hub release create" to prevent "fatal: Not a git repository"
+      # only required by "gh release create" to prevent "fatal: Not a git repository"
       uses: actions/checkout@v4  # https://github.com/actions/checkout
 
 
@@ -649,6 +660,7 @@ jobs:
       run: |
         GH_DEBUG=1 gh release delete "$RELEASE_NAME" --yes --cleanup-tag || true
 
+
     - name: "Create '${{ steps.release.outputs.name }}' Release"
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -670,6 +682,7 @@ jobs:
           artifacts/copycat-darwin-arm64#copycat-$RELEASE_NAME-darwin-arm64 \
           artifacts/copycat-windows-amd64.exe#copycat-$RELEASE_NAME-windows-amd64.exe \
           artifacts/copycat-windows-amd64-upx.exe#copycat-$RELEASE_NAME-windows-amd64-upx.exe
+
 
     - name: "Delete intermediate build artifacts"
       uses: geekyeggo/delete-artifact@v5  # https://github.com/GeekyEggo/delete-artifact/
