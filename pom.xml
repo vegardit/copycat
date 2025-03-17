@@ -335,7 +335,7 @@
          <groupId>io.methvin</groupId>
          <artifactId>directory-watcher</artifactId>
          <!-- https://central.sonatype.com/artifact/io.methvin/directory-watcher -->
-         <version>0.18.0</version>
+         <version>0.19.0</version>
       </dependency>
       <dependency>
          <groupId>org.slf4j</groupId>
