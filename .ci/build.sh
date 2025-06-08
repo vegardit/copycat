@@ -13,7 +13,8 @@ set -eu
 # execute script with bash if loaded with other shell interpreter
 if [ -z "${BASH_VERSINFO:-}" ]; then /usr/bin/env bash "$0" "$@"; exit; fi
 
-set -o pipefail
+set -o pipefail # causes a pipeline to return the exit status of the last command in the pipe that returned a non-zero return value
+set -o nounset # treat undefined variables as errors
 
 # configure stack trace reporting
 trap 'rc=$?; echo >&2 "$(date +%H:%M:%S) Error - exited with status $rc in [$BASH_SOURCE] at line $LINENO:"; cat -n $BASH_SOURCE | tail -n+$((LINENO - 3)) | head -n7' ERR
@@ -24,13 +25,13 @@ SCRIPT_DIR="$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 #####################
 # Main
 #####################
+cd "$SCRIPT_DIR/.."
 
 if [[ -f .ci/release-trigger.sh ]]; then
    echo "Sourcing [.ci/release-trigger.sh]..."
    source .ci/release-trigger.sh
 fi
 
-cd $(dirname $0)/..
 
 echo
 echo "###################################################"
@@ -53,10 +54,10 @@ export MAVEN_OPTS
 
 MAVEN_CLI_OPTS="-e -U --batch-mode --show-version -s .ci/maven-settings.xml -t .ci/maven-toolchains.xml"
 if [[ -n ${GITEA_ACTIONS:-} || (-n ${CI:-} && -z ${ACT:-}) ]]; then # if running on a remote CI but not on local nektos/act runner
-  MAVEN_CLI_OPTS+=" --no-transfer-progress"
+   MAVEN_CLI_OPTS+=" --no-transfer-progress"
 fi
 if [[ -n ${ACT:-} ]]; then
-  MAVEN_CLI_OPTS+=" -Dformatter.validate.lineending=KEEP"
+   MAVEN_CLI_OPTS+=" -Dformatter.validate.lineending=KEEP"
 fi
 echo "  -> MAVEN_CLI_OPTS: $MAVEN_CLI_OPTS"
 
