@@ -181,7 +181,7 @@ public abstract class AbstractSyncCommand<C extends AbstractSyncCommandConfig<C>
       description = "Glob pattern for files/directories to be excluded from or included in sync.")
    private void setFilters(final List<String> fileFilters) {
       if (isDeprecatedExcludeUsed)
-         throw new IllegalArgumentException("Option --filter cannot be used togther with --exclude.");
+         throw new IllegalArgumentException("Option --filter cannot be used together with --exclude.");
       cfgCLI.fileFilters = fileFilters;
    }
 
