@@ -12,6 +12,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.PathMatcher;
+import java.nio.file.attribute.FileTime;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -57,6 +58,9 @@ public abstract class AbstractSyncCommandConfig<THIS extends AbstractSyncCommand
    public @Nullable Boolean excludeHiddenFiles;
    public @Nullable Boolean excludeHiddenSystemFiles;
    public @Nullable Boolean excludeSystemFiles;
+
+   public @Nullable FileTime modifiedFrom;
+   public @Nullable FileTime modifiedTo;
 
    @SuppressWarnings({"unchecked", "rawtypes"})
    protected THIS newInstance() {
@@ -109,6 +113,12 @@ public abstract class AbstractSyncCommandConfig<THIS extends AbstractSyncCommand
       if (override && other.excludeSystemFiles != null || excludeSystemFiles == null) {
          excludeSystemFiles = other.excludeSystemFiles;
       }
+      if (override && other.modifiedFrom != null || modifiedFrom == null) {
+         modifiedFrom = other.modifiedFrom;
+      }
+      if (override && other.modifiedTo != null || modifiedTo == null) {
+         modifiedTo = other.modifiedTo;
+      }
       if (override && other.source != null || source == null) {
          source = other.source;
       }
@@ -130,6 +140,8 @@ public abstract class AbstractSyncCommandConfig<THIS extends AbstractSyncCommand
       defaults.excludeHiddenFiles = getBoolean(cfg, "exclude-hidden-files", true);
       defaults.excludeHiddenSystemFiles = getBoolean(cfg, "exclude-hidden-system-files", true);
       defaults.excludeSystemFiles = getBoolean(cfg, "exclude-system-files", true);
+      defaults.modifiedFrom = getFileTime(cfg, "since", true);
+      defaults.modifiedTo = getFileTime(cfg, "until", true);
       defaults.source = getPath(cfg, "source", true);
       defaults.target = getPath(cfg, "target", true);
 
@@ -246,6 +258,16 @@ public abstract class AbstractSyncCommandConfig<THIS extends AbstractSyncCommand
             || isTrue(excludeSystemFiles) && FileUtils.isDosSystemFile(absolutePath) //
             || isTrue(excludeHiddenFiles) && Files.isHidden(absolutePath))
          return true;
+
+      // Check modification time filters
+      if ((modifiedFrom != null || modifiedTo != null) && Files.isRegularFile(absolutePath)) {
+         final var lastModified = Files.getLastModifiedTime(absolutePath);
+
+         // Exclude files modified before the "since" date or after the "until" date
+         if (modifiedFrom != null && lastModified.compareTo(modifiedFrom) < 0 || modifiedTo != null && lastModified.compareTo(
+            modifiedTo) > 0)
+            return true;
+      }
 
       if (fileFilters != null) {
          for (final var filter : fileFilters) {

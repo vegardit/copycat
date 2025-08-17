@@ -55,7 +55,8 @@ $ copycat sync --help
 Usage: copycat sync [-hqVv] [--copy-acl] [--delete] [--delete-excluded] [--dry-run] [--exclude-hidden-files]
                     [--exclude-hidden-system-files] [--exclude-older-files] [--exclude-system-files] [--ignore-errors]
                     [--ignore-symlink-errors] [--log-errors-to-stdout] [--config <path>] [--log-file <path>]
-                    [--threads <count>] [--filter in|ex:<pattern>]... [--no-log <op>[,<op>...]]... [SOURCE] [TARGET]
+                    [--threads <count>] [--since <when>] [--until <when>] [--filter in|ex:<pattern>]...
+                    [--no-log <op>[,<op>...]]... [SOURCE] [TARGET]
 
 Performs one-way recursive directory synchronization copying new files/directories.
 
@@ -89,14 +90,27 @@ Options:
       --no-log <op>[,<op>...]
                           Don't log the given sync operation. Valid values: CREATE, MODIFY, DELETE, SCAN
   -q, --quiet             Quiet mode.
+      --since <when>      Sync only items modified after this date/time. Accepts ISO-8601 dates (2024-12-25),
+                          relative expressions (3 days ago), or keywords (yesterday, today, tomorrow).
       --threads <count>   Number of concurrent threads. Default: 2
+      --until <when>      Sync only items modified before this date/time. Same format as --since.
   -v, --verbose           Specify multiple -v options to increase verbosity.
                           For example `-v -v -v` or `-vvv`.
 ```
 
-Example:
+Examples:
 ```batch
-$ copycat sync C:\myprojects X:\myprojects --delete --threads 4
+:: Basic sync with deletion
+copycat sync C:\myprojects X:\myprojects --delete --threads 4
+
+:: Sync only files modified in the last 3 days
+copycat sync C:\mydata X:\backup --since "3 days ago"
+
+:: Sync files modified between specific dates
+copycat sync C:\docs X:\archive --since 2024-01-01 --until 2024-12-31
+
+:: Sync files modified since yesterday at 2 PM
+copycat sync C:\work X:\backup --since "yesterday 14:00"
 ```
 
 Default values and/or multiple sync tasks can be configured using a YAML config file:
@@ -118,6 +132,9 @@ defaults:
   ignore-errors: false
   ignore-symlink-errors: false
   threads: 2
+  # Optional: sync only recent files
+  # since: "7 days ago"  # or "2024-01-01" or "yesterday"
+  # until: "today"       # or "2024-12-31" or "tomorrow"
 
 # one or more sync tasks
 sync:
@@ -126,6 +143,14 @@ sync:
 
 - source: D:\myotherdata
   target: \\myserver\myotherdata
+  # Optional: sync only files modified in the last week
+  since: "7 days ago"
+
+- source: E:\archives
+  target: \\backup\archives
+  # Optional: sync files from a specific date range
+  since: "2024-01-01"
+  until: "2024-12-31"
 ```
 
 
@@ -201,6 +226,8 @@ sync:
 
 By default all files are synced from source to target.
 
+#### Pattern-Based Filtering
+
 Files/folders can be excluded/included using [glob](https://docs.oracle.com/en/java/javase/17/docs/api/java.base/java/nio/file/FileSystem.html#getPathMatcher(java.lang.String)) patterns.
 The patterns must be prefixed with `ex:` for exclude patterns and with `in:` for include patterns. The prefix is case-insensitive, i.e. `EX:` and `IN:` can also be used.
 
@@ -225,6 +252,31 @@ Copycat checks the relative path of each file to be synced against the configure
    ```batch
    copycat --filter ex:**/node_modules --filter in:logs/latest.log --filter ex:logs/*.log C:\mydata \\myserver\mydata
    ```
+
+#### Date/Time Filtering
+
+You can filter files based on their modification time using `--since` and `--until` options:
+
+**Supported date/time formats:**
+- **ISO-8601 dates**: `2024-12-25`, `2024-12-25T14:30`, `2024-12-25 14:30:45`
+- **Relative expressions**: `3 days ago`, `5 hours ago`, `in 2 hours`, `2d 3h 15m ago`
+- **Keywords**: `yesterday`, `today`, `tomorrow` (with optional time like `yesterday 14:00`)
+- **ISO-8601 durations**: `P3D` (3 days), `PT2H30M` (2 hours 30 minutes)
+
+**Examples:**
+```batch
+# Sync files modified in the last week
+copycat sync source/ target/ --since "7 days ago"
+
+# Sync files modified between specific dates
+copycat sync source/ target/ --since 2024-01-01 --until 2024-06-30
+
+# Sync files modified since yesterday at 2 PM
+copycat sync source/ target/ --since "yesterday 14:00"
+
+# Sync files modified today
+copycat sync source/ target/ --since today
+```
 
 
 ## <a name="license"></a>License

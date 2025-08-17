@@ -6,7 +6,7 @@ package com.vegardit.copycat;
 
 import java.io.File;
 
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 import picocli.AutoComplete;
 import picocli.codegen.aot.graalvm.ReflectionConfigGenerator;

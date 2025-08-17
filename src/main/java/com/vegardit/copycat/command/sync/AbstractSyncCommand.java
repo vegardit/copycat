@@ -13,6 +13,7 @@ import java.nio.file.InvalidPathException;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.attribute.FileTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -23,6 +24,7 @@ import org.eclipse.jdt.annotation.Nullable;
 import org.yaml.snakeyaml.Yaml;
 
 import com.vegardit.copycat.command.AbstractCommand;
+import com.vegardit.copycat.util.DateTimeParser;
 import com.vegardit.copycat.util.YamlUtils;
 
 import net.sf.jstuff.core.SystemUtils;
@@ -183,6 +185,30 @@ public abstract class AbstractSyncCommand<C extends AbstractSyncCommandConfig<C>
       if (isDeprecatedExcludeUsed)
          throw new IllegalArgumentException("Option --filter cannot be used together with --exclude.");
       cfgCLI.fileFilters = fileFilters;
+   }
+
+   @Option(names = "--since", paramLabel = "<when>", //
+      description = "Sync only items modified after this date/time."
+            + "Accepts ISO-8601 (2024-12-25, 2024-12-25T14:30), durations (P3D, PT2H), or relative expressions (3 days ago, yesterday 14:00).")
+   private void setSince(final String when) {
+      final var dateTime = DateTimeParser.parseDateTime(when);
+      cfgCLI.modifiedFrom = FileTime.from(dateTime.atZone(java.time.ZoneId.systemDefault()).toInstant());
+      validateSinceUntil();
+   }
+
+   @Option(names = "--until", paramLabel = "<when>", //
+      description = "Sync only items modified before this date/time. "
+            + "Format same as --since. Combined with --since to define a date range.")
+   private void setUntil(final String when) {
+      final var dateTime = DateTimeParser.parseDateTime(when);
+      cfgCLI.modifiedTo = FileTime.from(dateTime.atZone(java.time.ZoneId.systemDefault()).toInstant());
+      validateSinceUntil();
+   }
+
+   private void validateSinceUntil() {
+      if (cfgCLI.modifiedFrom != null && cfgCLI.modifiedTo != null && cfgCLI.modifiedFrom.compareTo(cfgCLI.modifiedTo) > 0)
+         throw new ParameterException(commandSpec.commandLine(), "--since date (" + cfgCLI.modifiedFrom + ") is after --until date ("
+               + cfgCLI.modifiedTo + ")");
    }
 
    @Parameters(index = "0", arity = "0..1", paramLabel = "SOURCE", description = "Directory to copy from files.")

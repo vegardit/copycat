@@ -274,7 +274,14 @@ SPDX-ArtifactOfProjectHomePage: https://github.com/vegardit/copycat
             <type>pom</type>
             <scope>import</scope>
          </dependency>
-      </dependencies>
+         <dependency>
+            <groupId>org.junit</groupId>
+            <artifactId>junit-bom</artifactId>
+            <version>5.13.2</version>
+            <type>pom</type>
+            <scope>import</scope>
+         </dependency>
+       </dependencies>
    </dependencyManagement>
 
    <dependencies>
@@ -358,12 +365,10 @@ SPDX-ArtifactOfProjectHomePage: https://github.com/vegardit/copycat
          <version>3.27.4</version>
          <scope>test</scope>
       </dependency>
-
       <dependency>
-         <groupId>junit</groupId>
-         <artifactId>junit</artifactId>
-         <version>4.13.2</version>
+         <groupId>org.junit.jupiter</groupId>
+         <artifactId>junit-jupiter</artifactId>
          <scope>test</scope>
-      </dependency>
+       </dependency>
    </dependencies>
 </project>

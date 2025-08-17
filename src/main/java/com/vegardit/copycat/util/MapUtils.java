@@ -6,6 +6,9 @@ package com.vegardit.copycat.util;
 
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.Map;
 
@@ -39,6 +42,24 @@ public final class MapUtils {
          throw new IllegalArgumentException("Cannot parse attribute [" + key + "] with value [" + value + "] as integer. " + ex
             .getMessage(), ex);
       }
+   }
+
+   @Nullable
+   public static <T> LocalDateTime getLocalDateTime(final Map<T, ?> map, final T key, final boolean remove) {
+      final var value = remove ? map.remove(key) : map.get(key);
+      if (value == null)
+         return null; // CHECKSTYLE:IGNORE .*
+      if (value instanceof final LocalDateTime ldt)
+         return ldt;
+      return DateTimeParser.parseDateTime(value.toString());
+   }
+
+   @Nullable
+   public static <T> FileTime getFileTime(final Map<T, ?> map, final T key, final boolean remove) {
+      final var value = getLocalDateTime(map, key, remove);
+      if (value == null)
+         return null;
+      return FileTime.from(value.atZone(ZoneId.systemDefault()).toInstant());
    }
 
    @Nullable
