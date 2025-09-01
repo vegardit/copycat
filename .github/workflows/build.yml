@@ -685,7 +685,7 @@ jobs:
           artifacts/copycat-fat.jar#copycat-$RELEASE_NAME-fat.jar \
           artifacts/bash/bashcompletion.sh#copycat-$RELEASE_NAME-bashcompletion.sh \
           artifacts/copycat-linux-amd64#copycat-$RELEASE_NAME-linux-amd64 \
-          artifacts/copycat-linux-arm64#copycat-$$RELEASE_NAME-linux-arm64 \
+          artifacts/copycat-linux-arm64#copycat-$RELEASE_NAME-linux-arm64 \
           artifacts/copycat-darwin-amd64#copycat-$RELEASE_NAME-darwin-amd64 \
           artifacts/copycat-darwin-arm64#copycat-$RELEASE_NAME-darwin-arm64 \
           artifacts/copycat-windows-amd64.exe#copycat-$RELEASE_NAME-windows-amd64.exe \
