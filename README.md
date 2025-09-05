@@ -149,8 +149,8 @@ sync:
 - source: E:\archives
   target: \\backup\archives
   # Optional: sync files from a specific date range
-  since: "2024-01-01"
-  until: "2024-12-31"
+  since: 2024-01-01
+  until: 2024-12-31
 ```
 
 

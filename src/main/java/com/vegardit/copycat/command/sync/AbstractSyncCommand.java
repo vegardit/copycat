@@ -21,7 +21,6 @@ import java.util.Objects;
 import java.util.function.Supplier;
 
 import org.eclipse.jdt.annotation.Nullable;
-import org.yaml.snakeyaml.Yaml;
 
 import com.vegardit.copycat.command.AbstractCommand;
 import com.vegardit.copycat.util.DateTimeParser;
@@ -108,7 +107,7 @@ public abstract class AbstractSyncCommand<C extends AbstractSyncCommandConfig<C>
    private void setConfig(final String configPath) throws IOException {
       LOG.info("Loading config [%s]...", configPath);
       try (var in = Files.newBufferedReader(Path.of(configPath))) {
-         final Map<String, Object> yamlCfg = new Yaml().load(in);
+         final Map<String, Object> yamlCfg = YamlUtils.parseYaml(in);
 
          // process defaults
          final var yamlDefaults = (Map<String, Object>) yamlCfg.remove("defaults");

@@ -4,20 +4,25 @@
  */
 package com.vegardit.copycat.util;
 
+import java.io.BufferedReader;
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
+import java.util.Map;
 import java.util.Set;
 
 import org.eclipse.jdt.annotation.Nullable;
 import org.yaml.snakeyaml.DumperOptions;
+import org.yaml.snakeyaml.LoaderOptions;
 import org.yaml.snakeyaml.Yaml;
+import org.yaml.snakeyaml.constructor.Constructor;
 import org.yaml.snakeyaml.introspector.Property;
 import org.yaml.snakeyaml.nodes.MappingNode;
 import org.yaml.snakeyaml.nodes.NodeTuple;
 import org.yaml.snakeyaml.nodes.Tag;
 import org.yaml.snakeyaml.representer.Representer;
+import org.yaml.snakeyaml.resolver.Resolver;
 
 /**
  * @author Sebastian Thomschke, Vegard IT GmbH
@@ -51,6 +56,23 @@ public final class YamlUtils {
          }
       }
       return sb;
+   }
+
+   public static Map<String, Object> parseYaml(final BufferedReader reader) {
+      final var yamlLoaderOpts = new LoaderOptions();
+      final var yamlDumperOpts = new DumperOptions();
+      final var yaml = new Yaml(new Constructor(yamlLoaderOpts), new Representer(yamlDumperOpts), yamlDumperOpts, yamlLoaderOpts,
+         new Resolver() {
+            @Override
+            protected void addImplicitResolvers() {
+               // prevent SnakeYaml from resolving Strings as Dates in Timezone UTC, required for e.g. "since: 2025-09-04"
+               addImplicitResolver(Tag.STR, TIMESTAMP, "0123456789", 50);
+
+               // Now register the rest of the standard resolvers
+               super.addImplicitResolvers();
+            }
+         });
+      return yaml.load(reader);
    }
 
    public static String toYamlString(final Object obj) {

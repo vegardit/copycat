@@ -89,7 +89,7 @@ public final class DateTimeParser {
       if (lowerStr.startsWith("yesterday ") || lowerStr.startsWith("today ") || lowerStr.startsWith("tomorrow ")) {
          final String[] parts = str.split(" ", 2);
          if (parts.length == 2) {
-            LocalDate date;
+            final LocalDate date;
             if (lowerStr.startsWith("yesterday")) {
                date = LocalDate.now().minusDays(1);
             } else if (lowerStr.startsWith("tomorrow")) {
