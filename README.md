@@ -8,10 +8,12 @@
 
 1. [What is it?](#what-is-it)
 1. [Installation](#installation)
+1. [Quick Start](#quick-start)
 1. [Usage](#usage)
    1. [`sync` command](#sync)
    1. [`watch` command](#watch)
    1. [Filters: including/excluding files](#filters)
+1. [Contributing](#contributing)
 1. [License](#license)
 
 
@@ -27,17 +29,30 @@ It's written in Java but compiled to native binaries for Windows/Linux/MacOS usi
 
 Advantages over robocopy:
 - exclude files/folders using relative paths and glob patterns
-- cross platform support
-- ANSI colored console output
-- tray-icon and desktop notifications about major sync events
-- YAML config file
+- cross-platform support
+- ANSI-colored, concise console output
+- Desktop notifications and tray icon on major sync events
+- YAML config for defaults and multiple tasks
+- Date/time filters (`--since`, `--until`) with natural language support
 
 
 ## <a name="installation"></a>Installation
 
-For Windows/Linux/MacOS self-contained binaries can be downloaded at https://github.com/vegardit/copycat/releases
+For Windows/Linux/macOS, self-contained single-file binaries can be downloaded at https://github.com/vegardit/copycat/releases
 
 No installation is required.
+
+- Windows: download the `.exe` and either run it directly or place it somewhere on your `PATH`.
+- Linux/macOS: download the binary, `chmod +x copycat`, then run it (optionally move to a directory on your `PATH`, e.g. `/usr/local/bin`).
+
+
+## <a name="quick-start"></a>Quick Start
+
+- One-time sync (with deletion):
+  - Windows: `copycat sync C:\src X:\dst --delete`
+  - Linux/macOS: `copycat sync /src /mnt/dst --delete`
+- Continuous sync (watch for changes): `copycat watch <SOURCE> <TARGET>`
+- Increase verbosity with `-v`, `-vv`, `-vvv`, or use `-q` for quiet.
 
 
 ## <a name="usage"></a>Usage
@@ -277,6 +292,12 @@ copycat sync source/ target/ --since "yesterday 14:00"
 # Sync files modified today
 copycat sync source/ target/ --since today
 ```
+
+
+## <a name="contributing"></a>Contributing
+
+- See `CONTRIBUTING.md` for guidelines.
+- This project follows the Contributor Covenant; see `CODE_OF_CONDUCT.md`.
 
 
 ## <a name="license"></a>License
