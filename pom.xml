@@ -44,8 +44,7 @@ SPDX-ArtifactOfProjectHomePage: https://github.com/vegardit/copycat
       <java.version>17</java.version>
 
       <!-- https://central.sonatype.com/artifact/org.graalvm.sdk/graal-sdk -->
-      <!-- TODO don't upgrade as newer versions break Windows builds https://github.com/oracle/graal/issues/4340 -->
-      <graalvm.version>24.2.2</graalvm.version>
+      <graalvm-sdk.version>24.2.2</graalvm-sdk.version>
       <!-- https://central.sonatype.com/artifact/info.picocli/picocli -->
       <picocli.version>4.7.7</picocli.version>
       <!-- https://central.sonatype.com/artifact/com.guardsquare/proguard-core -->
@@ -334,7 +333,7 @@ SPDX-ArtifactOfProjectHomePage: https://github.com/vegardit/copycat
       <dependency>
          <groupId>org.graalvm.sdk</groupId>
          <artifactId>graal-sdk</artifactId>
-         <version>${graalvm.version}</version>
+         <version>${graalvm-sdk.version}</version>
          <scope>provided</scope>
       </dependency>
       <dependency>
