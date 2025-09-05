@@ -90,9 +90,9 @@ public final class JdkLoggingUtils {
       public synchronized String format(final LogRecord entry) {
          final var threadName = Thread.currentThread().getName();
          final var recordTime = new Date(entry.getMillis());
-         final var msg = entry.getMessage();
+         var msg = entry.getMessage();
          if (msg != null) {
-            msg.replaceAll("(@\\|[a-z]+\\s)|(\\|@)", ""); // remove ANSI keywords
+            msg = msg.replaceAll("(@\\|[a-z]+\\s)|(\\|@)", ""); // remove ANSI keywords
          }
 
          return String.format("%1$tT [%2$s] %3$-6s: %4$s %n", //
