@@ -73,10 +73,9 @@ public final class YamlUtils {
             return super.representJavaBean(properties, javaBean);
          }
 
-         @Nullable
          @Override
-         protected NodeTuple representJavaBeanProperty(final Object javaBean, final Property property, final @Nullable Object propertyValue,
-               final Tag customTag) {
+         protected @Nullable NodeTuple representJavaBeanProperty(final Object javaBean, final Property property,
+               final @Nullable Object propertyValue, final Tag customTag) {
             // ignore marked properties
             final var anno = property.getAnnotation(ToYamlString.class);
             if (anno != null && anno.ignore())

@@ -19,8 +19,7 @@ import org.eclipse.jdt.annotation.Nullable;
  */
 public final class MapUtils {
 
-   @Nullable
-   public static <T> Boolean getBoolean(final Map<T, ?> map, final T key, final boolean remove) {
+   public static @Nullable <T> Boolean getBoolean(final Map<T, ?> map, final T key, final boolean remove) {
       final var value = remove ? map.remove(key) : map.get(key);
       if (value == null)
          return null; // CHECKSTYLE:IGNORE .*
@@ -29,8 +28,7 @@ public final class MapUtils {
       return Boolean.parseBoolean(value.toString());
    }
 
-   @Nullable
-   public static <T> Integer getInteger(final Map<T, ?> map, final T key, final boolean remove) {
+   public static @Nullable <T> Integer getInteger(final Map<T, ?> map, final T key, final boolean remove) {
       final var value = remove ? map.remove(key) : map.get(key);
       if (value == null)
          return null;
@@ -44,8 +42,7 @@ public final class MapUtils {
       }
    }
 
-   @Nullable
-   public static <T> LocalDateTime getLocalDateTime(final Map<T, ?> map, final T key, final boolean remove) {
+   public static @Nullable <T> LocalDateTime getLocalDateTime(final Map<T, ?> map, final T key, final boolean remove) {
       final var value = remove ? map.remove(key) : map.get(key);
       if (value == null)
          return null; // CHECKSTYLE:IGNORE .*
@@ -54,16 +51,14 @@ public final class MapUtils {
       return DateTimeParser.parseDateTime(value.toString());
    }
 
-   @Nullable
-   public static <T> FileTime getFileTime(final Map<T, ?> map, final T key, final boolean remove) {
+   public static @Nullable <T> FileTime getFileTime(final Map<T, ?> map, final T key, final boolean remove) {
       final var value = getLocalDateTime(map, key, remove);
       if (value == null)
          return null;
       return FileTime.from(value.atZone(ZoneId.systemDefault()).toInstant());
    }
 
-   @Nullable
-   public static <T> Path getPath(final Map<T, ?> map, final T key, final boolean remove) {
+   public static @Nullable <T> Path getPath(final Map<T, ?> map, final T key, final boolean remove) {
       final var value = remove ? map.remove(key) : map.get(key);
       if (value == null)
          return null;
@@ -75,9 +70,8 @@ public final class MapUtils {
       }
    }
 
-   @Nullable
    @SuppressWarnings("unchecked")
-   public static <T> List<String> getStringList(final Map<T, ?> map, final T key, final boolean remove) {
+   public static @Nullable <T> List<String> getStringList(final Map<T, ?> map, final T key, final boolean remove) {
       final var value = remove ? map.remove(key) : map.get(key);
       if (value == null)
          return null;

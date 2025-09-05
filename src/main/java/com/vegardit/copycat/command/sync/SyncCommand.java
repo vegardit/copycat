@@ -194,8 +194,7 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
       }
    }
 
-   @Nullable
-   private Path getNextSourceEntry(final SyncCommandConfig task) {
+   private @Nullable Path getNextSourceEntry(final SyncCommandConfig task) {
       var entry = sourceDirsToScan.poll();
       if (entry != null)
          return entry;

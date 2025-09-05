@@ -54,8 +54,7 @@ public class CopyCatMain extends AbstractCommand {
 
    private static final Logger LOG = Logger.create();
 
-   @Nullable
-   private static FileHandler configureLogging(final String[] args) throws IOException {
+   private static @Nullable FileHandler configureLogging(final String[] args) throws IOException {
       final var loggingOptions = new LoggingOptions();
       CommandLine.populateCommand(loggingOptions, args);
       JdkLoggingUtils.configureConsoleHandler(!loggingOptions.logErrorsToStdOut, new JdkLoggingUtils.AnsiFormatter() {
@@ -103,10 +102,8 @@ public class CopyCatMain extends AbstractCommand {
       handler.setCaseInsensitiveEnumValuesAllowed(true);
       handler.setExecutionStrategy(new RunLast());
       handler.setHelpFactory((commandSpec, colorScheme) -> new Help(commandSpec, colorScheme) {
-
-         @Nullable
          @Override
-         public String headerHeading(final Object @Nullable... params) {
+         public @Nullable String headerHeading(final Object @Nullable... params) {
             return AnsiRenderer.render(super.headerHeading(params));
          }
       });
