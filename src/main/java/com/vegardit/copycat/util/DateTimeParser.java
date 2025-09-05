@@ -90,20 +90,24 @@ public final class DateTimeParser {
          final String[] parts = str.split(" ", 2);
          if (parts.length == 2) {
             LocalDate date;
-            if (lowerStr.startsWith("yesterday"))
+            if (lowerStr.startsWith("yesterday")) {
                date = LocalDate.now().minusDays(1);
-            else if (lowerStr.startsWith("tomorrow"))
+            } else if (lowerStr.startsWith("tomorrow")) {
                date = LocalDate.now().plusDays(1);
-            else
+            } else {
                date = LocalDate.now();
+            }
 
             // Try to parse the time part
             try {
                final String timePart = parts[1];
                if (timePart.matches("\\d{1,2}:\\d{2}(:\\d{2})?")) {
                   final String[] timeParts = timePart.split(":");
+                  @SuppressWarnings("null")
                   final int hour = Integer.parseInt(timeParts[0]);
+                  @SuppressWarnings("null")
                   final int minute = Integer.parseInt(timeParts[1]);
+                  @SuppressWarnings("null")
                   final int second = timeParts.length > 2 ? Integer.parseInt(timeParts[2]) : 0;
 
                   if (hour >= 0 && hour < 24 && minute >= 0 && minute < 60 && second >= 0 && second < 60)
@@ -177,5 +181,4 @@ public final class DateTimeParser {
 
    private DateTimeParser() {
    }
-
 }
