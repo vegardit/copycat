@@ -13,7 +13,7 @@ SPDX-ArtifactOfProjectHomePage: https://github.com/vegardit/copycat
    <parent>
       <groupId>com.vegardit.maven</groupId>
       <artifactId>vegardit-maven-parent</artifactId>
-      <version>6.1.10</version>
+      <version>6.1.13</version>
    </parent>
 
    <groupId>com.vegardit</groupId>
