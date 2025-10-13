@@ -269,7 +269,7 @@ SPDX-ArtifactOfProjectHomePage: https://github.com/vegardit/copycat
          <dependency>
             <groupId>net.sf.jstuff</groupId>
             <artifactId>jstuff-core</artifactId>
-            <version>8.1.0</version>
+            <version>8.2.0</version>
             <type>pom</type>
             <scope>import</scope>
          </dependency>
