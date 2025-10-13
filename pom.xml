@@ -48,7 +48,7 @@ SPDX-ArtifactOfProjectHomePage: https://github.com/vegardit/copycat
       <!-- https://central.sonatype.com/artifact/info.picocli/picocli -->
       <picocli.version>4.7.7</picocli.version>
       <!-- https://central.sonatype.com/artifact/com.guardsquare/proguard-core -->
-      <proguard.version>9.1.10</proguard.version>
+      <proguard.version>9.2.0</proguard.version>
 
       <skip.japicmp.cmp>true</skip.japicmp.cmp>
    </properties>
