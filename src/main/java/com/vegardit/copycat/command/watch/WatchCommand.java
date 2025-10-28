@@ -83,6 +83,16 @@ public class WatchCommand extends AbstractSyncCommand<WatchCommandConfig> {
                if (isIgnoreSourcePath(dir))
                   return FileVisitResult.SKIP_SUBTREE;
 
+               // respect optional max-depth: only register/watch directories up to maxDepth
+               if (!sourceRootAbsolute.equals(dir)) {
+                  final Integer maxDepth = task.maxDepth;
+                  if (maxDepth != null) {
+                     final Path dirRelative = dir.subpath(sourceRootAbsolute.getNameCount(), dir.getNameCount());
+                     if (dirRelative.getNameCount() > maxDepth.intValue())
+                        return FileVisitResult.SKIP_SUBTREE;
+                  }
+               }
+
                onDirectory.call(dir);
                return FileVisitResult.CONTINUE;
             }
@@ -197,6 +207,17 @@ public class WatchCommand extends AbstractSyncCommand<WatchCommandConfig> {
       try {
          final var sourceAbsolute = event.path();
          final var sourceRelative = sourceAbsolute.subpath(task.sourceRootAbsolute.getNameCount(), sourceAbsolute.getNameCount());
+
+         // enforce optional max-depth on incoming events as a safety net
+         final Integer maxDepth = task.maxDepth;
+         if (maxDepth != null) {
+            final int maxEventDepth = maxDepth.intValue() + 1; // allow files in dirs at maxDepth and dirs at (maxDepth+1)
+            if (sourceRelative.getNameCount() > maxEventDepth) {
+               LOG.trace("Ignoring event outside max-depth [%s]: %s", maxDepth, sourceRelative);
+               return;
+            }
+         }
+
          if (task.isExcludedSourcePath(sourceAbsolute, sourceRelative)) {
             LOG.debug("Ignoring %s of s%s", event.eventType(), sourceAbsolute);
             return;

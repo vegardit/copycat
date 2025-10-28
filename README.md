@@ -70,7 +70,7 @@ $ copycat sync --help
 Usage: copycat sync [-hqVv] [--copy-acl] [--delete] [--delete-excluded] [--dry-run] [--exclude-hidden-files]
                     [--exclude-hidden-system-files] [--exclude-older-files] [--exclude-system-files] [--ignore-errors]
                     [--ignore-symlink-errors] [--log-errors-to-stdout] [--config <path>] [--log-file <path>]
-                    [--threads <count>] [--since <when>] [--until <when>] [--filter in|ex:<pattern>]...
+                    [--max-depth <n>] [--threads <count>] [--since <when>] [--until <when>] [--filter in|ex:<pattern>]...
                     [--no-log <op>[,<op>...]]... [SOURCE] [TARGET]
 
 Performs one-way recursive directory synchronization copying new files/directories.
@@ -101,7 +101,10 @@ Options:
                           Continue if creation of symlinks on target fails.
       --log-errors-to-stdout
                           Log errors to stdout instead of stderr.
-      --log-file <path>   Write console output also to the given log file..
+      --log-file <path>   Write console output also to the given log file.
+      --max-depth <n>     Maximum directory traversal depth from the source root.
+                          0=only top-level files (no subdirs), 1=include immediate subdirectories, etc.
+                          Default: unlimited.
       --no-log <op>[,<op>...]
                           Don't log the given sync operation. Valid values: CREATE, MODIFY, DELETE, SCAN
   -q, --quiet             Quiet mode.
@@ -147,6 +150,8 @@ defaults:
   ignore-errors: false
   ignore-symlink-errors: false
   threads: 2
+  # Optional: limit directory traversal depth (0=no subdirs)
+  # max-depth: 0
   # Optional: sync only recent files
   # since: "7 days ago"  # or "2024-01-01" or "yesterday"
   # until: "today"       # or "2024-12-31" or "tomorrow"
@@ -176,7 +181,7 @@ $ copycat watch --help
 
 Usage: copycat watch [-hqVv] [--copy-acl] [--delete-excluded] [--exclude-hidden-files] [--exclude-hidden-system-files]
                      [--exclude-system-files] [--log-errors-to-stdout] [--config <path>] [--log-file <path>]
-                     [--filter in|ex:<pattern>]... [--no-log <op>[,<op>...]]... [SOURCE] [TARGET]
+                     [--max-depth <n>] [--filter in|ex:<pattern>]... [--no-log <op>[,<op>...]]... [SOURCE] [TARGET]
 
 Continuously watches a directory recursively for changes and synchronizes them to another directory.
 
@@ -199,7 +204,10 @@ Options:
   -h, --help              Show this help message and exit.
       --log-errors-to-stdout
                           Log errors to stdout instead of stderr.
-      --log-file <path>   Write console output also to the given log file..
+      --log-file <path>   Write console output also to the given log file.
+      --max-depth <n>     Maximum directory traversal depth from the source root.
+                          0=only top-level files (no subdirs), 1=include immediate subdirectories, etc.
+                          Default: unlimited.
       --no-log <op>[,<op>...]
                           Don't log the given filesystem operation. Valid values: CREATE, MODIFY, DELETE
   -q, --quiet             Quiet mode.
@@ -222,6 +230,8 @@ defaults:
   exclude-hidden-files: false
   exclude-system-files: true
   exclude-hidden-system-files: false
+  # Optional: limit directory traversal depth for watching (0=no subdirs)
+  # max-depth: 0
   filters:
     - ex:**/node_modules
     - in:logs/latest.log # keep latest log file

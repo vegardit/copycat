@@ -380,7 +380,11 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
                   if (Files.isSymbolicLink(sourceChildAbsolute)) {
                      stats.onFileScanned();
                   } else {
-                     sourceDirsToScan.add(sourceChildAbsolute);
+                     // respect optional max-depth: only descend if child depth <= maxDepth
+                     final Integer maxDepth = task.maxDepth;
+                     if (maxDepth == null || sourceChildRelative.getNameCount() <= maxDepth.intValue()) {
+                        sourceDirsToScan.add(sourceChildAbsolute);
+                     }
                   }
                }
             }

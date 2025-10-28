@@ -186,6 +186,14 @@ public abstract class AbstractSyncCommand<C extends AbstractSyncCommandConfig<C>
       cfgCLI.fileFilters = fileFilters;
    }
 
+   @Option(names = "--max-depth", description = "Maximum directory traversal depth from the source root. "
+         + "0=only top-level files (no subdirs), 1=include immediate subdirectories, etc. Default: unlimited.")
+   private void setMaxDepth(final int maxDepth) {
+      if (maxDepth < 0)
+         throw new ParameterException(commandSpec.commandLine(), "--max-depth must be >= 0");
+      cfgCLI.maxDepth = maxDepth;
+   }
+
    @Option(names = "--since", paramLabel = "<when>", //
       description = "Sync only items modified after this date/time."
             + "Accepts ISO-8601 (2024-12-25, 2024-12-25T14:30), durations (P3D, PT2H), or relative expressions (3 days ago, yesterday 14:00).")
