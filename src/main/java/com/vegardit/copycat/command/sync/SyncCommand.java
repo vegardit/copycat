@@ -164,7 +164,7 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
                sync(task);
             } else {
                final var threadPool = Executors.newFixedThreadPool(task_threads, //
-                  new BasicThreadFactory.Builder().namingPattern("sync-%d").build() //
+                  BasicThreadFactory.builder().namingPattern("sync-%d").build() //
                );
                // CHECKSTYLE:IGNORE .* FOR NEXT LINE
                final var exRef = MutableRef.create();

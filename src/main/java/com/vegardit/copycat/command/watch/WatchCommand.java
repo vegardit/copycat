@@ -155,7 +155,7 @@ public class WatchCommand extends AbstractSyncCommand<WatchCommandConfig> {
       DesktopNotifications.setTrayIconToolTip("copycat is watching...");
 
       final var threadPool = Executors.newFixedThreadPool(tasks.size(), //
-         new BasicThreadFactory.Builder().namingPattern("sync-%d").build() //
+         BasicThreadFactory.builder().namingPattern("sync-%d").build() //
       );
 
       for (final var task : tasks) {
