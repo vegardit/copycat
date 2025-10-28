@@ -15,7 +15,7 @@ import picocli.CommandLine.Option;
  */
 public class LoggingOptionsMixin {
 
-   @Option(names = "--log-file", paramLabel = "<path>", description = "Write console output also to the given log file..")
+   @Option(names = "--log-file", paramLabel = "<path>", description = "Write console output also to the given log file.")
    public @Nullable Path logFile;
 
    @Option(names = "--log-errors-to-stdout", description = "Log errors to stdout instead of stderr.")

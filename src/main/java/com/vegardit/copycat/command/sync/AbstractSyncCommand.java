@@ -157,7 +157,7 @@ public abstract class AbstractSyncCommand<C extends AbstractSyncCommandConfig<C>
       description = "[DEPRECATED] Glob pattern for files/directories to be excluded from sync. Use --filters instead")
    private void setExcludes(final List<String> excludes) {
       if (!isDeprecatedExcludeUsed && cfgCLI.fileFilters != null)
-         throw new IllegalArgumentException("--exclude cannot be used together with --filters");
+         throw new ParameterException(commandSpec.commandLine(), "--exclude cannot be used together with --filters");
       isDeprecatedExcludeUsed = true;
       LOG.warn("Option --exclude is deprecated. Please use new --filters option.");
       cfgCLI.fileFilters = excludes.stream().map(exclude -> "ex:" + exclude).filter(Objects::nonNull).toList();
@@ -182,7 +182,7 @@ public abstract class AbstractSyncCommand<C extends AbstractSyncCommandConfig<C>
       description = "Glob pattern for files/directories to be excluded from or included in sync.")
    private void setFilters(final List<String> fileFilters) {
       if (isDeprecatedExcludeUsed)
-         throw new IllegalArgumentException("Option --filter cannot be used together with --exclude.");
+         throw new ParameterException(commandSpec.commandLine(), "Option --filter cannot be used together with --exclude.");
       cfgCLI.fileFilters = fileFilters;
    }
 

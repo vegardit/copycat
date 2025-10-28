@@ -59,8 +59,8 @@ public abstract class AbstractSyncCommandConfig<THIS extends AbstractSyncCommand
    public @Nullable Boolean excludeHiddenSystemFiles;
    public @Nullable Boolean excludeSystemFiles;
 
-   public @Nullable FileTime modifiedFrom;
-   public @Nullable FileTime modifiedTo;
+   public @Nullable @ToYamlString(name = "since") FileTime modifiedFrom;
+   public @Nullable @ToYamlString(name = "until") FileTime modifiedTo;
 
    @SuppressWarnings({"unchecked", "rawtypes"})
    protected THIS newInstance() {
