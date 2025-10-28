@@ -83,6 +83,7 @@ public final class YamlUtils {
       final var representer = new Representer(options) {
          {
             multiRepresenters.put(java.nio.file.Path.class, obj -> representScalar(Tag.STR, obj.toString()));
+            multiRepresenters.put(java.nio.file.attribute.FileTime.class, obj -> representScalar(Tag.STR, obj.toString()));
          }
 
          @Override
