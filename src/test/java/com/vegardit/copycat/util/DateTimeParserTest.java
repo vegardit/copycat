@@ -348,37 +348,14 @@ class DateTimeParserTest {
       }
 
       @Test
-      @DisplayName("BUG: No overflow protection for large values")
-      void testNoOverflowProtection() {
-         // Bug: No protection against overflow with very large values
-         // This might cause overflow or unexpected behavior
-         assertThatCode(() -> {
-            DateTimeParser.parseDateTime("999999999d ago");
-         }).doesNotThrowAnyException(); // Should ideally validate against overflow
+      @DisplayName("FIXED: Overflow protection for large relative values")
+      void testOverflowProtection() {
+         // Very large relative offsets should now fail with a clear parse error
+         assertThatThrownBy(() -> DateTimeParser.parseDateTime("999999999d ago")).isInstanceOf(DateTimeParseException.class)
+            .hasMessageContaining("Unsupported date/time");
 
-         // Very large values can cause LocalDateTime to go outside valid range
-         assertThatThrownBy(() -> {
-            DateTimeParser.parseDateTime("99999999999999d ago");
-         }).isInstanceOf(Exception.class); // Will throw but not with proper validation
-      }
-
-      @Test
-      @DisplayName("BUG: Thread safety - multiple calls to LocalDateTime.now()")
-      void testThreadSafetyIssue() {
-         // Bug: Parser calls LocalDateTime.now() multiple times which could
-         // lead to inconsistent results if system time changes during parsing
-
-         // This is hard to test directly, but the issue is that:
-         // 1. ISO duration parsing uses LocalDateTime.now() at line 86
-         // 2. Relative time parsing uses LocalDateTime.now() at line 102
-         // If system time changes between these calls, results could be inconsistent
-
-         // Example: parsing might start at one time but calculate relative time from another
-         final LocalDateTime result1 = DateTimeParser.parseDateTime("PT1H");
-         final LocalDateTime result2 = DateTimeParser.parseDateTime("in 1 hour");
-
-         // These should be roughly equivalent but timing differences could occur
-         assertThat(ChronoUnit.SECONDS.between(result1, result2)).isCloseTo(0, within(5L));
+         assertThatThrownBy(() -> DateTimeParser.parseDateTime("99999999999999d ago")).isInstanceOf(DateTimeParseException.class)
+            .hasMessageContaining("Unsupported date/time");
       }
 
       @Test

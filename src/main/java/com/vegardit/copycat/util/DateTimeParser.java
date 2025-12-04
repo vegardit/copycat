@@ -4,6 +4,7 @@
  */
 package com.vegardit.copycat.util;
 
+import java.time.DateTimeException;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -158,13 +159,29 @@ public final class DateTimeParser {
          if (m.start() > lastEnd && !str.substring(lastEnd, m.start()).trim().isEmpty())
             throw fail(raw);
 
-         @SuppressWarnings("null")
-         final int value = Integer.parseInt(m.group(1));
+         final int value;
+         try {
+            @SuppressWarnings("null")
+            final int parsed = Integer.parseInt(m.group(1));
+            value = parsed;
+         } catch (final NumberFormatException ex) {
+            // Guard against numeric overflows in the amount specification itself
+            throw fail(raw);
+         }
+
+         // Prevent absurdly large relative offsets even if they are still within LocalDateTime's range
+         if (value > 100_000_000)
+            throw fail(raw);
          @SuppressWarnings("null")
          final Unit unit = Unit.of(m.group(2));
          if (unit == null)
             throw fail(raw); // Don't skip unknown units, fail instead
-         t = future ? t.plus(value, unit.chronoUnit) : t.minus(value, unit.chronoUnit);
+         try {
+            t = future ? t.plus(value, unit.chronoUnit) : t.minus(value, unit.chronoUnit);
+         } catch (final DateTimeException ex) {
+            // Guard against overflowing the LocalDateTime range with extreme values
+            throw fail(raw);
+         }
          lastEnd = m.end();
       }
 
