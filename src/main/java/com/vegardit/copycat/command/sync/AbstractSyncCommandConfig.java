@@ -201,10 +201,11 @@ public abstract class AbstractSyncCommandConfig<THIS extends AbstractSyncCommand
          if (!FileUtils.isWritable(targetRootAbsolute)) // Files.isWritable(targetRoot) always returns false for some reason
             throw new IllegalArgumentException("Target path [" + target + "] is not writable by user [" + SystemUtils.USER_NAME + "]!");
       } else {
-         if (!Files.exists(targetRootAbsolute.getParent()))
-            throw new IllegalArgumentException("Parent directory of target path [" + targetRootAbsolute.getParent() + "] does not exist!");
-         if (!Files.isDirectory(targetRootAbsolute.getParent()))
-            throw new IllegalArgumentException("Parent of target path [" + targetRootAbsolute.getParent() + "] is not a directory!");
+         final var parent = targetRootAbsolute.getParent();
+         if (parent == null || !Files.exists(parent))
+            throw new IllegalArgumentException("Parent directory of target path [" + parent + "] does not exist!");
+         if (!Files.isDirectory(parent))
+            throw new IllegalArgumentException("Parent of target path [" + parent + "] is not a directory!");
       }
 
       computePathMatchers();
