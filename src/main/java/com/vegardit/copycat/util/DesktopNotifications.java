@@ -66,6 +66,7 @@ public final class DesktopNotifications {
             isPSAvailable = true;
             try (var is = DesktopNotifications.class.getResourceAsStream("/copycat16x16.png")) {
                appIcon = Files.createTempFile("copycat", "appicon");
+               appIcon.toFile().deleteOnExit();
                Files.copy(is, appIcon, StandardCopyOption.REPLACE_EXISTING);
             }
          } catch (final IOException | PowerShellNotAvailableException ex) {
