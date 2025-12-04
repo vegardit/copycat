@@ -219,7 +219,7 @@ public class WatchCommand extends AbstractSyncCommand<WatchCommandConfig> {
          }
 
          if (task.isExcludedSourcePath(sourceAbsolute, sourceRelative)) {
-            LOG.debug("Ignoring %s of s%s", event.eventType(), sourceAbsolute);
+            LOG.debug("Ignoring %s of %s", event.eventType(), sourceAbsolute);
             return;
          }
 
@@ -229,7 +229,7 @@ public class WatchCommand extends AbstractSyncCommand<WatchCommandConfig> {
             case CREATE:
                if (Files.isDirectory(sourceAbsolute, NOFOLLOW_LINKS)) {
                   if (loggableEvents.contains(LogEvent.CREATE)) {
-                     LOG.info("CREATE [@|magenta %s\\|@]...", sourceRelative);
+                     LOG.info("CREATE [@|magenta %s%s|@]...", sourceRelative, File.separator);
                   }
                   syncDirShallow(task, sourceAbsolute, targetAbsolute);
                } else {
@@ -244,12 +244,12 @@ public class WatchCommand extends AbstractSyncCommand<WatchCommandConfig> {
             case MODIFY:
                if (Files.isDirectory(sourceAbsolute, NOFOLLOW_LINKS)) {
                   if (loggableEvents.contains(LogEvent.MODIFY)) {
-                     LOG.info("MODIFY [@|magenta %s\\|@]...", sourceRelative);
+                     LOG.info("MODIFY [@|magenta %s%s|@]...", sourceRelative, File.separator);
                   }
                   syncDirShallow(task, sourceAbsolute, targetAbsolute);
                } else {
                   if (loggableEvents.contains(LogEvent.MODIFY)) {
-                     LOG.info("MODIFY5 [@|magenta %s|@] %s...", sourceRelative, Size.ofBytes(Files.size(sourceAbsolute)));
+                     LOG.info("MODIFY [@|magenta %s|@] %s...", sourceRelative, Size.ofBytes(Files.size(sourceAbsolute)));
                   }
 
                   // compare file hashes to avoid unnecessary file copying
@@ -266,7 +266,7 @@ public class WatchCommand extends AbstractSyncCommand<WatchCommandConfig> {
                if (Files.exists(targetAbsolute, NOFOLLOW_LINKS)) {
                   if (Files.isDirectory(targetAbsolute, NOFOLLOW_LINKS)) {
                      if (loggableEvents.contains(LogEvent.DELETE)) {
-                        LOG.info("DELETE [@|magenta %s\\|@]...", sourceRelative);
+                        LOG.info("DELETE [@|magenta %s%s|@]...", sourceRelative, File.separator);
                      }
                      delDir(targetAbsolute);
                   } else {
