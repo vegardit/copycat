@@ -22,13 +22,16 @@ import org.eclipse.jdt.annotation.Nullable;
 /**
  * Parses absolute or relative date/time expressions into {@link LocalDateTime}.
  *
- * <h3>Accepted formats</h3>
- * <ul>
- * <li>{@code YYYY-MM-DD[ HH[:mm[:ss]]]}</li>
- * <li>{@code YYYY-MM-DD'T'HH:mm[:ss]}</li>
- * <li>ISO-8601 durations &nbsp;({@code PT3H2M10S})</li>
- * <li>{@code 3d 2h 5m ago} / {@code in 4 hours}</li>
- * </ul>
+ * <p>
+ * This utility provides a single entry point {@link #parseDateTime(String)}
+ * that accepts a variety of absolute and relative input formats and normalizes
+ * them into a {@link LocalDateTime} based on the current system clock.
+ * </p>
+ *
+ * <p>
+ * For a detailed list of supported formats and error conditions, see
+ * {@link #parseDateTime(String)}.
+ * </p>
  *
  * @author Sebastian Thomschke, Vegard IT GmbH
  */
@@ -72,6 +75,43 @@ public final class DateTimeParser {
       }
    }
 
+   /**
+    * Parses an absolute or relative date/time expression into a {@link LocalDateTime}.
+    *
+    * <h3>Accepted formats</h3>
+    * <ul>
+    * <li>Absolute calendar dates: {@code yyyy-MM-dd}, optionally with a time part
+    * {@code HH:mm[:ss]} or {@code 'T'HH:mm[:ss]}, for example {@code "2024-12-25"},
+    * {@code "2024-12-25 14:30"} or {@code "2024-12-25T14:30:45"}.</li>
+    * <li>Keywords relative to today: {@code today}, {@code yesterday}, {@code tomorrow}
+    * with an optional time part, for example {@code "today 09:30"} or
+    * {@code "yesterday 23:59:10"}.</li>
+    * <li>ISO-8601 durations: {@code PnDTnHnMnS} (for example {@code "PT3H2M10S"})
+    * optionally combined with {@code in} or {@code ago}, for example {@code "in PT3H"}
+    * or {@code "PT1H ago"}. Bare ISO durations without {@code in} or {@code ago} are
+    * interpreted as offsets in the past relative to now (for example {@code "PT1H"}
+    * is roughly one hour ago).</li>
+    * <li>Human readable relative expressions using days, hours, minutes and seconds
+    * (including aliases such as {@code d}, {@code day}, {@code days}, {@code h},
+    * {@code hour}, {@code hours}, {@code m}, {@code min}, {@code minute},
+    * {@code minutes}, {@code s}, {@code sec}, {@code second}, {@code seconds})
+    * combined with {@code in} or {@code ago}, for example {@code "3d 2h 5m ago"} or
+    * {@code "in 4 hours"}. Without {@code in} or {@code ago} such expressions are
+    * interpreted as offsets in the past (for example {@code "3h 30m"}).</li>
+    * </ul>
+    *
+    * <p>
+    * Inputs are trimmed and parsed case insensitively where applicable. Unsupported
+    * or mixed formats (for example combining an absolute date with relative modifiers)
+    * result in a {@link DateTimeParseException}. Blank input results in an
+    * {@link IllegalArgumentException}.
+    * </p>
+    *
+    * @param raw user supplied date/time expression
+    * @return parsed {@link LocalDateTime} instance
+    * @throws IllegalArgumentException if the input is blank
+    * @throws DateTimeParseException if the input cannot be parsed as any supported format
+    */
    public static LocalDateTime parseDateTime(final String raw) {
       String str = raw.strip();
       if (str.isEmpty())
@@ -123,21 +163,38 @@ public final class DateTimeParser {
          return LocalDateTime.from(ABSOLUTE.parse(str));
       } catch (final DateTimeParseException ignored) { /* fall through */ }
 
-      // ISO-8601 durations
+      // use a single base time for ISO durations and relative expressions
+      final LocalDateTime base = LocalDateTime.now();
+
+      // ISO-8601 durations combined with "in"/"ago", e.g. "in PT2H", "PT2H ago"
+      final String lowerForIso = str.toLowerCase(Locale.ROOT);
+      if (lowerForIso.startsWith("in ")) {
+         final String durPart = str.substring(3).trim();
+         try {
+            return base.plus(Duration.parse(durPart));
+         } catch (final DateTimeParseException ignored) { /* fall through */ }
+      } else if (lowerForIso.endsWith(" ago")) {
+         final String durPart = str.substring(0, str.length() - 4).trim();
+         try {
+            return base.minus(Duration.parse(durPart));
+         } catch (final DateTimeParseException ignored) { /* fall through */ }
+      }
+
+      // bare ISO-8601 durations default to past relative to now
       try {
-         return LocalDateTime.now().plus(Duration.parse(str));
+         return base.minus(Duration.parse(str));
       } catch (final DateTimeParseException ignored) { /* fall through */ }
 
       // Check for mixed formats (date components with relative time keywords)
-      if (str.matches(".*\\d{4}-\\d{2}-\\d{2}.*") && (str.contains(" ago") || str.toLowerCase(Locale.ROOT).contains("in ")))
+      if (str.matches(".*\\d{4}-\\d{2}-\\d{2}.*") && (str.contains(" ago") || lowerForIso.contains("in ")))
          throw fail(raw);
 
-      // relative formats
+      // relative formats: default to past, unless "in ..." is used
       boolean future = false;
-      if (str.toLowerCase(Locale.ROOT).startsWith("in ")) {
+      if (lowerForIso.startsWith("in ")) {
          future = true;
          str = str.substring(3);
-      } else if (str.endsWith(" ago")) {
+      } else if (lowerForIso.endsWith(" ago")) {
          str = str.substring(0, str.length() - 4);
       }
 
@@ -153,7 +210,7 @@ public final class DateTimeParser {
       m.reset();
       int lastEnd = 0;
 
-      LocalDateTime t = LocalDateTime.now();
+      LocalDateTime t = base;
       while (m.find()) {
          // Check for gaps between matches (invalid content)
          if (m.start() > lastEnd && !str.substring(lastEnd, m.start()).trim().isEmpty())

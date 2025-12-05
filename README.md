@@ -284,14 +284,24 @@ You can filter files based on their modification time using `--since` and `--unt
 
 **Supported date/time formats:**
 - **ISO-8601 dates**: `2024-12-25`, `2024-12-25T14:30`, `2024-12-25 14:30:45`
-- **Relative expressions**: `3 days ago`, `5 hours ago`, `in 2 hours`, `2d 3h 15m ago`
 - **Keywords**: `yesterday`, `today`, `tomorrow` (with optional time like `yesterday 14:00`)
-- **ISO-8601 durations**: `P3D` (3 days), `PT2H30M` (2 hours 30 minutes)
+- **Relative expressions** (case-insensitive, including ISO-8601 durations):
+  - ISO duration syntax: `[in] <duration> [ago]`, for example `PT1H`, `PT1H ago`, `in PT2H30M`, `P3D ago`
+  - Human-readable syntax: `[in] <amount><unit> [<amount><unit> ...] [ago]`, for example `3h ago`, `2d 3h 15m ago`, `in 5 hours`
+    - Units for human-readable forms: `d`/`day`/`days`, `h`/`hour`/`hours`, `m`/`min`/`mins`/`minute`/`minutes`, `s`/`sec`/`secs`/`second`/`seconds`
+    - Order does not matter: `2d 3h`, `3h 2d`, `1h 30m`, etc.
+  - Semantics:
+    - `in ...` → future (relative to now), for example `in 2 hours`, `in PT2H`
+    - `... ago` → past, for example `3 days ago`, `PT1H ago`
+    - Without `in` or `ago` it **defaults to past**, for example `3h 30m` and `PT1H` are interpreted as *3h30m ago* and *1 hour ago* respectively.
 
 **Examples:**
 ```batch
 # Sync files modified in the last week
 copycat sync source/ target/ --since "7 days ago"
+
+# Sync files modified in the last hour using ISO duration
+copycat sync source/ target/ --since "PT1H ago"
 
 # Sync files modified between specific dates
 copycat sync source/ target/ --since 2024-01-01 --until 2024-06-30

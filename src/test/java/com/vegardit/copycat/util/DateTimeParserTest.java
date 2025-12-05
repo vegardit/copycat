@@ -18,7 +18,7 @@ import org.junit.jupiter.api.Test;
 /**
  * Comprehensive unit tests for {@link DateTimeParser}.
  *
- * @author Test Suite
+ * @author Sebastian Thomschke, Vegard IT GmbH
  */
 @SuppressWarnings("null")
 class DateTimeParserTest {
@@ -92,7 +92,7 @@ class DateTimeParserTest {
       @DisplayName("Parse PT duration (hours, minutes, seconds)")
       void testPtDuration() {
          final LocalDateTime now = LocalDateTime.now();
-         final LocalDateTime result = DateTimeParser.parseDateTime("PT3H2M10S");
+         final LocalDateTime result = DateTimeParser.parseDateTime("in PT3H2M10S");
 
          assertThat(result).isAfter(now);
          assertThat(ChronoUnit.SECONDS.between(now, result)).isCloseTo(3 * 3600 + 2 * 60 + 10, within(2L));
@@ -102,7 +102,7 @@ class DateTimeParserTest {
       @DisplayName("Parse P duration with days")
       void testPDurationWithDays() {
          final LocalDateTime now = LocalDateTime.now();
-         final LocalDateTime result = DateTimeParser.parseDateTime("P2DT3H");
+         final LocalDateTime result = DateTimeParser.parseDateTime("in P2DT3H");
 
          assertThat(result).isAfter(now);
          assertThat(ChronoUnit.HOURS.between(now, result)).isCloseTo(2 * 24 + 3, within(1L));
@@ -112,7 +112,7 @@ class DateTimeParserTest {
       @DisplayName("Parse PT duration - hours only")
       void testPtHoursOnly() {
          final LocalDateTime now = LocalDateTime.now();
-         final LocalDateTime result = DateTimeParser.parseDateTime("PT5H");
+         final LocalDateTime result = DateTimeParser.parseDateTime("in PT5H");
 
          assertThat(ChronoUnit.HOURS.between(now, result)).isCloseTo(5, within(1L));
       }
@@ -121,22 +121,31 @@ class DateTimeParserTest {
       @DisplayName("Parse PT duration - minutes only")
       void testPtMinutesOnly() {
          final LocalDateTime now = LocalDateTime.now();
-         final LocalDateTime result = DateTimeParser.parseDateTime("PT30M");
+         final LocalDateTime result = DateTimeParser.parseDateTime("in PT30M");
 
          assertThat(ChronoUnit.MINUTES.between(now, result)).isCloseTo(30, within(1L));
       }
 
       @Test
-      @DisplayName("BUG: ISO durations cannot specify past time")
-      void testIsoDurationAlwaysFuture() {
-         // Bug: ISO-8601 durations are always added to current time
-         // There's no way to specify a past duration using ISO format
+      @DisplayName("Parse ISO duration with 'ago' for past times")
+      void testIsoDurationPastSupported() {
+         // Supports ISO-8601 durations combined with 'ago' to express past times,
+         // e.g. "PT1H ago" is roughly 1 hour in the past.
+         final LocalDateTime now = LocalDateTime.now();
+         final LocalDateTime result = DateTimeParser.parseDateTime("PT1H ago");
+
+         assertThat(result).isBefore(now);
+         assertThat(ChronoUnit.MINUTES.between(result, now)).isCloseTo(60, within(2L));
+      }
+
+      @Test
+      @DisplayName("ISO durations without 'in' or 'ago' default to past")
+      void testPlainIsoDurationDefaultsToPast() {
          final LocalDateTime now = LocalDateTime.now();
          final LocalDateTime result = DateTimeParser.parseDateTime("PT1H");
 
-         // This will always be in the future
-         assertThat(result).isAfter(now);
-         // Cannot create past times with ISO duration
+         assertThat(result).isBefore(now);
+         assertThat(ChronoUnit.MINUTES.between(result, now)).isCloseTo(60, within(2L));
       }
 
       @Test
