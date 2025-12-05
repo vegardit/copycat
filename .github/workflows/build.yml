@@ -42,10 +42,6 @@ defaults:
     shell: bash
 
 
-env:
-  JAVA_VERSION: 17
-
-
 jobs:
 
   ###########################################################
@@ -53,6 +49,13 @@ jobs:
   ###########################################################
     runs-on: ubuntu-latest  # https://github.com/actions/runner-images#available-images
     timeout-minutes: 60
+
+    permissions:
+      actions: write
+      contents: read
+
+    env:
+      JAVA_VERSION: 17
 
     steps:
     - name: "Show: GitHub context"
@@ -131,7 +134,7 @@ jobs:
     # See https://github.com/actions/cache/issues/342#issuecomment-1399442670
     ##################################################
     - name: "Cache: Delete Previous"
-      if: ${{ steps.cache-restore.outputs.cache-hit && !env.ACT }}
+      if: github.event_name != 'pull_request'&& steps.cache-restore.outputs.cache-hit && !env.ACT
       env:
         GH_TOKEN: ${{ github.token }}
       run: |
@@ -140,6 +143,7 @@ jobs:
         gh actions-cache delete ${{ steps.cache-restore.outputs.cache-primary-key }} --confirm || true
 
     - name: "Cache: Update"
+      if: github.event_name != 'pull_request'
       uses: actions/cache/save@v4  # https://github.com/actions/cache/blob/main/save/README.md
       with:
         path: |
@@ -185,37 +189,31 @@ jobs:
         include:
           - arch: "linux-amd64"
             os: "ubuntu-24.04"
-            # not using newer graalvm release which produces considerably larger binaries
-            graal_version: 21.3.3.1 # https://github.com/graalvm/graalvm-ce-builds/releases/tag/vm-21.3.3.1
-            graal_install_root: "/opt/graalvm"
+            # not using newer graalvm release which fail to build
+            graal_version: 23
 
           - arch: "linux-arm64"
-            os: "ubuntu-24.04"
-            # not using newer graalvm release which produces considerably larger binaries
-            graal_version: 21.3.3.1 # https://github.com/graalvm/graalvm-ce-builds/releases/tag/vm-21.3.3.1
-            graal_install_root: "/opt/graalvm"
-
-          - arch: "darwin-arm64"
-            os: "macos-latest"  # ARM
-            # using newer graalvm release because 21.3.3.1 is not available for ARM
-            graal_version: 23.0.1  # https://github.com/graalvm/graalvm-ce-builds/releases/tag/jdk-23.0.1
-            graal_install_root: "graalvm"
+            os: "ubuntu-24.04-arm"  # https://github.com/actions/partner-runner-images#available-images
+            # not using newer graalvm release which fail to build
+            graal_version: 23
 
           - arch: "darwin-amd64"
-            os: "macos-13"  # x64
-            # not using newer graalvm release which produces considerably larger binaries
-            graal_version: 21.3.3.1 # https://github.com/graalvm/graalvm-ce-builds/releases/tag/vm-21.3.3.1
-            graal_install_root: "graalvm"
+            os: "macos-15-intel"
+            # not using newer graalvm release which fail to build
+            graal_version: 23
+
+          - arch: "darwin-arm64"
+            os: "macos-latest"
+            # not using newer graalvm release which fail to build
+            graal_version: 23
 
           - arch: "windows-amd64"
             os: "windows-latest"
-            # TODO don't upgrade as newer versions break Windows builds https://github.com/oracle/graal/issues/4340
-            # not using newer graalvm release which produces considerably larger binaries
-            graal_version: 21.3.3.1 # https://github.com/graalvm/graalvm-ce-builds/releases/tag/vm-21.3.3.1
-            graal_install_root: "graalvm"
+            # not using newer graalvm release which don't support full static builds on Windows anymore
+            graal_version: 21
 
     env:
-      # https://www.graalvm.org/21.3/reference-manual/native-image/Options/
+      # https://www.graalvm.org/latest/reference-manual/native-image/overview/Options/
       # -H:NativeLinkerOption=-no-pie -> do not to generate Position Independent Executables (PIE)
       NATIVE_IMAGE_ARGS:
         -H:NativeLinkerOption=-no-pie
@@ -237,156 +235,19 @@ jobs:
         copycat-${{ matrix.arch }}
 
     steps:
-    - name: "Cache: GraalVM binaries"
-      uses: actions/cache@v4
-      with:
-        path: |
-          ${{ matrix.graal_install_root }}
-        key: ${{ matrix.arch }}-graalvm-${{ matrix.graal_version }}
-
-
-    - name: "Create arm64 container"
-      if: matrix.arch == 'linux-arm64'
-      run: |
-        sudo apt-get update -y
-        sudo apt-get install --no-install-recommends -y qemu-user-static
-        docker run --rm --privileged multiarch/qemu-user-static --reset -p yes
-
-        docker container create --name arm64 --tty \
-          --platform linux/arm64 \
-          -v /opt:/opt:rw \
-          -v $PWD:/workspace:rw \
-          arm64v8/ubuntu:24.04
-
-        docker container start arm64
-
-        docker exec --tty arm64 apt-get update -y
-        docker exec --tty arm64 apt-get install -y curl sudo
-
 
     - name: "Install: GraalVM"
-      run: |
-        set -eu
-
-        case "${{ matrix.arch }}" in
-          linux-amd64)
-            sudo apt-get install --no-install-recommends -y gcc g++ libz-dev
-
-            GRAAL_VM_HOME=${{ matrix.graal_install_root }}
-            if [ ! -e $GRAAL_VM_HOME/bin/native-image ]; then
-              rm -rf $GRAAL_VM_HOME
-              mkdir -p $GRAAL_VM_HOME
-
-              curl -fL "https://github.com/graalvm/graalvm-ce-builds/releases/download/vm-${{ matrix.graal_version }}/graalvm-ce-java${{ env.JAVA_VERSION}}-linux-amd64-${{ matrix.graal_version }}.tar.gz" \
-                | tar zxv -C $GRAAL_VM_HOME --strip-components=1 \
-                    --exclude=*/bin/jvisualvm \
-                    --exclude=*/lib/src.zip \
-                    --exclude=*/lib/visualvm
-
-               $GRAAL_VM_HOME/bin/gu install native-image
-            fi
-
-            $GRAAL_VM_HOME/bin/native-image --version
-
-            echo "JAVA_HOME=$GRAAL_VM_HOME" >> $GITHUB_ENV
-            echo "$GRAAL_VM_HOME/bin" >> $GITHUB_PATH
-          ;;
-          linux-arm64)
-            cat <<EOF > install_graalvm.sh
-              set -eu
-              sudo apt-get install --no-install-recommends -y gcc g++ libz-dev
-
-              GRAAL_VM_HOME=${{ matrix.graal_install_root }}
-              if [ ! -e \$GRAAL_VM_HOME/bin/native-image ]; then
-                rm -rf \$GRAAL_VM_HOME
-                mkdir -p \$GRAAL_VM_HOME
-
-                curl -fL "https://github.com/graalvm/graalvm-ce-builds/releases/download/vm-${{ matrix.graal_version }}/graalvm-ce-java${{ env.JAVA_VERSION }}-linux-aarch64-${{ matrix.graal_version }}.tar.gz" \
-                  | tar zxv -C \$GRAAL_VM_HOME --strip-components=1 \
-                      --exclude=*/bin/jvisualvm \
-                      --exclude=*/lib/src.zip \
-                      --exclude=*/lib/visualvm
-  
-                 \$GRAAL_VM_HOME/bin/gu install native-image
-              fi
-
-              \$GRAAL_VM_HOME/bin/native-image --version
-        EOF
-
-            docker exec --tty -w /workspace arm64 /bin/bash ./install_graalvm.sh
-          ;;
-          darwin-arm64)
-            GRAAL_VM_HOME=${{ matrix.graal_install_root }}/Contents/Home
-
-            if [ ! -e $GRAAL_VM_HOME/bin/native-image ]; then
-              rm -rf ${{ matrix.graal_install_root }}
-              mkdir ${{ matrix.graal_install_root }}
-
-                curl -fL "https://github.com/graalvm/graalvm-ce-builds/releases/download/jdk-${{ matrix.graal_version }}/graalvm-community-jdk-${{ matrix.graal_version }}_macos-aarch64_bin.tar.gz" \
-                | tar zxv -C graalvm --strip-components=1 \
-                    --exclude=*/bin/jvisualvm \
-                    --exclude=*/lib/src.zip \
-                    --exclude=*/lib/visualvm
-            fi
-
-            $GRAAL_VM_HOME/bin/native-image --version
-
-            echo "JAVA_HOME=$GRAAL_VM_HOME" >> $GITHUB_ENV
-            echo "$GRAAL_VM_HOME/bin" >> $GITHUB_PATH
-          ;;
-          darwin-amd64)
-            GRAAL_VM_HOME=${{ matrix.graal_install_root }}/Contents/Home
-
-            if [ ! -e $GRAAL_VM_HOME/bin/native-image ]; then
-              rm -rf ${{ matrix.graal_install_root }}
-              mkdir ${{ matrix.graal_install_root }}
-
-              curl -fL "https://github.com/graalvm/graalvm-ce-builds/releases/download/vm-${{ matrix.graal_version }}/graalvm-ce-java${{ env.JAVA_VERSION }}-darwin-amd64-${{ matrix.graal_version }}.tar.gz" \
-                | tar zxv -C graalvm --strip-components=1 \
-                    --exclude=*/bin/jvisualvm \
-                    --exclude=*/lib/src.zip \
-                    --exclude=*/lib/visualvm
-
-              $GRAAL_VM_HOME/bin/gu install native-image
-            fi
-
-            $GRAAL_VM_HOME/bin/native-image --version
-
-            echo "JAVA_HOME=$GRAAL_VM_HOME" >> $GITHUB_ENV
-            echo "$GRAAL_VM_HOME/bin" >> $GITHUB_PATH
-          ;;
-          windows-amd64)
-            GRAAL_VM_HOME=${{ matrix.graal_install_root }}
-
-            if [ ! -e $GRAAL_VM_HOME/bin/native-image ]; then
-              rm -rf $GRAAL_VM_HOME
-
-              echo "Downloading GraalVM..."
-              curl -fL -o graalvm.zip https://github.com/graalvm/graalvm-ce-builds/releases/download/vm-${{ matrix.graal_version }}/graalvm-ce-java${{ env.JAVA_VERSION }}-windows-amd64-${{ matrix.graal_version }}.zip
-  
-              echo "Extracting GraalVM..."
-              7z x graalvm.zip
-              mv graalvm-ce-* $GRAAL_VM_HOME
-
-              $GRAAL_VM_HOME/bin/gu.cmd install native-image
-            fi
-
-            $GRAAL_VM_HOME/bin/native-image.cmd --version
-
-            echo "JAVA_HOME=$(cygpath -wa $GRAAL_VM_HOME)" >> $GITHUB_ENV
-            echo "$(cygpath -wa $GRAAL_VM_HOME/bin)" >> $GITHUB_PATH
-          ;; 
-        esac
+      uses: graalvm/setup-graalvm@v1
+      with:
+        java-version: ${{ matrix.graal_version }}
+        distribution: graalvm-community
+        github-token: ${{ secrets.GITHUB_TOKEN }}
 
 
     - name: "Install: binutils (strip)"
       run: |
         case "${{ matrix.arch }}" in
-          linux-amd64)
-            sudo apt-get --no-install-recommends install -y binutils
-          ;;
-          linux-arm64)
-            docker exec --tty arm64 \
+          linux-*)
             sudo apt-get --no-install-recommends install -y binutils
           ;;
         esac
@@ -395,7 +256,9 @@ jobs:
     - name: "Install: UPX"
       env:
         GITHUB_TOKEN: ${{ github.token }}
-      if: runner.os != 'macOS'  # https://github.com/upx/upx/issues/612
+      # MacOS: https://github.com/upx/upx/issues/612
+      # Windows: https://github.com/upx/upx/issues/670 https://github.com/oracle/graal/issues/4340
+      if: runner.os != 'macOS' && runner.os != 'Windows' 
       run: |
         case "${{ matrix.arch }}" in
           linux-amd64)
@@ -453,74 +316,42 @@ jobs:
       run: |
         set -eu
 
-        # https://www.graalvm.org/22.3/reference-manual/native-image/metadata/AutomaticMetadataCollection/#tracing-agent
-        cat <<'EOF' > collect_metadata.sh
-          set -eu
-          rm -rf native-image-metadata
-          function traceCall() {
-            echo "Tracing copycat ${@}..."
-            java -agentlib:native-image-agent=config-merge-dir=native-image-metadata/META-INF/native-image/ -jar copycat-fat.jar ${@} >/dev/null
-          }
+        # https://www.graalvm.org/jdk21/reference-manual/native-image/metadata/AutomaticMetadataCollection/#tracing-agent
+        rm -rf native-image-metadata
+        function traceCall() {
+          echo "Tracing copycat ${@}..."
+          java -agentlib:native-image-agent=config-merge-dir=native-image-metadata/META-INF/native-image/ -jar copycat-fat.jar ${@} >/dev/null
+        }
 
-          rm -rf workdir
-          mkdir -p workdir/source/dir1
-          touch workdir/source/dir1/file1
-          traceCall sync workdir/source workdir/target
-  
-          traceCall --help
-          traceCall --help
-          traceCall --version
-          traceCall sync --help
-          traceCall watch --help
-        EOF
+        traceCall --help
+        traceCall --version
+        traceCall sync --help
+        traceCall watch --help
 
-        case "${{ matrix.arch }}" in
-          linux-arm64)
-            docker exec --tty -w /workspace arm64 /bin/bash -c "
-              export JAVA_HOME=${{ matrix.graal_install_root }}
-              export PATH=${{ matrix.graal_install_root }}/bin:\$PATH
-
-              bash collect_metadata.sh
-            "
-          ;;
-          *)
-            bash collect_metadata.sh
-          ;;
-        esac
+        rm -rf workdir
+        mkdir -p workdir/source/dir1
+        touch workdir/source/dir1/file1
+        traceCall sync workdir/source workdir/target
+        rm -rf workdir
 
 
     - name: "Build executable"
       run: |
         case "${{ matrix.arch }}" in
-          linux-amd64)
+          linux-*)
             /usr/bin/gcc -v
 
             native-image \
-              -H:+StaticExecutableWithDynamicLibC `# https://www.graalvm.org/21.3/reference-manual/native-image/StaticImages/#build-mostly-static-native-image` \
+              -H:+StaticExecutableWithDynamicLibC `# https://www.graalvm.org/jdk21/reference-manual/native-image/guides/build-static-executables/#build-a-mostly-static-native-executable` \
               --report-unsupported-elements-at-runtime `# avoid: Unsupported type sun.awt.X11.XBaseWindow is reachable` \
               ${{ env.NATIVE_IMAGE_ARGS }}
-          ;;
-          linux-arm64)
-            docker exec --tty -w /workspace arm64 /bin/bash -c "
-              export JAVA_HOME=${{ matrix.graal_install_root }}
-              export PATH=${{ matrix.graal_install_root }}/bin:\$PATH
-
-              /usr/bin/gcc -v
-
-              native-image \
-                -H:+StaticExecutableWithDynamicLibC `# https://www.graalvm.org/21.3/reference-manual/native-image/StaticImages/#build-mostly-static-native-image` \
-                --report-unsupported-elements-at-runtime `# avoid: Unsupported type sun.awt.X11.XBaseWindow is reachable` \
-                -Djdk.lang.Process.launchMechanism=vfork `# https://github.com/oracle/graal/issues/4143`\
-                -H:-CheckToolchain `#https://github.com/oracle/graal/issues/4143`\
-                ${{ env.NATIVE_IMAGE_ARGS }}
-            "
           ;;
           darwin-*)
             # not using "--static" because of error: DARWIN does not support building static executable images.
             native-image ${{ env.NATIVE_IMAGE_ARGS }}
           ;;
           windows-amd64)
-            # https://www.graalvm.org/21.3/reference-manual/native-image/StaticImages/
+            # https://www.graalvm.org/jdk21/reference-manual/native-image/guides/build-static-executables/#build-a-static-native-executable
             native-image.cmd --static ${{ env.NATIVE_IMAGE_ARGS }}
           ;;
         esac
@@ -528,81 +359,41 @@ jobs:
 
     - name: "Test executable"
       run: |
-        case "${{ matrix.arch }}" in
-          linux-arm64)
-            docker exec --tty -w /workspace arm64 /bin/bash -c "   
-              chmod u+x copycat-${{ matrix.arch }} &&
-              ./copycat-${{ matrix.arch }} --version &&
-              ./copycat-${{ matrix.arch }} --help &&
-              ./copycat-${{ matrix.arch }} sync --help &&
-              ./copycat-${{ matrix.arch }} watch --help
-             "
-          ;;
-          *)
-            chmod u+x copycat-${{ matrix.arch }}
-            ./copycat-${{ matrix.arch }} --version
-            ./copycat-${{ matrix.arch }} --help
-            ./copycat-${{ matrix.arch }} sync --help
-            ./copycat-${{ matrix.arch }} watch --help
-          ;;
-        esac
+        chmod u+x copycat-${{ matrix.arch }}
+        ./copycat-${{ matrix.arch }} --version
+        ./copycat-${{ matrix.arch }} --help
+        ./copycat-${{ matrix.arch }} sync --help
+        ./copycat-${{ matrix.arch }} watch --help
 
 
     - name: "Compress executable"
-      if: runner.os != 'macOS'  # https://github.com/upx/upx/issues/612
       run: |
         set -eu
         case "${{ matrix.arch }}" in
-          linux-amd64)
-            strip --strip-unneeded copycat-${{ matrix.arch }}
-            /opt/upx/upx -v -9 --no-progress copycat-${{ matrix.arch }}
-          ;;
-          linux-arm64)
-            docker exec --tty -w /workspace arm64 /bin/bash -c "
-              strip --strip-unneeded copycat-${{ matrix.arch }} &&
-              /opt/upx/upx -v -9 --no-progress copycat-${{ matrix.arch }}
-            "
+          linux-*)
+            (set -x; strip -v --strip-debug --strip-unneeded copycat-${{ matrix.arch }})
+            (set -x; /opt/upx/upx -v -9 --no-progress copycat-${{ matrix.arch }})
           ;;
           darwin-*)
             # https://www.unix.com/man-page/osx/1/strip/
-            strip copycat-${{ matrix.arch }}
-            upx -v -9 --force-macos --no-progress copycat-${{ matrix.arch }}
+            (set -x; strip -S copycat-${{ matrix.arch }})
+            # TODO upx -v -9 --force-macos --no-progress copycat-${{ matrix.arch }}
           ;;
           windows-amd64)
-            cp copycat-${{ matrix.arch }}.exe copycat-${{ matrix.arch }}-upx.exe
-            upx -v -9 --no-progress copycat-${{ matrix.arch }}-upx.exe
+            (set -x; strip -v --strip-debug --strip-unneeded copycat-${{ matrix.arch }}.exe)
+            # TODO cp copycat-${{ matrix.arch }}.exe copycat-${{ matrix.arch }}-upx.exe
+            # TODO upx -v -9 --no-progress copycat-${{ matrix.arch }}-upx.exe
           ;;
         esac
 
 
     - name: "Test compressed executable"
-      if: runner.os != 'macOS'  # https://github.com/upx/upx/issues/612
       run: |
-        case "${{ matrix.arch }}" in
-          linux-arm64)
-            docker exec --tty -w /workspace arm64 /bin/bash -c "
-              chmod u+x copycat-${{ matrix.arch }} &&
-              ./copycat-${{ matrix.arch }} --version &&
-              ./copycat-${{ matrix.arch }} --help &&
-              ./copycat-${{ matrix.arch }} sync --help &&
-              ./copycat-${{ matrix.arch }} watch --help
-             "
-          ;;
-          windows-*)
-            chmod u+x copycat-${{ matrix.arch }}-upx
-            ./copycat-${{ matrix.arch }}-upx --version
-            ./copycat-${{ matrix.arch }}-upx --help
-            ./copycat-${{ matrix.arch }}-upx sync --help
-            ./copycat-${{ matrix.arch }}-upx watch --help
-          ;;
-          *)
-            chmod u+x copycat-${{ matrix.arch }}
-            ./copycat-${{ matrix.arch }} --version
-            ./copycat-${{ matrix.arch }} --help
-            ./copycat-${{ matrix.arch }} sync --help
-            ./copycat-${{ matrix.arch }} watch --help
-          ;;
-        esac
+        chmod u+x copycat-${{ matrix.arch }}
+        ./copycat-${{ matrix.arch }} --version
+        ./copycat-${{ matrix.arch }} --help
+        ./copycat-${{ matrix.arch }} sync --help
+        ./copycat-${{ matrix.arch }} watch --help
 
 
     - name: "Share: native binary"
@@ -688,8 +479,7 @@ jobs:
           artifacts/copycat-linux-arm64#copycat-$RELEASE_NAME-linux-arm64 \
           artifacts/copycat-darwin-amd64#copycat-$RELEASE_NAME-darwin-amd64 \
           artifacts/copycat-darwin-arm64#copycat-$RELEASE_NAME-darwin-arm64 \
-          artifacts/copycat-windows-amd64.exe#copycat-$RELEASE_NAME-windows-amd64.exe \
-          artifacts/copycat-windows-amd64-upx.exe#copycat-$RELEASE_NAME-windows-amd64-upx.exe
+          artifacts/copycat-windows-amd64.exe#copycat-$RELEASE_NAME-windows-amd64.exe
 
 
     - name: "Delete intermediate build artifacts"

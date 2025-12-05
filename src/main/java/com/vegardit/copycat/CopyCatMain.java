@@ -13,6 +13,7 @@ import java.util.logging.LogRecord;
 
 import org.eclipse.jdt.annotation.Nullable;
 import org.fusesource.jansi.Ansi;
+import org.fusesource.jansi.AnsiConsole;
 import org.fusesource.jansi.AnsiRenderer;
 
 import com.vegardit.copycat.command.AbstractCommand;
@@ -31,7 +32,6 @@ import picocli.CommandLine.ParameterException;
 import picocli.CommandLine.RunLast;
 import picocli.CommandLine.Unmatched;
 import picocli.CommandLine.UnmatchedArgumentException;
-import picocli.jansi.graalvm.AnsiConsole;
 
 /**
  * @author Sebastian Thomschke, Vegard IT GmbH
