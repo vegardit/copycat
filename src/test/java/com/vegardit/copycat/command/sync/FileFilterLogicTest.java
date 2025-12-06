@@ -258,6 +258,39 @@ class FileFilterLogicTest {
       }
    }
 
+   @Test
+   @DisplayName("Subtree exclude patterns mark directory prefixes to skip")
+   void testSubtreeExcludePrefixes() throws IOException {
+      final Path sourceRoot = Files.createTempDirectory("copycat-filters-src");
+      final Path targetRoot = Files.createTempDirectory("copycat-filters-dst");
+
+      try {
+         final var cfg = new SyncCommandConfig();
+         cfg.source = sourceRoot;
+         cfg.target = targetRoot;
+         cfg.fileFilters = List.of("ex:bbb/**", "ex:**/ccc/**");
+         cfg.applyDefaults();
+         cfg.compute();
+
+         final Path bbb = sourceRoot.resolve("bbb");
+         final Path bbbRelative = bbb.subpath(sourceRoot.getNameCount(), bbb.getNameCount());
+
+         final Path aaaCcc = sourceRoot.resolve("aaa/ccc");
+         final Path aaaCccRelative = aaaCcc.subpath(sourceRoot.getNameCount(), aaaCcc.getNameCount());
+
+         // ex:bbb/** should allow syncing the "bbb" directory itself but skip its subtree
+         assertThat(cfg.isExcludedSourcePath(bbb, bbbRelative)).isFalse();
+         assertThat(cfg.isExcludedSourceSubtreeDir(bbbRelative)).isTrue();
+
+         // ex:**/ccc/** should cause any ".../ccc" subtree (including "aaa/ccc") to be skipped during traversal
+         assertThat(cfg.isExcludedSourcePath(aaaCcc, aaaCccRelative)).isFalse();
+         assertThat(cfg.isExcludedSourceSubtreeDir(aaaCccRelative)).isTrue();
+      } finally {
+         deleteRecursive(targetRoot);
+         deleteRecursive(sourceRoot);
+      }
+   }
+
    private static void deleteRecursive(final Path root) throws IOException {
       if (!Files.exists(root))
          return;
