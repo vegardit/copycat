@@ -88,7 +88,7 @@ public class WatchCommand extends AbstractSyncCommand<WatchCommandConfig> {
                   final Integer maxDepth = task.maxDepth;
                   if (maxDepth != null) {
                      final Path dirRelative = dir.subpath(sourceRootAbsolute.getNameCount(), dir.getNameCount());
-                     if (dirRelative.getNameCount() > maxDepth.intValue())
+                     if (dirRelative.getNameCount() > maxDepth)
                         return FileVisitResult.SKIP_SUBTREE;
                   }
                }
@@ -208,11 +208,20 @@ public class WatchCommand extends AbstractSyncCommand<WatchCommandConfig> {
          final var sourceAbsolute = event.path();
          final var sourceRelative = sourceAbsolute.subpath(task.sourceRootAbsolute.getNameCount(), sourceAbsolute.getNameCount());
 
+         final var eventType = event.eventType();
+         final boolean isDirEvent;
+         if (eventType == DirectoryChangeEvent.EventType.CREATE || eventType == DirectoryChangeEvent.EventType.MODIFY) {
+            isDirEvent = Files.isDirectory(sourceAbsolute, NOFOLLOW_LINKS);
+         } else {
+            isDirEvent = false;
+         }
+
          // enforce optional max-depth on incoming events as a safety net
          final Integer maxDepth = task.maxDepth;
          if (maxDepth != null) {
-            final int maxEventDepth = maxDepth.intValue() + 1; // allow files in dirs at maxDepth and dirs at (maxDepth+1)
-            if (sourceRelative.getNameCount() > maxEventDepth) {
+            final int depth = sourceRelative.getNameCount();
+            final int allowedDepth = isDirEvent ? maxDepth : maxDepth + 1;
+            if (depth > allowedDepth) {
                LOG.trace("Ignoring event outside max-depth [%s]: %s", maxDepth, sourceRelative);
                return;
             }
@@ -225,9 +234,9 @@ public class WatchCommand extends AbstractSyncCommand<WatchCommandConfig> {
 
          final var targetAbsolute = task.targetRootAbsolute.resolve(sourceRelative);
 
-         switch (event.eventType()) {
+         switch (eventType) {
             case CREATE:
-               if (Files.isDirectory(sourceAbsolute, NOFOLLOW_LINKS)) {
+               if (isDirEvent) {
                   if (loggableEvents.contains(LogEvent.CREATE)) {
                      LOG.info("CREATE [@|magenta %s%s|@]...", sourceRelative, File.separator);
                   }
@@ -242,7 +251,7 @@ public class WatchCommand extends AbstractSyncCommand<WatchCommandConfig> {
                break;
 
             case MODIFY:
-               if (Files.isDirectory(sourceAbsolute, NOFOLLOW_LINKS)) {
+               if (isDirEvent) {
                   if (loggableEvents.contains(LogEvent.MODIFY)) {
                      LOG.info("MODIFY [@|magenta %s%s|@]...", sourceRelative, File.separator);
                   }
