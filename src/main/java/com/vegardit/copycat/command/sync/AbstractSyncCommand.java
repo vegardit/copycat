@@ -178,16 +178,16 @@ public abstract class AbstractSyncCommand<C extends AbstractSyncCommandConfig<C>
       cfgCLI.excludeSystemFiles = excludeSystemFiles;
    }
 
-   @Option(names = "--filter", paramLabel = "in|ex:<pattern>", //
-      description = "Glob pattern for files/directories to be excluded from or included in sync.")
+   @Option(names = "--filter", paramLabel = "(in|ex):<pattern>", //
+      description = "Glob pattern for files/directories to be excluded (ex:<pattern>) from or included (in:<pattern>) in sync.")
    private void setFilters(final List<String> fileFilters) {
       if (isDeprecatedExcludeUsed)
          throw new ParameterException(commandSpec.commandLine(), "Option --filter cannot be used together with --exclude.");
       cfgCLI.fileFilters = fileFilters;
    }
 
-   @Option(names = "--max-depth", description = "Maximum directory traversal depth from the source root. "
-         + "0=only top-level files (no subdirs), 1=include immediate subdirectories, etc. Default: unlimited.")
+   @Option(names = "--max-depth", paramLabel = "<depth>", description = {"Maximum directory traversal depth from the source root.",
+      "0=only top-level files (no subdirs), 1=include immediate subdirectories, etc.", "Default: unlimited."})
    private void setMaxDepth(final int maxDepth) {
       if (maxDepth < 0)
          throw new ParameterException(commandSpec.commandLine(), "--max-depth must be >= 0");

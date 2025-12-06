@@ -67,53 +67,54 @@ Copycat understands two commands:
 $ copycat sync --help
 
 Usage: copycat sync [-hqVv] [--copy-acl] [--delete] [--delete-excluded] [--dry-run] [--exclude-hidden-files]
-                    [--exclude-hidden-system-files] [--exclude-older-files] [--exclude-system-files] [--ignore-errors]
-                    [--ignore-symlink-errors] [--log-errors-to-stdout] [--config <path>] [--log-file <path>]
-                    [--max-depth <n>] [--threads <count>] [--since <when>] [--until <when>] [--filter in|ex:<pattern>]...
-                    [--no-log <op>[,<op>...]]... [SOURCE] [TARGET]
+                    [--exclude-hidden-system-files] [--exclude-older-files] [--exclude-system-files]
+                    [--ignore-errors] [--ignore-symlink-errors] [--log-errors-to-stdout] [--config <path>]
+                    [--log-file <path>] [--max-depth <depth>] [--since <when>] [--threads <count>] [--until
+                    <when>] [--filter (in|ex):<pattern>]... [--no-log <op>[,<op>...]]... [SOURCE] [TARGET]
 
 Performs one-way recursive directory synchronization copying new files/directories.
 
 Positional parameters:
-      [SOURCE]            Directory to copy from files.
-      [TARGET]            Directory to copy files to.
+      [SOURCE]              Directory to copy from files.
+      [TARGET]              Directory to copy files to.
 
 Options:
-      --config <path>     Path to a YAML config file.
-      --copy-acl          Copy file permissions (ACL) for newly copied files.
-      --delete            Delete extraneous files/directories from target.
-      --delete-excluded   Delete excluded files/directories from target.
-      --dry-run           Don't perform actual synchronization.
+      --config <path>       Path to a YAML config file.
+      --copy-acl            Copy file permissions (ACL) for newly copied files.
+      --delete              Delete extraneous files/directories from target.
+      --delete-excluded     Delete excluded files/directories from target.
+      --dry-run             Don't perform actual synchronization.
       --exclude-hidden-files
-                          Don't synchronize hidden files.
+                            Don't synchronize hidden files.
       --exclude-hidden-system-files
-                          Don't synchronize hidden system files.
-      --exclude-older-files
-                          Don't override newer files in target with older files in source.
+                            Don't synchronize hidden system files.
+      --exclude-older-files Don't override newer files in target with older files in source.
       --exclude-system-files
-                          Don't synchronize system files.
-      --filter in|ex:<pattern>
-                          Glob pattern for files/directories to be excluded from or included in sync.
-  -h, --help              Show this help message and exit.
-      --ignore-errors     Continue sync when errors occur.
+                            Don't synchronize system files.
+      --filter (in|ex):<pattern>
+                            Glob pattern for files/directories to be excluded (ex:<pattern>) from or
+                              included (in:<pattern>) in sync.
+  -h, --help                Show this help message and exit.
+      --ignore-errors       Continue sync when errors occur.
       --ignore-symlink-errors
-                          Continue if creation of symlinks on target fails.
+                            Continue if creation of symlinks on target fails.
       --log-errors-to-stdout
-                          Log errors to stdout instead of stderr.
-      --log-file <path>   Write console output also to the given log file.
-      --max-depth <n>     Maximum directory traversal depth from the source root.
-                          0=only top-level files (no subdirs), 1=include immediate subdirectories, etc.
-                          Directories deeper than <n> are neither scanned nor created in the target.
-                          Default: unlimited.
+                            Log errors to stdout instead of stderr.
+      --log-file <path>     Write console output also to the given log file.
+      --max-depth <depth>   Maximum directory traversal depth from the source root.
+                            0=only top-level files (no subdirs), 1=include immediate subdirectories, etc.
+                            Default: unlimited.
       --no-log <op>[,<op>...]
-                          Don't log the given sync operation. Valid values: CREATE, MODIFY, DELETE, SCAN
-  -q, --quiet             Quiet mode.
-      --since <when>      Sync only items modified after this date/time. Accepts ISO-8601 dates (2024-12-25),
-                          relative expressions (3 days ago), or keywords (yesterday, today, tomorrow).
-      --threads <count>   Number of concurrent threads. Default: 2
-      --until <when>      Sync only items modified before this date/time. Same format as --since.
-  -v, --verbose           Specify multiple -v options to increase verbosity.
-                          For example `-v -v -v` or `-vvv`.
+                            Don't log the given sync operation. Valid values: CREATE, MODIFY, DELETE, SCAN
+  -q, --quiet               Quiet mode.
+      --since <when>        Sync only items modified after this date/time.Accepts ISO-8601 (2024-12-25,
+                              2024-12-25T14:30), durations (P3D, PT2H), or relative expressions (3 days ago,
+                              yesterday 14:00).
+      --threads <count>     Number of concurrent threads. Default: 2
+      --until <when>        Sync only items modified before this date/time. Format same as --since. Combined
+                              with --since to define a date range.
+  -v, --verbose             Specify multiple -v options to increase verbosity.
+                            For example `-v -v -v` or `-vvv`.
 ```
 
 Examples:
@@ -179,41 +180,47 @@ sync:
 ```
 $ copycat watch --help
 
-Usage: copycat watch [-hqVv] [--copy-acl] [--delete-excluded] [--exclude-hidden-files] [--exclude-hidden-system-files]
-                     [--exclude-system-files] [--log-errors-to-stdout] [--config <path>] [--log-file <path>]
-                     [--max-depth <n>] [--filter in|ex:<pattern>]... [--no-log <op>[,<op>...]]... [SOURCE] [TARGET]
+Usage: copycat watch [-hqVv] [--copy-acl] [--delete-excluded] [--exclude-hidden-files]
+                     [--exclude-hidden-system-files] [--exclude-system-files] [--log-errors-to-stdout]
+                     [--config <path>] [--log-file <path>] [--max-depth <depth>] [--since <when>] [--until
+                     <when>] [--filter (in|ex):<pattern>]... [--no-log <op>[,<op>...]]... [SOURCE] [TARGET]
 
 Continuously watches a directory recursively for changes and synchronizes them to another directory.
 
 Positional parameters:
-      [SOURCE]            Directory to copy from files.
-      [TARGET]            Directory to copy files to.
+      [SOURCE]              Directory to copy from files.
+      [TARGET]              Directory to copy files to.
 
 Options:
-      --config <path>     Path to a YAML config file.
-      --copy-acl          Copy file permissions (ACL) for newly copied files.
-      --delete-excluded   Delete excluded files/directories from target.
+      --config <path>       Path to a YAML config file.
+      --copy-acl            Copy file permissions (ACL) for newly copied files.
+      --delete-excluded     Delete excluded files/directories from target.
       --exclude-hidden-files
-                          Don't synchronize hidden files.
+                            Don't synchronize hidden files.
       --exclude-hidden-system-files
-                          Don't synchronize hidden system files.
+                            Don't synchronize hidden system files.
       --exclude-system-files
-                          Don't synchronize system files.
-      --filter in|ex:<pattern>
-                          Glob pattern for files/directories to be excluded from or included in sync.
-  -h, --help              Show this help message and exit.
+                            Don't synchronize system files.
+      --filter (in|ex):<pattern>
+                            Glob pattern for files/directories to be excluded (ex:<pattern>) from or
+                              included (in:<pattern>) in sync.
+  -h, --help                Show this help message and exit.
       --log-errors-to-stdout
-                          Log errors to stdout instead of stderr.
-      --log-file <path>   Write console output also to the given log file.
-      --max-depth <n>     Maximum directory traversal depth from the source root.
-                          0=only top-level files (no subdirs), 1=include immediate subdirectories, etc.
-                          Directories deeper than <n> are neither scanned nor watched.
-                          Default: unlimited.
+                            Log errors to stdout instead of stderr.
+      --log-file <path>     Write console output also to the given log file.
+      --max-depth <depth>   Maximum directory traversal depth from the source root.
+                            0=only top-level files (no subdirs), 1=include immediate subdirectories, etc.
+                            Default: unlimited.
       --no-log <op>[,<op>...]
-                          Don't log the given filesystem operation. Valid values: CREATE, MODIFY, DELETE
-  -q, --quiet             Quiet mode.
-  -v, --verbose           Specify multiple -v options to increase verbosity.
-                          For example `-v -v -v` or `-vvv`.
+                            Don't log the given filesystem operation. Valid values: CREATE, MODIFY, DELETE
+  -q, --quiet               Quiet mode.
+      --since <when>        Sync only items modified after this date/time.Accepts ISO-8601 (2024-12-25,
+                              2024-12-25T14:30), durations (P3D, PT2H), or relative expressions (3 days ago,
+                              yesterday 14:00).
+      --until <when>        Sync only items modified before this date/time. Format same as --since. Combined
+                              with --since to define a date range.
+  -v, --verbose             Specify multiple -v options to increase verbosity.
+                            For example `-v -v -v` or `-vvv`.
 ```
 
 Example:
