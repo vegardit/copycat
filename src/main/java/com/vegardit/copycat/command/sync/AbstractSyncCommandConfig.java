@@ -229,21 +229,34 @@ public abstract class AbstractSyncCommandConfig<THIS extends AbstractSyncCommand
                throw new IllegalArgumentException("Illegal filter definition \"" + filterSpec
                      + "\". Must start with action prefix \"in:\" or \"ex:\".");
 
-            var globPattern = Strings.substringAfter(filterSpec, ":");
+            var rawPattern = Strings.substringAfter(filterSpec, ":");
 
             // globbing does not work with backslash as path separator, so replacing it with slash on Windows
             if (SystemUtils.IS_OS_WINDOWS) {
-               globPattern = Strings.replace(globPattern, "\\", "/");
+               rawPattern = Strings.replace(rawPattern, "\\", "/");
             }
-            globPattern = Strings.removeEnd(globPattern, "/");
-            globPattern = "glob:" + globPattern;
+            rawPattern = Strings.removeEnd(rawPattern, "/");
 
-            sourceFilters.add(Tuple2.create(action, sourceFS.getPathMatcher(globPattern)));
-            targetFilters.add(Tuple2.create(action, targetFS.getPathMatcher(globPattern)));
+            final var effectivePatterns = new ArrayList<String>(2);
+            effectivePatterns.add(rawPattern);
 
-            if (!globPattern.endsWith("/**")) {
-               sourceFilters.add(Tuple2.create(action, sourceFS.getPathMatcher(globPattern + "/**")));
-               targetFilters.add(Tuple2.create(action, targetFS.getPathMatcher(globPattern + "/**")));
+            // For patterns starting with "**/" (e.g. "**/node_modules"), also match the top-level variant
+            // so that a root "node_modules" directory is treated the same as nested ones.
+            if (rawPattern.startsWith("**/") && rawPattern.length() > 3) {
+               effectivePatterns.add(rawPattern.substring(3));
+            }
+
+            for (final var p : effectivePatterns) {
+               final var globPattern = "glob:" + p;
+
+               sourceFilters.add(Tuple2.create(action, sourceFS.getPathMatcher(globPattern)));
+               targetFilters.add(Tuple2.create(action, targetFS.getPathMatcher(globPattern)));
+
+               if (!globPattern.endsWith("/**")) {
+                  final var recursiveGlobPattern = globPattern + "/**";
+                  sourceFilters.add(Tuple2.create(action, sourceFS.getPathMatcher(recursiveGlobPattern)));
+                  targetFilters.add(Tuple2.create(action, targetFS.getPathMatcher(recursiveGlobPattern)));
+               }
             }
          }
          fileFiltersSource = sourceFilters.toArray(new Tuple2[sourceFilters.size()]);
