@@ -70,6 +70,8 @@ jobs:
 
     - name: Git Checkout
       uses: actions/checkout@v6  # https://github.com/actions/checkout
+      with:
+        fetch-depth: 0  # required for release notes
 
 
     - name: "Install: JDK ${{ env.JAVA_VERSION }} ☕"
@@ -451,6 +453,57 @@ jobs:
         esac
 
 
+    - name: "Build release notes from commits"
+      env:
+        RELEASE_NAME: ${{ steps.release.outputs.name }}
+      run: |
+        set -eu
+
+        git fetch --tags origin
+
+        if git rev-parse "$RELEASE_NAME" >/dev/null 2>&1; then
+          RANGE="$RELEASE_NAME..${GITHUB_SHA}"
+        else
+          # first run: just use recent commits
+          RANGE="${GITHUB_SHA}~50..${GITHUB_SHA}"
+        fi
+
+        tmpdir="$(mktemp -d)"
+        git log "$RANGE" --pretty='%h%x09%s' > "$tmpdir/commits.tsv" || true
+
+        awk -F'\t' -v tmp="$tmpdir" '
+          {
+            hash=$1;
+            text=$2;
+            line="- " hash " " text;
+            if (text ~ /^fix\(deps\):/) {
+              print line >> (tmp "/deps.md");
+            } else if (text ~ /^fix(\(.+\))?:/) {
+              print line >> (tmp "/fixes.md");
+            } else if (text ~ /^feat(\(.+\))?:/) {
+              print line >> (tmp "/features.md");
+            } else {
+              print line >> (tmp "/others.md");
+            }
+          }
+        ' "$tmpdir/commits.tsv"
+
+        section() {
+          local title="$1" file="$2"
+          if [ -s "$file" ]; then
+            echo "## $title" >> release-notes.md
+            cat "$file" >> release-notes.md
+            echo >> release-notes.md
+          fi
+        }
+
+        : > release-notes.md
+        section "Fixes" "$tmpdir/fixes.md"
+        section "Features" "$tmpdir/features.md"
+        section "Dependency updates" "$tmpdir/deps.md"
+        section "Other changes" "$tmpdir/others.md"
+
+
     - name: "Delete previous '${{ steps.release.outputs.name }}' release"
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -464,14 +517,13 @@ jobs:
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         RELEASE_NAME: ${{ steps.release.outputs.name }}
-        COMMIT_MSG: ${{ github.event.head_commit.message }} # https://stackoverflow.com/a/78420438/5116073
       # https://cli.github.com/manual/gh_release_create
       run: |
         GH_DEBUG=1 gh release create "$RELEASE_NAME" \
           --title "$RELEASE_NAME" \
           ${{ steps.release.outputs.name == 'latest' && '--latest' || '' }} \
           ${{ steps.release.outputs.name == 'preview' && '--prerelease' || '' }} \
-          --notes "$COMMIT_MSG" \
+          --notes-file release-notes.md \
           --target "${{ github.sha }}" \
           artifacts/copycat-fat.jar#copycat-$RELEASE_NAME-fat.jar \
           artifacts/bash/bashcompletion.sh#copycat-$RELEASE_NAME-bashcompletion.sh \
