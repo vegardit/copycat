@@ -37,7 +37,7 @@ Advantages over robocopy:
 
 ## <a name="installation"></a>Installation
 
-For Windows/Linux/macOS, self-contained single-file binaries can be downloaded at https://github.com/vegardit/copycat/releases
+For Windows/Linux/macOS, self-contained single-file binaries can be downloaded at https://github.com/vegardit/copycat/releases/latest
 
 No installation is required.
 
