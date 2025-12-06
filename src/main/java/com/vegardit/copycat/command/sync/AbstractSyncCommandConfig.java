@@ -20,6 +20,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
+import org.eclipse.jdt.annotation.NonNull;
 import org.eclipse.jdt.annotation.Nullable;
 
 import com.vegardit.copycat.util.FileUtils;
@@ -42,6 +43,18 @@ public abstract class AbstractSyncCommandConfig<THIS extends AbstractSyncCommand
       INCLUDE
    }
 
+   /**
+    * Lightweight representation of simple INCLUDE patterns (without \"**\" or character classes) that can be
+    * used for cheap subtree skipping decisions during traversal.
+    */
+   private static final class IncludePatternHint {
+      final @NonNull String[] segments;
+
+      IncludePatternHint(final @NonNull String[] segments) {
+         this.segments = segments;
+      }
+   }
+
    public @Nullable @ToYamlString(ignore = true) Path source;
    public @ToYamlString(name = "source") Path sourceRootAbsolute = lateNonNull(); // computed value
 
@@ -57,11 +70,23 @@ public abstract class AbstractSyncCommandConfig<THIS extends AbstractSyncCommand
    protected @ToYamlString(ignore = true) Tuple2<FileFilterAction, PathMatcher> @Nullable [] fileFiltersTarget; // computed value
 
    /**
-    * Additional matchers used purely to decide whether a directory subtree can be skipped during traversal without changing filter
+    * Additional matcher used purely to decide whether a directory subtree can be skipped during traversal without changing filter
     * semantics for individual files.
     */
-   protected @ToYamlString(ignore = true) PathMatcher @Nullable [] subtreeExcludeSource; // computed value
-   protected @ToYamlString(ignore = true) PathMatcher @Nullable [] subtreeExcludeTarget; // computed value
+   private @ToYamlString(ignore = true) PathMatcher @Nullable [] subtreeExcludeSource; // computed value
+
+   /**
+    * Simple INCLUDE pattern hints derived from {@link #fileFilters} that are safe to use for conservative subtree
+    * skipping in combination with a global EXCLUDE filter that matches all descendants (for example a pattern like \"**\").
+    * Only patterns without \"**\" or character classes are considered.
+    */
+   private @ToYamlString(ignore = true) IncludePatternHint @Nullable [] includePatternHints; // computed value
+
+   /**
+    * True if there is an EXCLUDE filter with raw pattern \"**\" (after normalization) or an equivalent all-descendants
+    * pattern, meaning that every non-root path is excluded unless explicitly re-included by an INCLUDE filter.
+    */
+   private boolean hasGlobalExcludeForSubtrees;
 
    public @Nullable Boolean excludeHiddenFiles;
    public @Nullable Boolean excludeHiddenSystemFiles;
@@ -220,12 +245,16 @@ public abstract class AbstractSyncCommandConfig<THIS extends AbstractSyncCommand
 
    @SuppressWarnings("resource")
    private void computePathMatchers() {
+      hasGlobalExcludeForSubtrees = false;
+      includePatternHints = null;
+
       final var filters = fileFilters;
       if (filters != null && !filters.isEmpty()) {
          final var sourceFilters = new ArrayList<Tuple2<FileFilterAction, PathMatcher>>(filters.size() * 2);
          final var targetFilters = new ArrayList<Tuple2<FileFilterAction, PathMatcher>>(filters.size() * 2);
          final var sourceSubtreeFilters = new ArrayList<PathMatcher>();
          final var targetSubtreeFilters = new ArrayList<PathMatcher>();
+         final var includeHints = new ArrayList<IncludePatternHint>();
          final var sourceFS = sourceRootAbsolute.getFileSystem();
          final var targetFS = targetRootAbsolute.getFileSystem();
          for (final String filterSpec : filters) {
@@ -245,6 +274,32 @@ public abstract class AbstractSyncCommandConfig<THIS extends AbstractSyncCommand
                rawPattern = Strings.replace(rawPattern, "\\", "/");
             }
             rawPattern = Strings.removeEnd(rawPattern, "/");
+
+            if (action == FileFilterAction.EXCLUDE) {
+               /*
+                * Detect global subtree excludes like \"**\" (after normalization). In combination with INCLUDE hints
+                * this allows us to skip traversing subtrees that cannot possibly contain included files.
+                */
+               if ("**".equals(rawPattern) || "**/*".equals(rawPattern)) {
+                  hasGlobalExcludeForSubtrees = true;
+               }
+            } else if (action == FileFilterAction.INCLUDE) {
+               /*
+                * For INCLUDE patterns, derive a simple prefix representation that can be used to conservatively decide
+                * whether a given directory subtree can still contain any included files.
+                *
+                * We intentionally restrict hints to patterns without "**" or character classes / groupings so that we
+                * can implement cheap and safe prefix checks without attempting to fully reimplement glob semantics.
+                */
+               if (!rawPattern.contains("**") //
+                     && rawPattern.indexOf('[') == -1 && rawPattern.indexOf(']') == -1 //
+                     && rawPattern.indexOf('{') == -1 && rawPattern.indexOf('}') == -1) {
+                  final var segments = rawPattern.split("/");
+                  if (segments.length > 0) {
+                     includeHints.add(new IncludePatternHint(segments));
+                  }
+               }
+            }
 
             final var effectivePatterns = new ArrayList<String>(2);
             effectivePatterns.add(rawPattern);
@@ -290,12 +345,11 @@ public abstract class AbstractSyncCommandConfig<THIS extends AbstractSyncCommand
          }
          fileFiltersSource = sourceFilters.toArray(new Tuple2[sourceFilters.size()]);
          fileFiltersTarget = targetFilters.toArray(new Tuple2[targetFilters.size()]);
+         includePatternHints = includeHints.isEmpty() ? null : includeHints.toArray(new IncludePatternHint[includeHints.size()]);
          if (sourceSubtreeFilters.isEmpty()) {
             subtreeExcludeSource = null;
-            subtreeExcludeTarget = null;
          } else {
             subtreeExcludeSource = sourceSubtreeFilters.toArray(new PathMatcher[sourceSubtreeFilters.size()]);
-            subtreeExcludeTarget = targetSubtreeFilters.toArray(new PathMatcher[targetSubtreeFilters.size()]);
          }
       }
    }
@@ -309,19 +363,74 @@ public abstract class AbstractSyncCommandConfig<THIS extends AbstractSyncCommand
    }
 
    /**
-    * Returns true if the given source-relative directory should have its subtree
-    * skipped based on EXCLUDE patterns ending with "/**".
+    * Returns true if the given source-relative directory should have its subtree skipped.
+    *
+    * This is used purely as a traversal optimization. It must never change which individual files are considered
+    * included or excluded according to {@link #isExcludedSourcePath(Path, Path)}.
+    *
+    * Current implementation combines:
+    * <ul>
+    * <li>legacy subtreeExcludeSource matchers for EXCLUDE patterns ending with \"/**\"</li>
+    * <li>a conservative heuristic that, in the presence of a global EXCLUDE filter that matches all descendants and only simple
+    * INCLUDE patterns, skips subtrees that cannot possibly contain included files</li>
+    * </ul>
     */
    public boolean isExcludedSourceSubtreeDir(final Path sourceRelative) {
-      return matchesSubtreeExclude(sourceRelative, subtreeExcludeSource);
+      if (matchesSubtreeExclude(sourceRelative, subtreeExcludeSource))
+         return true;
+      return isSubtreePrunedByGlobalExcludeAndIncludes(sourceRelative);
    }
 
    /**
-    * Returns true if the given target-relative directory should have its subtree
-    * skipped based on EXCLUDE patterns ending with "/**".
+    * Conservative check used in combination with a global EXCLUDE filter that matches all descendants to determine
+    * whether a directory subtree can be pruned entirely because it cannot contain any included files.
+    *
+    * The check is intentionally narrow:
+    * <ul>
+    * <li>It is only active when {@link #hasGlobalExcludeForSubtrees} is true.</li>
+    * <li>It only uses {@link #includePatternHints}, i.e. simple INCLUDE patterns without \"**\" or complex glob
+    * constructs.</li>
+    * <li>If we are unsure, we return {@code false} and let normal traversal handle the directory.</li>
+    * </ul>
     */
-   public boolean isExcludedTargetSubtreeDir(final Path targetRelative) {
-      return matchesSubtreeExclude(targetRelative, subtreeExcludeTarget);
+   private boolean isSubtreePrunedByGlobalExcludeAndIncludes(final Path dirRelative) {
+      if (!hasGlobalExcludeForSubtrees)
+         return false;
+
+      final var hints = includePatternHints;
+      if (hints == null || hints.length == 0)
+         return false;
+
+      final int dirDepth = dirRelative.getNameCount();
+      if (dirDepth == 0)
+         return false;
+
+      final var dirSegments = new @NonNull String[dirDepth];
+      for (var i = 0; i < dirDepth; i++) {
+         dirSegments[i] = dirRelative.getName(i).toString();
+      }
+
+      for (final var hint : hints) {
+         final var patSegs = hint.segments;
+         final int maxIdx = Math.min(dirDepth, patSegs.length);
+
+         boolean prefixMatches = true;
+         for (var i = 0; i < maxIdx; i++) {
+            if (!globSegmentMatches(patSegs[i], dirSegments[i])) {
+               prefixMatches = false;
+               break;
+            }
+         }
+
+         // If the directory path is compatible with the INCLUDE pattern prefix, then some descendant path may
+         // match the INCLUDE (either exactly or via the implicit "/**" variant), so we must not prune.
+         if (prefixMatches)
+            return false;
+      }
+
+      // No INCLUDE pattern can ever match anything under this directory while a global EXCLUDE will catch all
+      // descendants, so the subtree is safe to prune.
+      return true;
    }
 
    private static boolean matchesSubtreeExclude(final Path relativePath, final PathMatcher @Nullable [] matchers) {
@@ -332,6 +441,48 @@ public abstract class AbstractSyncCommandConfig<THIS extends AbstractSyncCommand
             return true;
       }
       return false;
+   }
+
+   /**
+    * Very small glob matcher used for single path segments. Supports '*' and '?' wildcards only. Any pattern
+    * containing path separators must not be passed here.
+    */
+   private static boolean globSegmentMatches(final String pattern, final String value) {
+      if ("*".equals(pattern))
+         return true;
+
+      // Fast path: no wildcards
+      if (pattern.indexOf('*') == -1 && pattern.indexOf('?') == -1)
+         return pattern.equals(value);
+
+      int p = 0;
+      int v = 0;
+      int starIndex = -1;
+      int valueIndexAtStar = -1;
+
+      while (v < value.length()) {
+         if (p < pattern.length() && (pattern.charAt(p) == '?' || pattern.charAt(p) == value.charAt(v))) {
+            // Single-character match: advance both
+            p++;
+            v++;
+         } else if (p < pattern.length() && pattern.charAt(p) == '*') {
+            // Remember position of '*' and the value position where it started matching
+            starIndex = p++;
+            valueIndexAtStar = v;
+         } else if (starIndex != -1) { // CHECKSTYLE:IGNORE .*
+            // No direct match, but we saw a '*' before: backtrack so '*' matches one more character
+            p = starIndex + 1;
+            v = ++valueIndexAtStar;
+         } else
+            // No '*' to fall back to and current characters do not match
+            return false;
+      }
+
+      // Consume trailing '*' in the pattern
+      while (p < pattern.length() && pattern.charAt(p) == '*') {
+         p++;
+      }
+      return p == pattern.length();
    }
 
    private boolean isExcludedPath(final Path absolutePath, final Path relativePath,
