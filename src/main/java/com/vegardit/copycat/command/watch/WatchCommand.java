@@ -83,7 +83,7 @@ public class WatchCommand extends AbstractSyncCommand<WatchCommandConfig> {
                if (isIgnoreSourcePath(dir))
                   return FileVisitResult.SKIP_SUBTREE;
 
-               // respect optional max-depth and subtree excludes: only register/watch allowed directories
+               // respect optional max-depth and filter-based subtree excludes: only register/watch allowed directories
                if (!sourceRootAbsolute.equals(dir)) {
                   final Integer maxDepth = task.maxDepth;
                   final Path dirRelative = dir.subpath(sourceRootAbsolute.getNameCount(), dir.getNameCount());
@@ -91,7 +91,7 @@ public class WatchCommand extends AbstractSyncCommand<WatchCommandConfig> {
                      return FileVisitResult.SKIP_SUBTREE;
 
                   if (task.isExcludedSourceSubtreeDir(dirRelative)) {
-                     LOG.debug("Skipping subtree below %s due to EXCLUDE ** pattern", dirRelative);
+                     LOG.debug("Skipping subtree below %s due to filters", dirRelative);
                      return FileVisitResult.SKIP_SUBTREE;
                   }
                }

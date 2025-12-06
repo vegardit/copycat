@@ -259,6 +259,53 @@ class FileFilterLogicTest {
    }
 
    @Test
+   @DisplayName("Global ex:**/* with root-level includes prunes unrelated subtrees")
+   void testGlobalExcludeWithIncludesPrunesUnrelatedSubtrees() throws IOException {
+      final Path sourceRoot = Files.createTempDirectory("copycat-filters-src");
+      final Path targetRoot = Files.createTempDirectory("copycat-filters-dst");
+
+      try {
+         final var cfg = new SyncCommandConfig();
+         cfg.source = sourceRoot;
+         cfg.target = targetRoot;
+         cfg.fileFilters = List.of( //
+            "in:DUR*.*", //
+            "in:CDNS*/System*.log", //
+            "in:DURS*/System*.log", //
+            "ex:**/*", //
+            "ex:*.*" //
+         );
+         cfg.applyDefaults();
+         cfg.compute();
+
+         final Path durLog = sourceRoot.resolve("DUR001.log");
+         final Path durLogRelative = durLog.subpath(sourceRoot.getNameCount(), durLog.getNameCount());
+
+         final Path cdnsDir = sourceRoot.resolve("CDNS1");
+         final Path cdnsDirRelative = cdnsDir.subpath(sourceRoot.getNameCount(), cdnsDir.getNameCount());
+
+         final Path dursDir = sourceRoot.resolve("DURS1");
+         final Path dursDirRelative = dursDir.subpath(sourceRoot.getNameCount(), dursDir.getNameCount());
+
+         final Path otherDir = sourceRoot.resolve("AkoordS1");
+         final Path otherDirRelative = otherDir.subpath(sourceRoot.getNameCount(), otherDir.getNameCount());
+
+         // Included file pattern should still work as usual
+         assertThat(cfg.isExcludedSourcePath(durLog, durLogRelative)).isFalse();
+
+         // Directories that may contain matching CDNS*/System*.log or DURS*/System*.log must not be pruned
+         assertThat(cfg.isExcludedSourceSubtreeDir(cdnsDirRelative)).isFalse();
+         assertThat(cfg.isExcludedSourceSubtreeDir(dursDirRelative)).isFalse();
+
+         // Directories with names unrelated to the INCLUDE prefixes can be safely pruned when ex:**/* is present
+         assertThat(cfg.isExcludedSourceSubtreeDir(otherDirRelative)).isTrue();
+      } finally {
+         deleteRecursive(targetRoot);
+         deleteRecursive(sourceRoot);
+      }
+   }
+
+   @Test
    @DisplayName("Subtree exclude patterns mark directory prefixes to skip")
    void testSubtreeExcludePrefixes() throws IOException {
       final Path sourceRoot = Files.createTempDirectory("copycat-filters-src");
