@@ -376,13 +376,23 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
                   syncFile(task, sourceChildAbsolute, targetChildAbsolute, sourceChildRelative);
                   stats.onFileScanned();
                } else {
+                  final Integer maxDepth = task.maxDepth;
+                  final int childDepth = sourceChildRelative.getNameCount();
+
+                  // respect optional max-depth: skip directories beyond maxDepth entirely
+                  if (maxDepth != null && childDepth > maxDepth && !Files.isSymbolicLink(sourceChildAbsolute)) {
+                     if (LOG.isTraceEnabled()) {
+                        LOG.trace("Ignoring directory outside max-depth [%s]: %s", maxDepth, sourceChildRelative);
+                     }
+                     continue;
+                  }
+
                   syncDirShallow(task, sourceChildAbsolute, targetChildAbsolute, sourceChildRelative);
                   if (Files.isSymbolicLink(sourceChildAbsolute)) {
                      stats.onFileScanned();
                   } else {
                      // respect optional max-depth: only descend if child depth <= maxDepth
-                     final Integer maxDepth = task.maxDepth;
-                     if (maxDepth == null || sourceChildRelative.getNameCount() <= maxDepth.intValue()) {
+                     if (maxDepth == null || childDepth <= maxDepth) {
                         sourceDirsToScan.add(sourceChildAbsolute);
                      }
                   }

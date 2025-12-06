@@ -103,6 +103,7 @@ Options:
       --log-file <path>   Write console output also to the given log file.
       --max-depth <n>     Maximum directory traversal depth from the source root.
                           0=only top-level files (no subdirs), 1=include immediate subdirectories, etc.
+                          Directories deeper than <n> are neither scanned nor created in the target.
                           Default: unlimited.
       --no-log <op>[,<op>...]
                           Don't log the given sync operation. Valid values: CREATE, MODIFY, DELETE, SCAN
@@ -206,6 +207,7 @@ Options:
       --log-file <path>   Write console output also to the given log file.
       --max-depth <n>     Maximum directory traversal depth from the source root.
                           0=only top-level files (no subdirs), 1=include immediate subdirectories, etc.
+                          Directories deeper than <n> are neither scanned nor watched.
                           Default: unlimited.
       --no-log <op>[,<op>...]
                           Don't log the given filesystem operation. Valid values: CREATE, MODIFY, DELETE
