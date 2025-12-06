@@ -325,7 +325,6 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
                   if (state != State.NORMAL) {
                      break;
                   }
-
                   final var targetChildRelative = targetChildEntry.getKey();
                   final var targetChildAbsolute = targetChildEntry.getValue();
 
@@ -391,8 +390,9 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
                   if (Files.isSymbolicLink(sourceChildAbsolute)) {
                      stats.onFileScanned();
                   } else {
+                     final boolean pruneSubtree = task.isExcludedSourceSubtreeDir(sourceChildRelative);
                      // respect optional max-depth: only descend if child depth <= maxDepth
-                     if (maxDepth == null || childDepth <= maxDepth) {
+                     if (!pruneSubtree && (maxDepth == null || childDepth <= maxDepth)) {
                         sourceDirsToScan.add(sourceChildAbsolute);
                      }
                   }

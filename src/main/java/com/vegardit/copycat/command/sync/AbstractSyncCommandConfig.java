@@ -56,6 +56,13 @@ public abstract class AbstractSyncCommandConfig<THIS extends AbstractSyncCommand
    protected @ToYamlString(ignore = true) Tuple2<FileFilterAction, PathMatcher> @Nullable [] fileFiltersSource; // computed value
    protected @ToYamlString(ignore = true) Tuple2<FileFilterAction, PathMatcher> @Nullable [] fileFiltersTarget; // computed value
 
+   /**
+    * Additional matchers used purely to decide whether a directory subtree can be skipped during traversal without changing filter
+    * semantics for individual files.
+    */
+   protected @ToYamlString(ignore = true) PathMatcher @Nullable [] subtreeExcludeSource; // computed value
+   protected @ToYamlString(ignore = true) PathMatcher @Nullable [] subtreeExcludeTarget; // computed value
+
    public @Nullable Boolean excludeHiddenFiles;
    public @Nullable Boolean excludeHiddenSystemFiles;
    public @Nullable Boolean excludeSystemFiles;
@@ -217,6 +224,8 @@ public abstract class AbstractSyncCommandConfig<THIS extends AbstractSyncCommand
       if (filters != null && !filters.isEmpty()) {
          final var sourceFilters = new ArrayList<Tuple2<FileFilterAction, PathMatcher>>(filters.size() * 2);
          final var targetFilters = new ArrayList<Tuple2<FileFilterAction, PathMatcher>>(filters.size() * 2);
+         final var sourceSubtreeFilters = new ArrayList<PathMatcher>();
+         final var targetSubtreeFilters = new ArrayList<PathMatcher>();
          final var sourceFS = sourceRootAbsolute.getFileSystem();
          final var targetFS = targetRootAbsolute.getFileSystem();
          for (final String filterSpec : filters) {
@@ -246,6 +255,26 @@ public abstract class AbstractSyncCommandConfig<THIS extends AbstractSyncCommand
                effectivePatterns.add(rawPattern.substring(3));
             }
 
+            /*
+             * For exclude patterns ending with "/**" (e.g. "bbb/**"), we can skip traversing the corresponding directory subtree.
+             * We keep normal path matchers for file-level semantics and add separate prefix matchers used only for traversal decisions.
+             */
+            if (action == FileFilterAction.EXCLUDE && rawPattern.endsWith("/**")) {
+               final var prefixPattern = Strings.removeEnd(rawPattern, "/**");
+               if (!prefixPattern.isEmpty()) {
+                  if (prefixPattern.startsWith("**/") && prefixPattern.length() > 3) {
+                     final var withoutStarStar = prefixPattern.substring(3);
+                     sourceSubtreeFilters.add(sourceFS.getPathMatcher("glob:" + prefixPattern));
+                     targetSubtreeFilters.add(targetFS.getPathMatcher("glob:" + prefixPattern));
+                     sourceSubtreeFilters.add(sourceFS.getPathMatcher("glob:" + withoutStarStar));
+                     targetSubtreeFilters.add(targetFS.getPathMatcher("glob:" + withoutStarStar));
+                  } else {
+                     sourceSubtreeFilters.add(sourceFS.getPathMatcher("glob:" + prefixPattern));
+                     targetSubtreeFilters.add(targetFS.getPathMatcher("glob:" + prefixPattern));
+                  }
+               }
+            }
+
             for (final var p : effectivePatterns) {
                final var globPattern = "glob:" + p;
 
@@ -261,6 +290,13 @@ public abstract class AbstractSyncCommandConfig<THIS extends AbstractSyncCommand
          }
          fileFiltersSource = sourceFilters.toArray(new Tuple2[sourceFilters.size()]);
          fileFiltersTarget = targetFilters.toArray(new Tuple2[targetFilters.size()]);
+         if (sourceSubtreeFilters.isEmpty()) {
+            subtreeExcludeSource = null;
+            subtreeExcludeTarget = null;
+         } else {
+            subtreeExcludeSource = sourceSubtreeFilters.toArray(new PathMatcher[sourceSubtreeFilters.size()]);
+            subtreeExcludeTarget = targetSubtreeFilters.toArray(new PathMatcher[targetSubtreeFilters.size()]);
+         }
       }
    }
 
@@ -270,6 +306,32 @@ public abstract class AbstractSyncCommandConfig<THIS extends AbstractSyncCommand
 
    public boolean isExcludedTargetPath(final Path targetAbsolute, final Path targetRelative) throws IOException {
       return isExcludedPath(targetAbsolute, targetRelative, fileFiltersTarget);
+   }
+
+   /**
+    * Returns true if the given source-relative directory should have its subtree
+    * skipped based on EXCLUDE patterns ending with "/**".
+    */
+   public boolean isExcludedSourceSubtreeDir(final Path sourceRelative) {
+      return matchesSubtreeExclude(sourceRelative, subtreeExcludeSource);
+   }
+
+   /**
+    * Returns true if the given target-relative directory should have its subtree
+    * skipped based on EXCLUDE patterns ending with "/**".
+    */
+   public boolean isExcludedTargetSubtreeDir(final Path targetRelative) {
+      return matchesSubtreeExclude(targetRelative, subtreeExcludeTarget);
+   }
+
+   private static boolean matchesSubtreeExclude(final Path relativePath, final PathMatcher @Nullable [] matchers) {
+      if (matchers == null)
+         return false;
+      for (final var matcher : matchers) {
+         if (matcher.matches(relativePath))
+            return true;
+      }
+      return false;
    }
 
    private boolean isExcludedPath(final Path absolutePath, final Path relativePath,
