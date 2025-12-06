@@ -120,6 +120,72 @@ class FileFilterLogicTest {
    }
 
    @Test
+   @DisplayName("Directory and file patterns behave as documented in README")
+   void testDirectoryAndFilePatternsFromReadme() throws IOException {
+      final Path sourceRoot = Files.createTempDirectory("copycat-filters-src");
+      final Path targetRoot = Files.createTempDirectory("copycat-filters-dst");
+
+      try {
+         final Path nodeModules = sourceRoot.resolve("node_modules");
+         Files.createDirectories(nodeModules);
+         final Path nodeModulesFile = nodeModules.resolve("package.json");
+         Files.createFile(nodeModulesFile);
+
+         final Path nestedNodeModulesFile = sourceRoot.resolve("src/node_modules/deep/file.js");
+         Files.createDirectories(asNonNull(nestedNodeModulesFile.getParent()));
+         Files.createFile(nestedNodeModulesFile);
+
+         final Path latestLog = sourceRoot.resolve("logs/latest.log");
+         Files.createDirectories(asNonNull(latestLog.getParent()));
+         Files.createFile(latestLog);
+
+         final Path otherLog = sourceRoot.resolve("logs/other.log");
+         Files.createFile(otherLog);
+
+         final Path nestedLatest = sourceRoot.resolve("logs/2024/latest.log");
+         Files.createDirectories(asNonNull(nestedLatest.getParent()));
+         Files.createFile(nestedLatest);
+
+         final var cfg = new SyncCommandConfig();
+         cfg.source = sourceRoot;
+         cfg.target = targetRoot;
+         cfg.fileFilters = List.of( //
+            "ex:**/node_modules", //
+            "in:logs/latest.log", //
+            "ex:logs/*.log" //
+         );
+         cfg.applyDefaults();
+         cfg.compute();
+
+         final Path nodeModulesRelative = nodeModules.subpath(sourceRoot.getNameCount(), nodeModules.getNameCount());
+         final Path nodeModulesFileRelative = nodeModulesFile.subpath(sourceRoot.getNameCount(), nodeModulesFile.getNameCount());
+         final Path nestedNodeModulesFileRelative = nestedNodeModulesFile.subpath(sourceRoot.getNameCount(), nestedNodeModulesFile
+            .getNameCount());
+
+         final Path latestLogRelative = latestLog.subpath(sourceRoot.getNameCount(), latestLog.getNameCount());
+         final Path otherLogRelative = otherLog.subpath(sourceRoot.getNameCount(), otherLog.getNameCount());
+         final Path nestedLatestRelative = nestedLatest.subpath(sourceRoot.getNameCount(), nestedLatest.getNameCount());
+
+         // node_modules exclusion should apply to the directory itself and everything under it
+         assertThat(cfg.isExcludedSourcePath(nodeModules, nodeModulesRelative)).isTrue();
+         assertThat(cfg.isExcludedSourcePath(nodeModulesFile, nodeModulesFileRelative)).isTrue();
+         assertThat(cfg.isExcludedSourcePath(nestedNodeModulesFile, nestedNodeModulesFileRelative)).isTrue();
+
+         // specific include for logs/latest.log should win over the later exclude
+         assertThat(cfg.isExcludedSourcePath(latestLog, latestLogRelative)).isFalse();
+
+         // other logs at the same level should be excluded
+         assertThat(cfg.isExcludedSourcePath(otherLog, otherLogRelative)).isTrue();
+
+         // nested logs do not match the simple logs/*.log pattern and remain included
+         assertThat(cfg.isExcludedSourcePath(nestedLatest, nestedLatestRelative)).isFalse();
+      } finally {
+         deleteRecursive(targetRoot);
+         deleteRecursive(sourceRoot);
+      }
+   }
+
+   @Test
    @DisplayName("Windows backslash patterns are normalized")
    void testWindowsBackslashPatternsNormalized() throws IOException {
       Assumptions.assumeTrue(SystemUtils.IS_OS_WINDOWS);
