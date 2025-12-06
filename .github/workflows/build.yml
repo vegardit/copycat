@@ -3,10 +3,10 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-ArtifactOfProjectHomePage: https://github.com/vegardit/copycat
 #
-# https://docs.github.com/en/actions/reference/workflow-syntax-for-github-actions
+# https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax
 name: Build
 
-on:  # https://docs.github.com/en/actions/reference/events-that-trigger-workflows
+on:  # https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows
   push:
     branches-ignore:  # build all branches except:
     - 'dependabot/**'  # prevent GHA triggered twice (once for commit to the branch and once for opening/syncing the PR)
@@ -29,7 +29,7 @@ on:  # https://docs.github.com/en/actions/reference/events-that-trigger-workflow
     - '.github/ISSUE_TEMPLATE/*'
     - '.github/*.yml'
   workflow_dispatch:
-    # https://docs.github.com/en/actions/reference/events-that-trigger-workflows#workflow_dispatch
+    # https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#workflow_dispatch
     inputs:
       additional_maven_args:
         description: 'Additional Maven Args'
@@ -43,7 +43,6 @@ defaults:
 
 
 jobs:
-
   ###########################################################
   maven-build:
   ###########################################################
@@ -212,6 +211,7 @@ jobs:
             # not using newer graalvm release which don't support full static builds on Windows anymore
             graal_version: 21
 
+
     env:
       # https://www.graalvm.org/latest/reference-manual/native-image/overview/Options/
       # -H:NativeLinkerOption=-no-pie -> do not to generate Position Independent Executables (PIE)
@@ -234,7 +234,17 @@ jobs:
         com.vegardit.copycat.CopyCatMain
         copycat-${{ matrix.arch }}
 
+
     steps:
+    - name: "Show: GitHub context"
+      env:
+        GITHUB_CONTEXT: ${{ toJSON(github) }}
+      run: printf '%s' "$GITHUB_CONTEXT" | python -m json.tool
+
+
+    - name: "Show: environment variables"
+      run: env | sort
+
 
     - name: "Install: GraalVM"
       uses: graalvm/setup-graalvm@v1
@@ -427,8 +437,9 @@ jobs:
 
 
     - name: Git Checkout 
-      # only required by "gh release create" to prevent "fatal: Not a git repository"
       uses: actions/checkout@v6  # https://github.com/actions/checkout
+      with:
+        fetch-depth: 0  # required for release notes
 
 
     - name: "Get: all build artifacts"
@@ -451,6 +462,79 @@ jobs:
         esac
 
 
+    - name: "Build release notes from commits"
+      env:
+        RELEASE_NAME: ${{ steps.release.outputs.name }}
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        set -eu
+
+        # determine commit of the previous GitHub release (if any)
+        PREV_SHA="$(gh api  repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_NAME} --jq '.target_commitish' 2>/dev/null || echo '')"
+
+        if [ -n "$PREV_SHA" ]; then
+          RANGE="$PREV_SHA..$GITHUB_SHA"
+        else
+          # first run: just use recent commits
+          RANGE="${GITHUB_SHA}~50..$GITHUB_SHA"
+        fi
+
+        tmpdir="$(mktemp -d)"
+        git log "$RANGE" --pretty='%H%x09%h%x09%s' > "$tmpdir/commits.tsv" || true
+
+        # build map: full SHA -> GitHub login
+        cut -f1 "$tmpdir/commits.tsv" | sort -u | while read -r sha; do
+          [ -z "$sha" ] && continue
+          login="$(gh api repos/${GITHUB_REPOSITORY}/commits/$sha --jq '.author.login // .committer.login // ""' 2>/dev/null || echo '')"
+          if [ -n "$login" ]; then
+            printf '%s\t%s\n' "$sha" "$login"
+          fi
+        done > "$tmpdir/logins.tsv" || true
+
+        awk -F'\t' -v tmp="$tmpdir" '
+          BEGIN {
+            while ((getline line < (tmp "/logins.tsv")) > 0) {
+              split(line, f, "\t");
+              if (length(f[1]) && length(f[2])) {
+                login[f[1]] = f[2];
+              }
+            }
+            close(tmp "/logins.tsv");
+          }
+          {
+            full=$1;
+            hash=$2;
+            text=$3;
+            mention = (full in login ? " (@" login[full] ")" : "");
+            line="- " hash " " text mention;
+            if (text ~ /^fix\(deps\):/) {
+              print line >> (tmp "/deps.md");
+            } else if (text ~ /^fix(\(.+\))?:/) {
+              print line >> (tmp "/fixes.md");
+            } else if (text ~ /^feat(\(.+\))?:/) {
+              print line >> (tmp "/features.md");
+            } else {
+              print line >> (tmp "/others.md");
+            }
+          }
+        ' "$tmpdir/commits.tsv"
+
+        section() {
+          local title="$1" file="$2"
+          if [ -s "$file" ]; then
+            echo "## $title" >> release-notes.md
+            cat "$file" >> release-notes.md
+            echo >> release-notes.md
+          fi
+        }
+
+        : > release-notes.md
+        section "Fixes" "$tmpdir/fixes.md"
+        section "Features" "$tmpdir/features.md"
+        section "Dependency updates" "$tmpdir/deps.md"
+        section "Other changes" "$tmpdir/others.md"
+
+
     - name: "Delete previous '${{ steps.release.outputs.name }}' release"
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -460,18 +544,17 @@ jobs:
         GH_DEBUG=1 gh release delete "$RELEASE_NAME" --yes --cleanup-tag || true
 
 
-    - name: "Create '${{ steps.release.outputs.name }}' Release"
+    - name: "Create '${{ steps.release.outputs.name }}' release"
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         RELEASE_NAME: ${{ steps.release.outputs.name }}
-        COMMIT_MSG: ${{ github.event.head_commit.message }} # https://stackoverflow.com/a/78420438/5116073
       # https://cli.github.com/manual/gh_release_create
       run: |
         GH_DEBUG=1 gh release create "$RELEASE_NAME" \
           --title "$RELEASE_NAME" \
           ${{ steps.release.outputs.name == 'latest' && '--latest' || '' }} \
           ${{ steps.release.outputs.name == 'preview' && '--prerelease' || '' }} \
-          --notes "$COMMIT_MSG" \
+          --notes-file release-notes.md \
           --target "${{ github.sha }}" \
           artifacts/copycat-fat.jar#copycat-$RELEASE_NAME-fat.jar \
           artifacts/bash/bashcompletion.sh#copycat-$RELEASE_NAME-bashcompletion.sh \
@@ -511,18 +594,15 @@ jobs:
 
 
     - name: Enable auto-merge for Dependabot PRs
-      if: |
+      if: >-
         ${{
-          (
-            steps.metadata.outputs.package-ecosystem == 'github-actions' && 
-            steps.metadata.outputs.update-type == 'version-update:semver-major'
-          ) || (
-            steps.metadata.outputs.package-ecosystem == 'maven' && 
-            steps.metadata.outputs.update-type == 'version-update:semver-minor'
-          )
+          (steps.metadata.outputs.package-ecosystem == 'github-actions' ||
+           steps.metadata.outputs.package-ecosystem == 'maven') &&
+          (steps.metadata.outputs.update-type == 'version-update:semver-minor' ||
+           steps.metadata.outputs.update-type == 'version-update:semver-patch')
         }}
-      run: |
-        gh pr merge --auto --rebase "$PR_URL"
       env:
         PR_URL: ${{github.event.pull_request.html_url}}
         GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
+      run: |
+        gh pr merge --auto --rebase "$PR_URL"
