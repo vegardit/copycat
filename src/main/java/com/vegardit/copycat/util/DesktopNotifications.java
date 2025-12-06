@@ -11,18 +11,12 @@ import java.awt.SystemTray;
 import java.awt.Toolkit;
 import java.awt.TrayIcon;
 import java.awt.TrayIcon.MessageType;
-import java.io.BufferedReader;
 import java.io.IOException;
-import java.io.StringReader;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
+import java.io.InputStream;
+import java.util.Base64;
 
 import org.eclipse.jdt.annotation.Nullable;
 
-import io.github.autocomplete1.PowerShell;
-import io.github.autocomplete1.PowerShellNotAvailableException;
-import net.sf.jstuff.core.SystemUtils;
 import net.sf.jstuff.core.logging.Logger;
 
 /**
@@ -33,8 +27,7 @@ public final class DesktopNotifications {
    private static final Logger LOG = Logger.create();
 
    private static final @Nullable TrayIcon TRAY_ICON;
-   private static final boolean IS_POWERSHELL_AVAILABLE;
-   private static final @Nullable Path APP_ICON;
+   private static final @Nullable String APP_ICON_BASE64;
 
    static {
       if (isSupported()) {
@@ -59,25 +52,18 @@ public final class DesktopNotifications {
          TRAY_ICON = null;
       }
 
-      if (SystemUtils.IS_OS_WINDOWS) {
-         boolean isPSAvailable = false;
-         Path appIcon = null;
-         try (PowerShell powerShell = PowerShell.openSession()) {
-            isPSAvailable = true;
-            try (var is = DesktopNotifications.class.getResourceAsStream("/copycat16x16.png")) {
-               appIcon = Files.createTempFile("copycat", "appicon");
-               appIcon.toFile().deleteOnExit();
-               Files.copy(is, appIcon, StandardCopyOption.REPLACE_EXISTING);
+      String iconBase64 = null;
+      if (WindowsPowerShell.isAvailable()) {
+         try (InputStream is = DesktopNotifications.class.getResourceAsStream("/copycat16x16.png")) {
+            if (is != null) {
+               final byte[] bytes = is.readAllBytes();
+               iconBase64 = Base64.getEncoder().encodeToString(bytes);
             }
-         } catch (final IOException | PowerShellNotAvailableException ex) {
-            // ignore
+         } catch (final IOException ex) {
+            LOG.warn(ex);
          }
-         IS_POWERSHELL_AVAILABLE = isPSAvailable;
-         APP_ICON = appIcon;
-      } else {
-         IS_POWERSHELL_AVAILABLE = false;
-         APP_ICON = null;
       }
+      APP_ICON_BASE64 = iconBase64;
    }
 
    public static boolean isSupported() {
@@ -97,25 +83,29 @@ public final class DesktopNotifications {
    }
 
    public static synchronized void showSticky(final MessageType level, final String title, final String message) {
-      if (IS_POWERSHELL_AVAILABLE) {
-         try (PowerShell powerShell = PowerShell.openSession()) {
-            powerShell.executeScript(new BufferedReader(new StringReader("" //
+      if (WindowsPowerShell.isAvailable()) {
+         try {
+            WindowsPowerShell.executeAsync("" //
                   + "Add-Type -AssemblyName System.Windows.Forms;" //
                   + "Add-Type -AssemblyName System.Drawing;" //
                   + "$msg=New-Object System.Windows.Forms.NotifyIcon;" //
-                  + (APP_ICON == null //
-                        ? "$msg.Icon=[System.Drawing.SystemIcons]::Application;" //  https://docs.microsoft.com/en-us/dotnet/api/system.drawing.systemicons
-                        : "$appIcon=[System.Drawing.Image]::FromFile('" + APP_ICON + "');" //
-                              + "$msg.Icon=[System.Drawing.Icon]::FromHandle($appIcon.GetHicon());" //
-                  ) //
+                  // https://learn.microsoft.com/en-us/dotnet/api/system.windows.forms.notifyicon?view=windowsdesktop-9.0#properties
                   + "$msg.BalloonTipTitle='[copycat] " + title.replace("'", "\\'") + "';" //
                   + "$msg.BalloonTipText='" + message.replace("'", "\\'") + "';" //
                   + "$msg.BalloonTipIcon='" + level + "';" // https://docs.microsoft.com/en-us/dotnet/api/system.windows.forms.tooltipicon
+                  + (APP_ICON_BASE64 == null //
+                        ? "$msg.Icon=[System.Drawing.SystemIcons]::Application;" //
+                        : "$iconB64='" + APP_ICON_BASE64 + "';" //
+                              + "$bytes=[Convert]::FromBase64String($iconB64);" //
+                              + "$ms=New-Object System.IO.MemoryStream(,$bytes);" //
+                              + "$appIcon=[System.Drawing.Image]::FromStream($ms);" //
+                              + "$msg.Icon=[System.Drawing.Icon]::FromHandle($appIcon.GetHicon());" //
+                  ) //
                   + "$msg.Visible=$True;" //
                   + "$msg.ShowBalloonTip(5000);" //
-            )));
+            );
             return;
-         } catch (final RuntimeException ex) {
+         } catch (final Exception ex) {
             LOG.warn(ex);
          }
       }

@@ -269,7 +269,7 @@ SPDX-ArtifactOfProjectHomePage: https://github.com/vegardit/copycat
          <dependency>
             <groupId>net.sf.jstuff</groupId>
             <artifactId>jstuff-core</artifactId>
-            <version>8.2.0</version>
+            <version>8.2.1</version>
             <type>pom</type>
             <scope>import</scope>
          </dependency>
@@ -309,11 +309,6 @@ SPDX-ArtifactOfProjectHomePage: https://github.com/vegardit/copycat
          <groupId>org.fusesource.jansi</groupId>
          <artifactId>jansi</artifactId>
          <version>2.4.2</version>
-      </dependency>
-      <dependency>
-         <groupId>io.github.autocomplete1</groupId>
-         <artifactId>jPowerShell2</artifactId>
-         <version>1.0.3</version>
       </dependency>
       <dependency>
          <groupId>org.yaml</groupId>
