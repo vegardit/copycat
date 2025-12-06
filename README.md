@@ -3,7 +3,7 @@
 [![Build Status](https://github.com/vegardit/copycat/workflows/Build/badge.svg "GitHub Actions")](https://github.com/vegardit/copycat/actions?query=workflow%3A%22Build%22)
 [![Download](https://img.shields.io/badge/Download-latest-orange.svg)](https://github.com/vegardit/copycat/releases/tag/snapshot)
 [![License](https://img.shields.io/github/license/vegardit/copycat.svg?color=blue&label=License)](LICENSE.txt)
-[![Contributor Covenant](https://img.shields.io/badge/Contributor%20Covenant-v2.1%20adopted-ff69b4.svg)](CODE_OF_CONDUCT.md)
+[![Contributor Covenant](https://img.shields.io/badge/Contributor%20Covenant-v3.0%20adopted-ff69b4.svg)](CODE_OF_CONDUCT.md)
 
 1. [What is it?](#what-is-it)
 1. [Installation](#installation)
@@ -324,8 +324,8 @@ copycat sync source/ target/ --since today
 
 ## <a name="contributing"></a>Contributing
 
-- See `CONTRIBUTING.md` for guidelines.
-- This project follows the Contributor Covenant; see `CODE_OF_CONDUCT.md`.
+- See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+- This project follows the Contributor Covenant; see [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
 
 
 ## <a name="license"></a>License
