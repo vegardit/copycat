@@ -3,10 +3,10 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-ArtifactOfProjectHomePage: https://github.com/vegardit/copycat
 #
-# https://docs.github.com/en/actions/reference/workflow-syntax-for-github-actions
+# https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax
 name: Build
 
-on:  # https://docs.github.com/en/actions/reference/events-that-trigger-workflows
+on:  # https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows
   push:
     branches-ignore:  # build all branches except:
     - 'dependabot/**'  # prevent GHA triggered twice (once for commit to the branch and once for opening/syncing the PR)
@@ -29,7 +29,7 @@ on:  # https://docs.github.com/en/actions/reference/events-that-trigger-workflow
     - '.github/ISSUE_TEMPLATE/*'
     - '.github/*.yml'
   workflow_dispatch:
-    # https://docs.github.com/en/actions/reference/events-that-trigger-workflows#workflow_dispatch
+    # https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#workflow_dispatch
     inputs:
       additional_maven_args:
         description: 'Additional Maven Args'
@@ -43,7 +43,6 @@ defaults:
 
 
 jobs:
-
   ###########################################################
   maven-build:
   ###########################################################
@@ -71,7 +70,7 @@ jobs:
     - name: Git Checkout
       uses: actions/checkout@v6  # https://github.com/actions/checkout
       with:
-        fetch-depth: 0  # required for release notes
+        fetch-depth: 50  # required for release notes
 
 
     - name: "Install: JDK ${{ env.JAVA_VERSION }} ☕"
@@ -214,6 +213,7 @@ jobs:
             # not using newer graalvm release which don't support full static builds on Windows anymore
             graal_version: 21
 
+
     env:
       # https://www.graalvm.org/latest/reference-manual/native-image/overview/Options/
       # -H:NativeLinkerOption=-no-pie -> do not to generate Position Independent Executables (PIE)
@@ -236,7 +236,17 @@ jobs:
         com.vegardit.copycat.CopyCatMain
         copycat-${{ matrix.arch }}
 
+
     steps:
+    - name: "Show: GitHub context"
+      env:
+        GITHUB_CONTEXT: ${{ toJSON(github) }}
+      run: printf '%s' "$GITHUB_CONTEXT" | python -m json.tool
+
+
+    - name: "Show: environment variables"
+      run: env | sort
+
 
     - name: "Install: GraalVM"
       uses: graalvm/setup-graalvm@v1
@@ -513,7 +523,7 @@ jobs:
         GH_DEBUG=1 gh release delete "$RELEASE_NAME" --yes --cleanup-tag || true
 
 
-    - name: "Create '${{ steps.release.outputs.name }}' Release"
+    - name: "Create '${{ steps.release.outputs.name }}' release"
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         RELEASE_NAME: ${{ steps.release.outputs.name }}
@@ -563,18 +573,15 @@ jobs:
 
 
     - name: Enable auto-merge for Dependabot PRs
-      if: |
+      if: >-
         ${{
-          (
-            steps.metadata.outputs.package-ecosystem == 'github-actions' && 
-            steps.metadata.outputs.update-type == 'version-update:semver-major'
-          ) || (
-            steps.metadata.outputs.package-ecosystem == 'maven' && 
-            steps.metadata.outputs.update-type == 'version-update:semver-minor'
-          )
+          (steps.metadata.outputs.package-ecosystem == 'github-actions' ||
+           steps.metadata.outputs.package-ecosystem == 'maven') &&
+          (steps.metadata.outputs.update-type == 'version-update:semver-minor' ||
+           steps.metadata.outputs.update-type == 'version-update:semver-patch')
         }}
-      run: |
-        gh pr merge --auto --rebase "$PR_URL"
       env:
         PR_URL: ${{github.event.pull_request.html_url}}
         GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
+      run: |
+        gh pr merge --auto --rebase "$PR_URL"
