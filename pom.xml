@@ -251,7 +251,7 @@ SPDX-ArtifactOfProjectHomePage: https://github.com/vegardit/copycat
                   <!-- https://github.com/Guardsquare/proguard -->
                   <groupId>com.guardsquare</groupId>
                   <artifactId>proguard-base</artifactId>
-                  <version>7.8.0</version>
+                  <version>7.8.2</version>
                </dependency>
                <dependency>
                   <!-- https://github.com/Guardsquare/proguard-core -->
