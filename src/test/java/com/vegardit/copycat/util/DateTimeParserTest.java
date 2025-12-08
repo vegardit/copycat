@@ -6,8 +6,10 @@ package com.vegardit.copycat.util;
 
 import static org.assertj.core.api.Assertions.*;
 
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.time.format.DateTimeParseException;
 import java.time.temporal.ChronoUnit;
 
@@ -20,7 +22,6 @@ import org.junit.jupiter.api.Test;
  *
  * @author Sebastian Thomschke, Vegard IT GmbH
  */
-@SuppressWarnings("null")
 class DateTimeParserTest {
 
    @Nested
@@ -61,6 +62,15 @@ class DateTimeParserTest {
       void testIsoFormatWithT() {
          final LocalDateTime result = DateTimeParser.parseDateTime("2024-12-25T14:30:45");
          assertThat(result).hasYear(2024).hasMonthValue(12).hasDayOfMonth(25).hasHour(14).hasMinute(30).hasSecond(45);
+      }
+
+      @Test
+      @DisplayName("Parse ISO format with UTC designator 'Z'")
+      void testIsoFormatWithUtcDesignator() {
+         final String input = "2025-10-26T22:00:00Z";
+         final LocalDateTime result = DateTimeParser.parseDateTime(input);
+         final LocalDateTime expected = LocalDateTime.ofInstant(Instant.parse(input), ZoneId.systemDefault());
+         assertThat(result).isEqualTo(expected);
       }
 
       @Test

@@ -27,7 +27,6 @@ import com.vegardit.copycat.util.YamlUtils;
  *
  * @author Sebastian Thomschke, Vegard IT GmbH
  */
-@SuppressWarnings("null")
 class SyncCommandConfigYamlTest {
 
    @Nested

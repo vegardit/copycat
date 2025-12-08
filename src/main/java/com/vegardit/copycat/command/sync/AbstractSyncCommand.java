@@ -195,8 +195,10 @@ public abstract class AbstractSyncCommand<C extends AbstractSyncCommandConfig<C>
    }
 
    @Option(names = "--since", paramLabel = "<when>", //
-      description = "Sync only items modified after this date/time."
-            + "Accepts ISO-8601 (2024-12-25, 2024-12-25T14:30), durations (P3D, PT2H), or relative expressions (3 days ago, yesterday 14:00).")
+      description = """
+         Sync only items modified after this date/time. \
+         Accepts ISO-8601 (2024-12-25, 2024-12-25T14:30, 2024-12-25T14:30Z), \
+         durations (P3D, PT2H), or relative expressions (3 days ago, yesterday 14:00).""")
    private void setSince(final String when) {
       final var dateTime = DateTimeParser.parseDateTime(when);
       cfgCLI.modifiedFrom = FileTime.from(dateTime.atZone(java.time.ZoneId.systemDefault()).toInstant());

@@ -131,7 +131,7 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
       stats.start();
 
       try {
-         for (final var task : tasks) {
+         for (final SyncCommandConfig task : tasks) {
             JdkLoggingUtils.withRootLogLevel(Level.INFO, () -> {
                LOG.info("Executing sync task with effective config:\n%s", YamlUtils.toYamlString(task));
             });

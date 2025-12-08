@@ -6,8 +6,11 @@ package com.vegardit.copycat.util;
 
 import java.time.DateTimeException;
 import java.time.Duration;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeFormatterBuilder;
 import java.time.format.DateTimeParseException;
@@ -158,9 +161,19 @@ public final class DateTimeParser {
          }
       }
 
-      // absolute formats
+      // absolute formats without timezone
       try {
          return LocalDateTime.from(ABSOLUTE.parse(str));
+      } catch (final DateTimeParseException ignored) { /* fall through */ }
+
+      // absolute formats with timezone/offset, e.g. 2024-12-25T14:30:45Z or 2024-12-25T14:30:45+01:00
+      try {
+         final OffsetDateTime odt = OffsetDateTime.parse(str);
+         return odt.atZoneSameInstant(ZoneId.systemDefault()).toLocalDateTime();
+      } catch (final DateTimeParseException ignored) { /* fall through */ }
+      try {
+         final Instant instant = Instant.parse(str);
+         return LocalDateTime.ofInstant(instant, ZoneId.systemDefault());
       } catch (final DateTimeParseException ignored) { /* fall through */ }
 
       // use a single base time for ISO durations and relative expressions
