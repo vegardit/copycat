@@ -29,6 +29,7 @@ import com.vegardit.copycat.util.YamlUtils.ToYamlString;
 import net.sf.jstuff.core.Strings;
 import net.sf.jstuff.core.SystemUtils;
 import net.sf.jstuff.core.collection.tuple.Tuple2;
+import net.sf.jstuff.core.concurrent.Threads;
 import net.sf.jstuff.core.logging.Logger;
 
 /**
@@ -255,14 +256,18 @@ public abstract class AbstractSyncCommandConfig<THIS extends AbstractSyncCommand
          final var sourceSubtreeFilters = new ArrayList<PathMatcher>();
          final var targetSubtreeFilters = new ArrayList<PathMatcher>();
          final var includeHints = new ArrayList<IncludePatternHint>();
+         boolean hasIncludeFilters = false;
+         boolean hasExcludeFilters = false;
          final var sourceFS = sourceRootAbsolute.getFileSystem();
          final var targetFS = targetRootAbsolute.getFileSystem();
          for (final String filterSpec : filters) {
             final FileFilterAction action;
             if (Strings.startsWithIgnoreCase(filterSpec, "in:")) {
                action = FileFilterAction.INCLUDE;
+               hasIncludeFilters = true;
             } else if (Strings.startsWithIgnoreCase(filterSpec, "ex:")) {
                action = FileFilterAction.EXCLUDE;
+               hasExcludeFilters = true;
             } else
                throw new IllegalArgumentException("Illegal filter definition \"" + filterSpec
                      + "\". Must start with action prefix \"in:\" or \"ex:\".");
@@ -346,6 +351,11 @@ public abstract class AbstractSyncCommandConfig<THIS extends AbstractSyncCommand
          fileFiltersSource = sourceFilters.toArray(new Tuple2[sourceFilters.size()]);
          fileFiltersTarget = targetFilters.toArray(new Tuple2[targetFilters.size()]);
          includePatternHints = includeHints.isEmpty() ? null : includeHints.toArray(new IncludePatternHint[includeHints.size()]);
+         if (hasIncludeFilters && !hasExcludeFilters) {
+            LOG.warn(
+               "Only INCLUDE (in:) filters configured; unmatched paths are still synced. If you intended \"only these patterns\", add 'ex:**' last.");
+            Threads.sleep(5_000);
+         }
          if (sourceSubtreeFilters.isEmpty()) {
             subtreeExcludeSource = null;
          } else {
