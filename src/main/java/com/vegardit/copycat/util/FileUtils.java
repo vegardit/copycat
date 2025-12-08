@@ -198,7 +198,7 @@ public final class FileUtils {
    }
 
    public static Path toAbsolute(Path path) {
-      path = path.normalize().toAbsolutePath();
+      path = path.toAbsolutePath().normalize();
 
       if (SystemUtils.IS_OS_WINDOWS) {
          // ensure drive letter is uppercase
