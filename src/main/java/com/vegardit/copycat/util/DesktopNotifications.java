@@ -66,23 +66,28 @@ public final class DesktopNotifications {
       APP_ICON_BASE64 = iconBase64;
    }
 
-   public static boolean isSupported() {
+   private static boolean isSupported() {
       try {
          return SystemTray.isSupported();
       } catch (final UnsatisfiedLinkError | AWTError ex) {
          // https://github.com/oracle/graal/issues/2842
-         LOG.warn(ex);
+         LOG.debug(ex);
          return false;
       }
    }
 
-   public static void setTrayIconToolTip(final String message) {
+   public static boolean setTrayIconToolTip(final String message) {
       if (TRAY_ICON != null) {
          TRAY_ICON.setToolTip(message);
+         return true;
       }
+      return false;
    }
 
-   public static synchronized void showSticky(final MessageType level, final String title, final String message) {
+   /**
+    * Shows the notification as popup and in the Windows notification center
+    */
+   public static synchronized boolean showSticky(final MessageType level, final String title, final String message) {
       if (WindowsPowerShell.isAvailable()) {
          try {
             WindowsPowerShell.executeAsync("" //
@@ -104,19 +109,52 @@ public final class DesktopNotifications {
                   + "$msg.Visible=$True;" //
                   + "$msg.ShowBalloonTip(5000);" //
             );
-            return;
+            return true;
          } catch (final Exception ex) {
             LOG.warn(ex);
          }
       }
 
-      showTransient(level, title, message);
+      return showTransient(level, title, message);
    }
 
-   public static synchronized void showTransient(final MessageType level, final String title, final String message) {
+   /**
+    * Shows the notification as popup
+    */
+   public static synchronized boolean showTransient(final MessageType level, final String title, final String message) {
       if (TRAY_ICON != null) {
          TRAY_ICON.displayMessage("[copycat] " + title, message, level);
+         return true;
       }
+      if (WindowsPowerShell.isAvailable()) {
+         try {
+            WindowsPowerShell.executeAsync("" //
+                  + "Add-Type -AssemblyName System.Windows.Forms;" //
+                  + "Add-Type -AssemblyName System.Drawing;" //
+                  + "$msg=New-Object System.Windows.Forms.NotifyIcon;" //
+                  // https://learn.microsoft.com/en-us/dotnet/api/system.windows.forms.notifyicon?view=windowsdesktop-9.0#properties
+                  + "$msg.BalloonTipTitle='[copycat] " + title.replace("'", "\\'") + "';" //
+                  + "$msg.BalloonTipText='" + message.replace("'", "\\'") + "';" //
+                  + "$msg.BalloonTipIcon='" + level + "';" // https://docs.microsoft.com/en-us/dotnet/api/system.windows.forms.tooltipicon
+                  + (APP_ICON_BASE64 == null //
+                        ? "$msg.Icon=[System.Drawing.SystemIcons]::Application;" //
+                        : "$iconB64='" + APP_ICON_BASE64 + "';" //
+                              + "$bytes=[Convert]::FromBase64String($iconB64);" //
+                              + "$ms=New-Object System.IO.MemoryStream(,$bytes);" //
+                              + "$appIcon=[System.Drawing.Image]::FromStream($ms);" //
+                              + "$msg.Icon=[System.Drawing.Icon]::FromHandle($appIcon.GetHicon());" //
+                  ) //
+                  + "$msg.Visible=$True;" //
+                  + "$msg.ShowBalloonTip(2000);" //
+                  + "Start-Sleep -Milliseconds 2000;" //
+                  + "$msg.Visible=$False;" //
+            );
+            return true;
+         } catch (final Exception ex) {
+            LOG.warn(ex);
+         }
+      }
+      return false;
    }
 
    private DesktopNotifications() {
