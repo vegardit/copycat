@@ -12,14 +12,12 @@ import java.util.logging.FileHandler;
 import java.util.logging.LogRecord;
 
 import org.eclipse.jdt.annotation.Nullable;
-import org.fusesource.jansi.Ansi;
-import org.fusesource.jansi.AnsiConsole;
-import org.fusesource.jansi.AnsiRenderer;
 
 import com.vegardit.copycat.command.AbstractCommand;
 import com.vegardit.copycat.command.LoggingOptionsMixin;
 import com.vegardit.copycat.command.sync.SyncCommand;
 import com.vegardit.copycat.command.watch.WatchCommand;
+import com.vegardit.copycat.util.Ansi;
 import com.vegardit.copycat.util.JdkLoggingUtils;
 
 import net.sf.jstuff.core.Strings;
@@ -59,7 +57,7 @@ public class CopyCatMain extends AbstractCommand {
       CommandLine.populateCommand(loggingOptions, args);
       JdkLoggingUtils.configureConsoleHandler(!loggingOptions.logErrorsToStdOut, new JdkLoggingUtils.AnsiFormatter() {
 
-         final String replaceLastLine = new Ansi().cursorUpLine().eraseLine().toString();
+         final String replaceLastLine = Ansi.cursorUpLineAndClear();
 
          @Nullable
          String lastMessage = null;
@@ -95,16 +93,14 @@ public class CopyCatMain extends AbstractCommand {
       // any other component starts throwing exceptions, see https://github.com/remkop/picocli/issues/1295
       final var fileHandler = configureLogging(args);
 
-      // enable ANSI coloring
-      AnsiConsole.systemInstall();
-
       final var handler = new CommandLine(new CopyCatMain());
       handler.setCaseInsensitiveEnumValuesAllowed(true);
       handler.setExecutionStrategy(new RunLast());
       handler.setHelpFactory((commandSpec, colorScheme) -> new Help(commandSpec, colorScheme) {
          @Override
          public @Nullable String headerHeading(final Object @Nullable... params) {
-            return AnsiRenderer.render(super.headerHeading(params));
+            final var heading = super.headerHeading(params);
+            return heading == null ? null : com.vegardit.copycat.util.Ansi.render(heading);
          }
       });
 

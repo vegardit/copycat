@@ -223,7 +223,6 @@ jobs:
         -H:+RemoveUnusedSymbols
         -H:ExcludeResources=com/sun/.*.properties
         --exclude-config copycat-fat.jar META-INF/native-image/net.sf.jstuff/.*.json
-        --exclude-config copycat-fat.jar META-INF/native-image/jansi/.*.json
         --allow-incomplete-classpath
         --no-fallback
         --no-server
@@ -347,6 +346,8 @@ jobs:
 
     - name: "Build executable"
       run: |
+        set -eu
+
         case "${{ matrix.arch }}" in
           linux-*)
             /usr/bin/gcc -v
@@ -369,6 +370,8 @@ jobs:
 
     - name: "Test executable"
       run: |
+        set -eux
+
         chmod u+x copycat-${{ matrix.arch }}
         ./copycat-${{ matrix.arch }} --version
         ./copycat-${{ matrix.arch }} --help
@@ -379,6 +382,7 @@ jobs:
     - name: "Compress executable"
       run: |
         set -eu
+
         case "${{ matrix.arch }}" in
           linux-*)
             (set -x; strip -v --strip-debug --strip-unneeded copycat-${{ matrix.arch }})
@@ -399,6 +403,8 @@ jobs:
 
     - name: "Test compressed executable"
       run: |
+        set -eux
+
         chmod u+x copycat-${{ matrix.arch }}
         ./copycat-${{ matrix.arch }} --version
         ./copycat-${{ matrix.arch }} --help

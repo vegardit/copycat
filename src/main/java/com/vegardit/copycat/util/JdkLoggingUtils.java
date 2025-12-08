@@ -4,8 +4,6 @@
  */
 package com.vegardit.copycat.util;
 
-import static net.sf.jstuff.core.validation.NullAnalysisHelper.asNonNullUnsafe;
-
 import java.io.BufferedOutputStream;
 import java.io.FileDescriptor;
 import java.io.FileOutputStream;
@@ -22,7 +20,6 @@ import java.util.logging.Level;
 import java.util.logging.LogRecord;
 
 import org.eclipse.jdt.annotation.Nullable;
-import org.fusesource.jansi.AnsiRenderer;
 
 import net.sf.jstuff.core.exception.Exceptions;
 import net.sf.jstuff.core.logging.LoggerConfig;
@@ -57,17 +54,13 @@ public final class JdkLoggingUtils {
 
    public static class AnsiFormatter extends Formatter {
 
-      protected String ansiRender(final @Nullable String text) {
-         return text == null ? "null" : asNonNullUnsafe(AnsiRenderer.render(text));
-      }
-
       protected String ansiRender(final String template, final Object... args) {
-         return String.format(asNonNullUnsafe(AnsiRenderer.render(template)), args);
+         return Ansi.render(template, args);
       }
 
       @Override
       public synchronized String format(final LogRecord entry) {
-         final var msg = ansiRender(entry.getMessage());
+         final var msg = Ansi.render(entry.getMessage());
          final var recordTime = new Date(entry.getMillis());
          final var threadName = Thread.currentThread().getName();
          return switch (entry.getLevel().intValue()) {
@@ -90,11 +83,7 @@ public final class JdkLoggingUtils {
       public synchronized String format(final LogRecord entry) {
          final var threadName = Thread.currentThread().getName();
          final var recordTime = new Date(entry.getMillis());
-         var msg = entry.getMessage();
-         if (msg != null) {
-            msg = msg.replaceAll("(@\\|[a-z]+\\s)|(\\|@)", ""); // remove ANSI keywords
-         }
-
+         final var msg = Ansi.stripMarkers(entry.getMessage());
          return String.format("%1$tT [%2$s] %3$-6s: %4$s %n", //
             recordTime, threadName, entry.getLevel().getLocalizedName(), msg);
       }
