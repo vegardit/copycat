@@ -5,6 +5,7 @@
 package com.vegardit.copycat.util;
 
 import java.awt.AWTError;
+import java.awt.EventQueue;
 import java.awt.MenuItem;
 import java.awt.PopupMenu;
 import java.awt.SystemTray;
@@ -41,13 +42,13 @@ public final class DesktopNotifications {
          popup.add(exitItem);
          exitItem.addActionListener(e -> sun.misc.Signal.raise(new sun.misc.Signal("INT")));
          trayIcon.setPopupMenu(popup);
-         new Thread(() -> {
+         EventQueue.invokeLater(() -> {
             try {
                SystemTray.getSystemTray().add(TRAY_ICON);
             } catch (final Exception ex) {
                LOG.warn(ex);
             }
-         }).start();
+         });
       } else {
          TRAY_ICON = null;
       }
@@ -66,8 +67,29 @@ public final class DesktopNotifications {
       APP_ICON_BASE64 = iconBase64;
    }
 
+   public static void disposeTrayIcon() {
+      if (TRAY_ICON == null)
+         return;
+      try {
+         SystemTray.getSystemTray().remove(TRAY_ICON);
+      } catch (final Exception ex) {
+         LOG.debug(ex);
+      }
+   }
+
+   private static boolean isRunningUnderJUnit() {
+      for (final StackTraceElement e : Thread.currentThread().getStackTrace()) {
+         final String cls = e.getClassName();
+         if (cls.startsWith("org.junit."))
+            return true;
+      }
+      return false;
+   }
+
    private static boolean isSupported() {
       try {
+         if (isRunningUnderJUnit())
+            return false;
          return SystemTray.isSupported();
       } catch (final UnsatisfiedLinkError | AWTError ex) {
          // https://github.com/oracle/graal/issues/2842

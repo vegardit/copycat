@@ -10,6 +10,7 @@ import java.util.concurrent.Callable;
 import java.util.logging.Level;
 
 import com.vegardit.copycat.command.AbstractCommand.VersionProvider;
+import com.vegardit.copycat.util.DesktopNotifications;
 
 import net.sf.jstuff.core.logging.Logger;
 import net.sf.jstuff.core.logging.jul.Levels;
@@ -102,7 +103,11 @@ public abstract class AbstractCommand implements Callable<Void> {
          // ignore java.lang.IllegalArgumentException: Unknown signal: TERM
       }
 
-      execute();
+      try {
+         execute();
+      } finally {
+         DesktopNotifications.disposeTrayIcon();
+      }
 
       LOG.info("");
       LOG.info("THE OPERATION COMPLETED SUCCESSFULLY.");
