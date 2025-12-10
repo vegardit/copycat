@@ -188,28 +188,23 @@ jobs:
         include:
           - arch: "linux-amd64"
             os: "ubuntu-24.04"
-            # not using newer graalvm release which fail to build
-            graal_version: 23
+            graal_version: dev
 
           - arch: "linux-arm64"
             os: "ubuntu-24.04-arm"  # https://github.com/actions/partner-runner-images#available-images
-            # not using newer graalvm release which fail to build
-            graal_version: 23
+            graal_version: dev
 
           - arch: "darwin-amd64"
             os: "macos-15-intel"
-            # not using newer graalvm release which fail to build
-            graal_version: 23
+            graal_version: dev
 
           - arch: "darwin-arm64"
             os: "macos-latest"
-            # not using newer graalvm release which fail to build
-            graal_version: 23
+            graal_version: dev
 
           - arch: "windows-amd64"
             os: "windows-latest"
-            # not using newer graalvm release which don't support full static builds on Windows anymore
-            graal_version: 21
+            graal_version: dev
 
 
     env:
@@ -325,7 +320,7 @@ jobs:
       run: |
         set -eu
 
-        # https://www.graalvm.org/jdk21/reference-manual/native-image/metadata/AutomaticMetadataCollection/#tracing-agent
+        # https://www.graalvm.org/jdk25/reference-manual/native-image/metadata/AutomaticMetadataCollection/#tracing-agent
         rm -rf native-image-metadata
         function traceCall() {
           echo "Tracing copycat ${@}..."
@@ -353,7 +348,7 @@ jobs:
             /usr/bin/gcc -v
 
             native-image \
-              -H:+StaticExecutableWithDynamicLibC `# https://www.graalvm.org/jdk21/reference-manual/native-image/guides/build-static-executables/#build-a-mostly-static-native-executable` \
+              -H:+StaticExecutableWithDynamicLibC `# https://www.graalvm.org/jdk25/reference-manual/native-image/guides/build-static-executables/#build-a-mostly-static-native-executable` \
               --report-unsupported-elements-at-runtime `# avoid: Unsupported type sun.awt.X11.XBaseWindow is reachable` \
               ${{ env.NATIVE_IMAGE_ARGS }}
           ;;
@@ -362,8 +357,9 @@ jobs:
             native-image ${{ env.NATIVE_IMAGE_ARGS }}
           ;;
           windows-amd64)
-            # https://www.graalvm.org/jdk21/reference-manual/native-image/guides/build-static-executables/#build-a-static-native-executable
-            native-image.cmd --static ${{ env.NATIVE_IMAGE_ARGS }}
+            # https://www.graalvm.org/jdk25/reference-manual/native-image/guides/build-static-executables/#build-a-static-native-executable
+            # not using "--static" because of error: Windows does not support building static executable images.
+            native-image.cmd ${{ env.NATIVE_IMAGE_ARGS }}
           ;;
         esac
 
