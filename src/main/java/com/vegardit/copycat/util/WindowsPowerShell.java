@@ -79,6 +79,24 @@ public final class WindowsPowerShell {
       }
    }
 
+   public static CompletableFuture<Integer> executeOnConsoleAsync(final String script) {
+      Objects.requireNonNull(script, "script");
+      final var executable = EXECUTABLE;
+      if (executable == null)
+         return CompletableFuture.failedFuture(new IllegalStateException("No PowerShell executable found in PATH"));
+
+      try {
+         return Processes.builder(executable).withArgs("-NoLogo", "-NoProfile", "-NonInteractive", "-Command",
+            "$code=[Console]::In.ReadToEnd();Invoke-Expression $code").withInput(script) // feed script
+            .withInheritOutput() // stdout -> real console
+            .withInheritError() // stderr -> real console
+            .start() //
+            .onExit().thenApply(Processes.ProcessWrapper::exitStatus);
+      } catch (final IOException ex) {
+         return CompletableFuture.failedFuture(new RuntimeException("Failed to start PowerShell process", ex));
+      }
+   }
+
    private static @Nullable Path detectExecutable() {
       if (!SystemUtils.IS_OS_WINDOWS)
          return null;

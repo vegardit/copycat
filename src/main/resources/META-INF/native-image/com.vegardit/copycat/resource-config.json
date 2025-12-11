@@ -2,7 +2,8 @@
   "resources": {
     "includes": [
       {"pattern": "copycat.png"},
-      {"pattern": "copycat16x16.png"}
+      {"pattern": "copycat16x16.png"},
+      {"pattern": "enable-ansi-colors.ps1"}
     ]
   }
 }

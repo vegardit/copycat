@@ -4,11 +4,16 @@
  */
 package com.vegardit.copycat.util;
 
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
-import java.util.List;
 import java.util.Locale;
+import java.util.concurrent.TimeUnit;
 
 import org.eclipse.jdt.annotation.Nullable;
+
+import net.sf.jstuff.core.SystemUtils;
+import net.sf.jstuff.core.logging.Logger;
 
 /**
  * Minimal ANSI support for coloring and simple cursor movement.
@@ -23,7 +28,25 @@ import org.eclipse.jdt.annotation.Nullable;
  */
 public final class Ansi {
 
+   private static final Logger LOG = Logger.create();
+
    private static final String ESC = "\u001B[";
+
+   static {
+      if (SystemUtils.IS_OS_WINDOWS && WindowsPowerShell.isAvailable()) {
+         try {
+            try (InputStream is = Ansi.class.getResourceAsStream("/enable-ansi-colors.ps1")) {
+               if (is != null) {
+                  final var script = new String(is.readAllBytes(), StandardCharsets.UTF_8);
+                  WindowsPowerShell.executeOnConsoleAsync(script).get(2, TimeUnit.SECONDS);
+               }
+            }
+         } catch (final Throwable ex) { // CHECKSTYLE:IGNORE .*
+            LOG.warn("Failed to enable ANSI support. " + ex.getClass().getName() + ": " + ex.getMessage());
+         }
+      }
+   }
+
    private static final boolean ENABLED = isEnabled();
 
    private static String applyStyles(final String styleSpec, final String segment) {
@@ -31,7 +54,7 @@ public final class Ansi {
          return segment;
 
       final String[] tokens = styleSpec.split("[,;+]");
-      final List<String> codes = new ArrayList<>();
+      final var codes = new ArrayList<String>();
 
       for (String token : tokens) {
          token = token.trim();
