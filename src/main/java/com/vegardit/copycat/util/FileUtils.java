@@ -38,7 +38,7 @@ import net.sf.jstuff.core.io.MoreFiles;
  */
 public final class FileUtils {
    private static final @NonNull CopyOption[] COPY_WITH_ATTRS_OPTIONS = {StandardCopyOption.COPY_ATTRIBUTES, LinkOption.NOFOLLOW_LINKS};
-   private static final @NonNull LinkOption[] NOFOLLOW_LINKS = {LinkOption.NOFOLLOW_LINKS};
+   static final @NonNull LinkOption[] NOFOLLOW_LINKS = {LinkOption.NOFOLLOW_LINKS};
 
    private static final OpenOption[] FILE_READ_OPTIONS = SystemUtils.IS_OS_WINDOWS //
          ? new OpenOption[] {ExtendedOpenOption.NOSHARE_WRITE, StandardOpenOption.READ}
