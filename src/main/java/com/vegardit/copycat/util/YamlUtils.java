@@ -9,6 +9,7 @@ import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
 
@@ -58,7 +59,10 @@ public final class YamlUtils {
       return sb;
    }
 
-   public static Map<String, Object> parseYaml(final BufferedReader reader) {
+   /**
+    * @throws IllegalArgumentException if the YAML root is not a mapping or contains non-string keys
+    */
+   public static LinkedHashMap<String, Object> parseYaml(final BufferedReader reader) {
       final var yamlLoaderOpts = new LoaderOptions();
       final var yamlDumperOpts = new DumperOptions();
       final var yaml = new Yaml(new Constructor(yamlLoaderOpts), new Representer(yamlDumperOpts), yamlDumperOpts, yamlLoaderOpts,
@@ -72,7 +76,27 @@ public final class YamlUtils {
                super.addImplicitResolvers();
             }
          });
-      return yaml.load(reader);
+
+      final Object loaded = yaml.load(reader);
+      if (loaded == null)
+         // empty YAML document
+         return new LinkedHashMap<>();
+      if (!(loaded instanceof final Map<?, ?> map))
+         throw new IllegalArgumentException("YAML config must be a mapping (top-level object), but was: " + loaded.getClass().getName());
+
+      // Ensure callers always get a mutable Map<String, Object>.
+      final var result = new LinkedHashMap<String, Object>(map.size());
+      for (final var entry : map.entrySet()) {
+         final var keyObj = entry.getKey();
+         if (!(keyObj instanceof final String key))
+            throw new IllegalArgumentException("YAML config keys must be strings, but was: " + (keyObj == null ? "null"
+                  : keyObj.getClass().getName()));
+         final var v = entry.getValue();
+         if (v != null) {
+            result.put(key, v);
+         }
+      }
+      return result;
    }
 
    public static String toYamlString(final Object obj) {
