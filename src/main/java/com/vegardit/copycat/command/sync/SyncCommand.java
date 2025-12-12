@@ -445,6 +445,7 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
                         && FilterEngine.isDirExplicitlyIncluded(sourceFilterCtx, dirRelative)) {
                      final var dirAttrs = FileAttrs.get(job.sourceDir);
                      if (FilterEngine.includesSource(sourceFilterCtx, job.sourceDir, dirRelative, dirAttrs)) {
+                        prepareParentDirsForExplicitlyIncludedDir(task, dirRelative);
                         ensureTargetDirPrepared(task, job.sourceDir, dirRelative);
                      }
                   }
@@ -480,6 +481,31 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
          final var dirRelative = parents.pop();
          final var sourceDir = task.sourceRootAbsolute.resolve(dirRelative);
          ensureTargetDirPrepared(task, sourceDir, dirRelative);
+      }
+   }
+
+   private void prepareParentDirsForExplicitlyIncludedDir(final SyncCommandConfig task, final Path dirRelative) throws IOException {
+      final var fileFilters = task.fileFilters;
+      if (fileFilters == null || fileFilters.isEmpty())
+         // In unfiltered syncs, directories are mirrored eagerly via syncDirShallow.
+         return;
+
+      final Path parentRelative = dirRelative.getParent();
+      if (parentRelative == null || preparedParentDirsRelative.contains(parentRelative))
+         return;
+
+      // build parent chain from root -> immediate parent
+      final var parents = new ArrayDeque<Path>();
+      Path current = parentRelative;
+      while (current != null && current.getNameCount() > 0) {
+         parents.push(current);
+         current = current.getParent();
+      }
+
+      while (!parents.isEmpty()) {
+         final var rel = parents.pop();
+         final var sourceDir = task.sourceRootAbsolute.resolve(rel);
+         ensureTargetDirPrepared(task, sourceDir, rel);
       }
    }
 

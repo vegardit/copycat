@@ -6,6 +6,7 @@ package com.vegardit.copycat.command.sync;
 
 import static net.sf.jstuff.core.validation.NullAnalysisHelper.asNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -414,6 +415,103 @@ class SyncCommandFilterBehaviorITest {
          // nested directory and file must not be created
          assertThat(Files.exists(targetRoot.resolve("sub"))).isFalse();
          assertThat(Files.exists(targetRoot.resolve("sub/nested.txt"))).isFalse();
+      } finally {
+         deleteRecursive(targetRoot);
+         deleteRecursive(sourceRoot);
+      }
+   }
+
+   @Test
+   @DisplayName("explicitly included empty nested directory creates missing parent directories")
+   void testExplicitEmptyNestedDirectoryCreatesParents() throws Exception {
+      final Path sourceRoot = Files.createTempDirectory("copycat-sync-src");
+      final Path targetRoot = Files.createTempDirectory("copycat-sync-dst-empty-nested");
+
+      try {
+         final Path nestedDir = sourceRoot.resolve("foo/bar");
+         Files.createDirectories(nestedDir);
+
+         final var cfg = new SyncCommandConfig();
+         cfg.source = sourceRoot;
+         cfg.target = targetRoot;
+         cfg.fileFilters = List.of( //
+            "in:foo/bar", //
+            "ex:**");
+         cfg.applyDefaults();
+         cfg.compute();
+
+         final var cmd = new SyncCommand();
+         assertThatCode(() -> cmd.doExecute(List.of(cfg))) //
+            .as("sync should not fail when explicitly including empty nested dir") //
+            .doesNotThrowAnyException();
+
+         assertThat(Files.exists(targetRoot.resolve("foo"))).isTrue();
+         assertThat(Files.exists(targetRoot.resolve("foo/bar"))).isTrue();
+         assertThat(Files.isDirectory(targetRoot.resolve("foo/bar"))).isTrue();
+      } finally {
+         deleteRecursive(targetRoot);
+         deleteRecursive(sourceRoot);
+      }
+   }
+
+   @Test
+   @DisplayName("descendant-only include does not materialize empty nested directory")
+   void testDescendantOnlyIncludeDoesNotCreateEmptyNestedDir() throws Exception {
+      final Path sourceRoot = Files.createTempDirectory("copycat-sync-src");
+      final Path targetRoot = Files.createTempDirectory("copycat-sync-dst-empty-desc");
+
+      try {
+         final Path nestedDir = sourceRoot.resolve("foo/bar");
+         Files.createDirectories(nestedDir);
+
+         final var cfg = new SyncCommandConfig();
+         cfg.source = sourceRoot;
+         cfg.target = targetRoot;
+         cfg.fileFilters = List.of( //
+            "in:foo/bar/**", //
+            "ex:**");
+         cfg.applyDefaults();
+         cfg.compute();
+
+         final var cmd = new SyncCommand();
+         assertThatCode(() -> cmd.doExecute(List.of(cfg))) //
+            .as("sync should not fail for descendant-only include with empty dir") //
+            .doesNotThrowAnyException();
+
+         assertThat(Files.exists(targetRoot.resolve("foo/bar"))).as(
+            "foo/bar should not be created when only descendants are included and none exist").isFalse();
+      } finally {
+         deleteRecursive(targetRoot);
+         deleteRecursive(sourceRoot);
+      }
+   }
+
+   @Test
+   @DisplayName("explicitly included nested directory with trailing slash is treated as explicit include")
+   void testExplicitEmptyNestedDirectoryTrailingSlash() throws Exception {
+      final Path sourceRoot = Files.createTempDirectory("copycat-sync-src");
+      final Path targetRoot = Files.createTempDirectory("copycat-sync-dst-empty-trailing");
+
+      try {
+         final Path nestedDir = sourceRoot.resolve("foo/bar");
+         Files.createDirectories(nestedDir);
+
+         final var cfg = new SyncCommandConfig();
+         cfg.source = sourceRoot;
+         cfg.target = targetRoot;
+         cfg.fileFilters = List.of( //
+            "in:foo/bar/", //
+            "ex:**");
+         cfg.applyDefaults();
+         cfg.compute();
+
+         final var cmd = new SyncCommand();
+         assertThatCode(() -> cmd.doExecute(List.of(cfg))) //
+            .as("sync should not fail when explicitly including empty nested dir with trailing slash") //
+            .doesNotThrowAnyException();
+
+         assertThat(Files.exists(targetRoot.resolve("foo"))).isTrue();
+         assertThat(Files.exists(targetRoot.resolve("foo/bar"))).isTrue();
       } finally {
          deleteRecursive(targetRoot);
          deleteRecursive(sourceRoot);
