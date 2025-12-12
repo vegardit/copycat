@@ -377,19 +377,15 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
                final var sourceChildAbsolute = sourceEntry.getValue();
                final var targetChildAbsolute = targetChildren.get(sourceChildRelative);
 
-               final var sourceAttrs = FileAttrs.get(sourceChildAbsolute);
-               final boolean isFile = sourceAttrs.isFile() || sourceAttrs.isFileSymlink();
+               final boolean skipSubtreeScan = task.isExcludedSourceSubtreeDir(sourceChildRelative);
 
-               /*
-                * Apply FilterEngine to all entry types (files, directories, symlinks) so that hidden/system
-                * flags and glob filters consistently affect traversal as well as copying. If a directory is
-                * excluded here, we neither traverse into it nor materialize it on the target.
-                */
-               if (!FilterEngine.includesSource(sourceFilterCtx, sourceChildAbsolute, sourceChildRelative, sourceAttrs)) {
+               final var sourceAttrs = FilterEngine.getFileAttrsIfIncluded(sourceFilterCtx, sourceChildAbsolute, sourceChildRelative,
+                  skipSubtreeScan);
+               if (sourceAttrs == null) {
                   continue;
                }
 
-               if (isFile) {
+               if (sourceAttrs.isFile() || sourceAttrs.isFileSymlink()) {
                   prepareParentDirsForIncludedFile(task, sourceChildRelative);
                   syncFile(task, sourceChildAbsolute, targetChildAbsolute, sourceChildRelative);
                   stats.onFileScanned();
@@ -411,9 +407,8 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
                      continue;
                   }
 
-                  final boolean pruneSubtree = task.isExcludedSourceSubtreeDir(sourceChildRelative);
                   // respect optional max-depth: only descend if child depth <= maxDepth
-                  if (!pruneSubtree && (maxDepth == null || childDepth <= maxDepth)) {
+                  if (!skipSubtreeScan && (maxDepth == null || childDepth <= maxDepth)) {
                      dirJobs.add(new DirJob(sourceChildAbsolute, sourceChildRelative));
                   }
 
@@ -437,16 +432,15 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
             }
          } finally {
             try {
-               // explicitly included empty directories (Option A from filter-behavior.md)
+               // explicitly included empty directories
                if (!job.sourceDir.equals(task.sourceRootAbsolute)) {
-                  final Path dirRelative = job.relativeDir;
                   final var fileFilters = task.fileFilters;
                   if (fileFilters != null && !fileFilters.isEmpty() //
-                        && FilterEngine.isDirExplicitlyIncluded(sourceFilterCtx, dirRelative)) {
+                        && FilterEngine.isDirExplicitlyIncluded(sourceFilterCtx, job.relativeDir)) {
                      final var dirAttrs = FileAttrs.get(job.sourceDir);
-                     if (FilterEngine.includesSource(sourceFilterCtx, job.sourceDir, dirRelative, dirAttrs)) {
-                        prepareParentDirsForExplicitlyIncludedDir(task, dirRelative);
-                        ensureTargetDirPrepared(task, job.sourceDir, dirRelative);
+                     if (FilterEngine.includesSource(sourceFilterCtx, job.sourceDir, job.relativeDir, dirAttrs)) {
+                        prepareParentDirsForExplicitlyIncludedDir(task, job.relativeDir);
+                        ensureTargetDirPrepared(task, job.sourceDir, job.relativeDir);
                      }
                   }
                }

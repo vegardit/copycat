@@ -196,6 +196,20 @@ public final class FilterEngine {
     */
    public static boolean includesSource(final FilterContext filters, final Path absolutePath, final Path relativePath,
          final FileAttrs attrs) throws IOException {
+      final int firstMatchIndex = findFirstMatchingRuleIndex(filters, relativePath);
+      return includesSource(filters, absolutePath, relativePath, attrs, firstMatchIndex);
+   }
+
+   /**
+    * Internal overload that accepts the precomputed index of the first matching glob rule.
+    *
+    * @param firstMatchIndex
+    *           index of the first matching rule in {@code filters.sourceRules}, or {@code -1} if no rule matches.
+    *           This is passed in to avoid scanning the rule list twice in fast-paths (for example
+    *           {@link #getFileAttrsIfIncluded(FilterContext, Path, Path, boolean)}).
+    */
+   private static boolean includesSource(final FilterContext filters, final Path absolutePath, final Path relativePath,
+         final FileAttrs attrs, final int firstMatchIndex) throws IOException {
 
       // Hidden/system filters (apply to files and directories)
       if (filters.excludeHiddenSystemFiles || filters.excludeSystemFiles || filters.excludeHiddenFiles) {
@@ -238,43 +252,104 @@ public final class FilterEngine {
             return false;
       }
 
+      if (firstMatchIndex == -1)
+         return true;
+
       final List<FilterRule> rules = filters.sourceRules;
-      if (!rules.isEmpty()) {
-         for (final FilterRule rule : rules) {
-            boolean matched = rule.matcher.matches(relativePath);
 
-            // Additional handling for simple subtree-exclude patterns ending with "/**" (for example
-            // "bbb/**" or "**/node_modules/**") so that descendants of the directory are excluded even if
-            // the underlying PathMatcher does not match them as entire paths.
-            if (!matched && !rule.include && rule.pattern.endsWith("/**") && matchesSubtreePattern(rule.pattern, relativePath)) {
-               matched = true;
-            }
-
-            if (!matched) {
-               continue;
-            }
-
-            // For source-side traversal, a global catch-all EXCLUDE like "ex:**" or "ex:**/*" must not by itself
-            // prevent traversal when INCLUDE rules are present (see filter-behavior.md, section "Directories and ex:**").
-            // In that situation we treat the catch-all as applying to files only; directories are handled by the
-            // subtree pruning and lazy directory creation logic.
-            //
-            // When such a global EXCLUDE is present, we also treat the derived top-level variant "*" (introduced
-            // for patterns like "**/*") as part of the same catch-all family for directories so that root-level
-            // directories which may contain included descendants are not blocked either.
-            //
-            // Target-side evaluation (for delete decisions) must NOT use this exception; there we honor the
-            // catch-all for directories as well. This is controlled via the ignoreGlobalExcludeForDirs flag
-            // in the context.
-            if (filters.ignoreGlobalExcludeForDirs && !rule.include && filters.hasIncludeRules && attrs.isDir()
-                  && (isGlobalExcludeAllPattern(rule.pattern) || filters.hasGlobalExcludeAll && "*".equals(rule.pattern))) {
-               continue;
-            }
-
-            return rule.include;
+      // We already know that the rule at firstMatchIndex matches. Start scanning at that position and
+      // only continue with later rules if the first match is ignored (for example global catch-all excludes
+      // that are treated as "files-only" for directories on the source side).
+      for (int i = firstMatchIndex; i < rules.size(); i++) {
+         final FilterRule rule = rules.get(i);
+         if (i != firstMatchIndex && !ruleMatches(rule, relativePath)) {
+            continue;
          }
+
+         // For source-side traversal, a global catch-all EXCLUDE like "ex:**" or "ex:**/*" must not by itself
+         // prevent traversal when INCLUDE rules are present (see filter-behavior.md, section "Directories and ex:**").
+         // In that situation we treat the catch-all as applying to files only; directories are handled by the
+         // subtree pruning and lazy directory creation logic.
+         //
+         // When such a global EXCLUDE is present, we also treat the derived top-level variant "*" (introduced
+         // for patterns like "**/*") as part of the same catch-all family for directories so that root-level
+         // directories which may contain included descendants are not blocked either.
+         //
+         // Target-side evaluation (for delete decisions) must NOT use this exception; there we honor the
+         // catch-all for directories as well. This is controlled via the ignoreGlobalExcludeForDirs flag
+         // in the context.
+         if (filters.ignoreGlobalExcludeForDirs && !rule.include && filters.hasIncludeRules && attrs.isDir() && (isGlobalExcludeAllPattern(
+            rule.pattern) || filters.hasGlobalExcludeAll && "*".equals(rule.pattern))) {
+            continue;
+         }
+
+         return rule.include;
       }
       return true;
+   }
+
+   /**
+    * Returns file attributes if the given entry is considered included by the filter engine.
+    * <p>
+    * This method performs a fast, rule-only precheck to avoid touching file attributes for entries that are already
+    * excluded by filename patterns (for example locked files on Windows). If the rule-only check excludes an entry and
+    * the subtree is known to be prunable, then no filesystem attribute reads are performed.
+    *
+    * @param filters
+    *           precomputed filter context
+    * @param absolutePath
+    *           absolute path of the entry on the filesystem
+    * @param relativePath
+    *           path relative to the sync root, used for glob matching
+    * @param skipSubtreeScan
+    *           {@code true} if the caller has determined that this path (or subtree) cannot contain included descendants
+    *           and can thus be skipped safely when excluded by glob rules (see {@code isExcludedSourceSubtreeDir})
+    * @return the resolved {@link FileAttrs} if the entry is included; {@code null} otherwise
+    */
+   public static @Nullable FileAttrs getFileAttrsIfIncluded(final FilterContext filters, final Path absolutePath, final Path relativePath,
+         final boolean skipSubtreeScan) throws IOException {
+      final int firstMatchIndex = findFirstMatchingRuleIndex(filters, relativePath);
+      if (firstMatchIndex >= 0 //
+            && (!filters.hasGlobalExcludeAll || skipSubtreeScan) //
+            && !filters.sourceRules.get(firstMatchIndex).include()) //
+         return null;
+
+      final var attrs = FileAttrs.get(absolutePath);
+      if (!includesSource(filters, absolutePath, relativePath, attrs, firstMatchIndex))
+         return null;
+      return attrs;
+   }
+
+   /**
+    * Returns the index of the first filter rule that matches {@code relativePath}, using the same glob matching
+    * semantics as {@link #includesSource(FilterContext, Path, Path, FileAttrs)}.
+    * <p>
+    * This is a pure rule-match lookup (no filesystem I/O and no hidden/system/date checks). It is used as a small
+    * optimization so callers can compute "first match" once and avoid rescanning the rule list.
+    *
+    * @return index in {@code filters.sourceRules}, or {@code -1} if no rule matches
+    */
+   private static int findFirstMatchingRuleIndex(final FilterContext filters, final Path relativePath) {
+      final List<FilterRule> rules = filters.sourceRules;
+      if (rules.isEmpty())
+         return -1;
+
+      for (int i = 0; i < rules.size(); i++) {
+         final FilterRule rule = rules.get(i);
+         if (ruleMatches(rule, relativePath))
+            return i;
+      }
+      return -1;
+   }
+
+   private static boolean ruleMatches(final FilterRule rule, final Path relativePath) {
+      if (rule.matcher.matches(relativePath))
+         return true;
+
+      // Additional handling for simple subtree-exclude patterns ending with "/**" (for example
+      // "bbb/**" or "**/node_modules/**") so that descendants of the directory are excluded even if
+      // the underlying PathMatcher does not match them as entire paths.
+      return !rule.include && rule.pattern.endsWith("/**") && matchesSubtreePattern(rule.pattern, relativePath);
    }
 
    /**

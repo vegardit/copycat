@@ -612,6 +612,80 @@ class FileFilterLogicTest {
       }
    }
 
+   @Test
+   @DisplayName("getFileAttrsIfIncluded skips excluded paths without touching filesystem")
+   void testGetFileAttrsIfIncludedSkipsExcludedWithoutAttrsRead() throws IOException {
+      final Path sourceRoot = Files.createTempDirectory("copycat-filters-src");
+      final Path targetRoot = Files.createTempDirectory("copycat-filters-dst");
+
+      try {
+         final var cfg = new SyncCommandConfig();
+         cfg.source = sourceRoot;
+         cfg.target = targetRoot;
+         cfg.fileFilters = List.of( //
+            "in:DUR*", //
+            "ex:**");
+         cfg.applyDefaults();
+         cfg.compute();
+
+         final var filters = FilterEngine.buildSourceFilterContext(cfg);
+         @SuppressWarnings("resource")
+         final var fs = sourceRoot.getFileSystem();
+
+         // excluded file that does NOT exist: must be skipped without reading attributes (otherwise it would throw)
+         final Path excludedRel = fs.getPath("DUF.log.1.lck");
+         final Path excludedAbs = sourceRoot.resolve(excludedRel);
+         final boolean excludedPrunable = cfg.isExcludedSourceSubtreeDir(excludedRel);
+         assertThat(FilterEngine.getFileAttrsIfIncluded(filters, excludedAbs, excludedRel, excludedPrunable)).isNull();
+
+         // included file must return attributes (and thus requires the file to exist)
+         final Path includedRel = fs.getPath("DUR001.log");
+         Files.createFile(sourceRoot.resolve(includedRel));
+         final boolean includedPrunable = cfg.isExcludedSourceSubtreeDir(includedRel);
+         assertThat(FilterEngine.getFileAttrsIfIncluded(filters, sourceRoot.resolve(includedRel), includedRel, includedPrunable))
+            .isNotNull();
+      } finally {
+         deleteRecursive(targetRoot);
+         deleteRecursive(sourceRoot);
+      }
+   }
+
+   @Test
+   @DisplayName("getFileAttrsIfIncluded keeps include-relevant directories for traversal even with global excludes")
+   void testGetFileAttrsIfIncludedKeepsTraversalDirs() throws IOException {
+      final Path sourceRoot = Files.createTempDirectory("copycat-filters-src");
+      final Path targetRoot = Files.createTempDirectory("copycat-filters-dst");
+
+      try {
+         final var cfg = new SyncCommandConfig();
+         cfg.source = sourceRoot;
+         cfg.target = targetRoot;
+         cfg.fileFilters = List.of( //
+            "in:CDNS*/System*.log", //
+            "in:DURS*/System*.log", //
+            "ex:**/*", //
+            "ex:*.*" //
+         );
+         cfg.applyDefaults();
+         cfg.compute();
+
+         final var filters = FilterEngine.buildSourceFilterContext(cfg);
+
+         @SuppressWarnings("resource")
+         final Path cdnsRel = sourceRoot.getFileSystem().getPath("CDNS1");
+         Files.createDirectories(sourceRoot.resolve(cdnsRel));
+         final boolean cdnsPrunable = cfg.isExcludedSourceSubtreeDir(cdnsRel);
+         assertThat(cdnsPrunable).isFalse();
+
+         final var attrs = FilterEngine.getFileAttrsIfIncluded(filters, sourceRoot.resolve(cdnsRel), cdnsRel, cdnsPrunable);
+         assert attrs != null;
+         assertThat(attrs.isDir()).isTrue();
+      } finally {
+         deleteRecursive(targetRoot);
+         deleteRecursive(sourceRoot);
+      }
+   }
+
    private static void deleteRecursive(final Path root) throws IOException {
       if (!Files.exists(root))
          return;
