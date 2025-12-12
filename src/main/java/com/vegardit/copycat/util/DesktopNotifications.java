@@ -117,8 +117,8 @@ public final class DesktopNotifications {
                   + "Add-Type -AssemblyName System.Drawing;" //
                   + "$msg=New-Object System.Windows.Forms.NotifyIcon;" //
                   // https://learn.microsoft.com/en-us/dotnet/api/system.windows.forms.notifyicon?view=windowsdesktop-9.0#properties
-                  + "$msg.BalloonTipTitle='[copycat] " + title.replace("'", "\\'") + "';" //
-                  + "$msg.BalloonTipText='" + message.replace("'", "\\'") + "';" //
+                  + "$msg.BalloonTipTitle='[copycat] " + escapePowerShellSingleQuoted(title) + "';" //
+                  + "$msg.BalloonTipText='" + escapePowerShellSingleQuoted(message) + "';" //
                   + "$msg.BalloonTipIcon='" + level + "';" // https://docs.microsoft.com/en-us/dotnet/api/system.windows.forms.tooltipicon
                   + (APP_ICON_BASE64 == null //
                         ? "$msg.Icon=[System.Drawing.SystemIcons]::Application;" //
@@ -155,8 +155,8 @@ public final class DesktopNotifications {
                   + "Add-Type -AssemblyName System.Drawing;" //
                   + "$msg=New-Object System.Windows.Forms.NotifyIcon;" //
                   // https://learn.microsoft.com/en-us/dotnet/api/system.windows.forms.notifyicon?view=windowsdesktop-9.0#properties
-                  + "$msg.BalloonTipTitle='[copycat] " + title.replace("'", "\\'") + "';" //
-                  + "$msg.BalloonTipText='" + message.replace("'", "\\'") + "';" //
+                  + "$msg.BalloonTipTitle='[copycat] " + escapePowerShellSingleQuoted(title) + "';" //
+                  + "$msg.BalloonTipText='" + escapePowerShellSingleQuoted(message) + "';" //
                   + "$msg.BalloonTipIcon='" + level + "';" // https://docs.microsoft.com/en-us/dotnet/api/system.windows.forms.tooltipicon
                   + (APP_ICON_BASE64 == null //
                         ? "$msg.Icon=[System.Drawing.SystemIcons]::Application;" //
@@ -177,6 +177,11 @@ public final class DesktopNotifications {
          }
       }
       return false;
+   }
+
+   private static String escapePowerShellSingleQuoted(final String value) {
+      // PowerShell single-quoted string escaping: represent a single quote as two single quotes.
+      return value.replace("'", "''");
    }
 
    private DesktopNotifications() {
