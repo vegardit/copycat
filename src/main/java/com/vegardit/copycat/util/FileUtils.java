@@ -58,39 +58,52 @@ public final class FileUtils {
       final var targetFS = target.getFileSystem();
 
       final var targetFSP = targetFS.provider();
+      final var targetBasicAttrs = targetFSP.getFileAttributeView(target, BasicFileAttributeView.class, NOFOLLOW_LINKS);
 
       final var sourceSupportedAttrs = sourceFS.supportedFileAttributeViews();
       final var targetSupportedAttrs = targetFS.supportedFileAttributeViews();
 
       if (sourceAttrs instanceof final DosFileAttributes sourceDosAttrs) {
          final var targetDosAttrs = targetFSP.getFileAttributeView(target, DosFileAttributeView.class, NOFOLLOW_LINKS);
-         targetDosAttrs.setArchive(sourceDosAttrs.isArchive());
-         targetDosAttrs.setHidden(sourceDosAttrs.isHidden());
-         targetDosAttrs.setReadOnly(sourceDosAttrs.isReadOnly());
-         targetDosAttrs.setSystem(sourceDosAttrs.isSystem());
+         if (targetDosAttrs != null) {
+            targetDosAttrs.setArchive(sourceDosAttrs.isArchive());
+            targetDosAttrs.setHidden(sourceDosAttrs.isHidden());
+            targetDosAttrs.setReadOnly(sourceDosAttrs.isReadOnly());
+            targetDosAttrs.setSystem(sourceDosAttrs.isSystem());
+         }
          if (copyACL && sourceSupportedAttrs.contains("acl") && targetSupportedAttrs.contains("acl")) {
             final var sourceFSP = sourceFS.provider();
             final var sourceAclAttrs = sourceFSP.getFileAttributeView(source, AclFileAttributeView.class, NOFOLLOW_LINKS);
             final var targetAclAttrs = targetFSP.getFileAttributeView(target, AclFileAttributeView.class, NOFOLLOW_LINKS);
-            targetAclAttrs.setAcl(sourceAclAttrs.getAcl());
-            if (SystemUtils.isRunningAsAdmin()) {
-               targetAclAttrs.setOwner(sourceAclAttrs.getOwner());
+            if (sourceAclAttrs != null && targetAclAttrs != null) {
+               targetAclAttrs.setAcl(sourceAclAttrs.getAcl());
+               if (SystemUtils.isRunningAsAdmin()) {
+                  targetAclAttrs.setOwner(sourceAclAttrs.getOwner());
+               }
             }
          }
          copyUserAttrs(source, target);
-         copyTimeAttrs(sourceDosAttrs, targetDosAttrs);
+         if (targetDosAttrs != null) {
+            copyTimeAttrs(sourceDosAttrs, targetDosAttrs);
+         } else if (targetBasicAttrs != null) {
+            copyTimeAttrs(sourceDosAttrs, targetBasicAttrs);
+         }
          return;
       }
 
       if (sourceAttrs instanceof final PosixFileAttributes sourcePosixAttrs) {
          final var targetPosixAttrs = targetFSP.getFileAttributeView(target, PosixFileAttributeView.class, NOFOLLOW_LINKS);
-         if (copyACL) {
+         if (copyACL && targetPosixAttrs != null) {
             targetPosixAttrs.setOwner(sourcePosixAttrs.owner());
             targetPosixAttrs.setGroup(sourcePosixAttrs.group());
             targetPosixAttrs.setPermissions(sourcePosixAttrs.permissions());
          }
          copyUserAttrs(source, target);
-         copyTimeAttrs(sourcePosixAttrs, targetPosixAttrs);
+         if (targetPosixAttrs != null) {
+            copyTimeAttrs(sourcePosixAttrs, targetPosixAttrs);
+         } else if (targetBasicAttrs != null) {
+            copyTimeAttrs(sourcePosixAttrs, targetBasicAttrs);
+         }
          return;
       }
 
@@ -98,10 +111,9 @@ public final class FileUtils {
          Files.setOwner(target, Files.getOwner(source, NOFOLLOW_LINKS));
       }
       copyUserAttrs(source, target);
-      copyTimeAttrs( //
-         sourceAttrs, //
-         targetFSP.getFileAttributeView(target, BasicFileAttributeView.class, NOFOLLOW_LINKS) //
-      );
+      if (targetBasicAttrs != null) {
+         copyTimeAttrs(sourceAttrs, targetBasicAttrs);
+      }
    }
 
    public static void copyDirShallow(final Path source, final Path target, final boolean copyACL) throws IOException {
@@ -150,10 +162,15 @@ public final class FileUtils {
          final var sourceFSP = sourceFS.provider();
 
          final var sourceUserAttrs = sourceFSP.getFileAttributeView(source, UserDefinedFileAttributeView.class, NOFOLLOW_LINKS);
+         if (sourceUserAttrs == null)
+            return;
+
          final var entries = sourceUserAttrs.list();
          if (!entries.isEmpty()) {
             final var targetFSP = targetFS.provider();
             final var targetUserAttrs = targetFSP.getFileAttributeView(target, UserDefinedFileAttributeView.class, NOFOLLOW_LINKS);
+            if (targetUserAttrs == null)
+               return;
             ByteBuffer buf = null;
 
             for (final var entry : entries) {
