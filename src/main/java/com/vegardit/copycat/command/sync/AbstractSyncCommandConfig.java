@@ -86,6 +86,7 @@ public abstract class AbstractSyncCommandConfig<THIS extends AbstractSyncCommand
    public @Nullable Boolean excludeHiddenFiles;
    public @Nullable Boolean excludeHiddenSystemFiles;
    public @Nullable Boolean excludeSystemFiles;
+   public @Nullable Boolean excludeOtherLinks;
 
    public @Nullable @ToYamlString(name = "since") FileTime modifiedFrom;
    public @Nullable @ToYamlString(name = "until") FileTime modifiedTo;
@@ -106,6 +107,7 @@ public abstract class AbstractSyncCommandConfig<THIS extends AbstractSyncCommand
       defaults.excludeHiddenFiles = false;
       defaults.excludeHiddenSystemFiles = false;
       defaults.excludeSystemFiles = false;
+      defaults.excludeOtherLinks = false;
       defaults.maxDepth = null;
       applyFrom(defaults, false);
    }
@@ -135,6 +137,9 @@ public abstract class AbstractSyncCommandConfig<THIS extends AbstractSyncCommand
       }
       if (override && other.excludeSystemFiles != null || excludeSystemFiles == null) {
          excludeSystemFiles = other.excludeSystemFiles;
+      }
+      if (override && other.excludeOtherLinks != null || excludeOtherLinks == null) {
+         excludeOtherLinks = other.excludeOtherLinks;
       }
       if (override && other.maxDepth != null || maxDepth == null) {
          maxDepth = other.maxDepth;
@@ -166,6 +171,7 @@ public abstract class AbstractSyncCommandConfig<THIS extends AbstractSyncCommand
       defaults.excludeHiddenFiles = getBoolean(cfg, "exclude-hidden-files", true);
       defaults.excludeHiddenSystemFiles = getBoolean(cfg, "exclude-hidden-system-files", true);
       defaults.excludeSystemFiles = getBoolean(cfg, "exclude-system-files", true);
+      defaults.excludeOtherLinks = getBoolean(cfg, "exclude-other-links", true);
       defaults.maxDepth = getInteger(cfg, "max-depth", true);
       defaults.modifiedFrom = getFileTime(cfg, "since", true);
       defaults.modifiedTo = getFileTime(cfg, "until", true);

@@ -10,6 +10,7 @@ import static net.sf.jstuff.core.validation.NullAnalysisHelper.asNonNull;
 import java.awt.TrayIcon.MessageType;
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.FileSystemException;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
@@ -385,37 +386,52 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
                   continue;
                }
 
-               if (sourceAttrs.isFile() || sourceAttrs.isFileSymlink()) {
-                  prepareParentDirsForIncludedFile(task, sourceChildRelative);
-                  syncFile(task, sourceChildAbsolute, targetChildAbsolute, sourceChildRelative);
-                  stats.onFileScanned();
-               } else if (sourceAttrs.isDirSymlink()) {
-                  // handle directory symlink entries immediately (do not descend into them)
-                  // and ensure their parent directory chain exists on the target, just like for files.
-                  prepareParentDirsForIncludedFile(task, sourceChildRelative);
-                  syncDirShallow(task, sourceChildAbsolute, targetChildAbsolute, sourceChildRelative);
-                  stats.onFileScanned();
-               } else {
-                  final Integer maxDepth = task.maxDepth;
-                  final int childDepth = sourceChildRelative.getNameCount();
-
-                  // respect optional max-depth: skip directories beyond maxDepth entirely
-                  if (maxDepth != null && childDepth > maxDepth && !sourceAttrs.isSymlink()) {
-                     if (LOG.isTraceEnabled()) {
-                        LOG.trace("Ignoring directory outside max-depth [%s]: %s", maxDepth, sourceChildRelative);
-                     }
-                     continue;
+               switch (sourceAttrs.type()) {
+                  case FILE, FILE_SYMLINK -> {
+                     prepareParentDirsForIncludedFile(task, sourceChildRelative);
+                     syncFile(task, sourceChildAbsolute, targetChildAbsolute, sourceChildRelative);
+                     stats.onFileScanned();
                   }
-
-                  // respect optional max-depth: only descend if child depth <= maxDepth
-                  if (!skipSubtreeScan && (maxDepth == null || childDepth <= maxDepth)) {
-                     dirJobs.add(new DirJob(sourceChildAbsolute, sourceChildRelative));
+                  case BROKEN_SYMLINK, OTHER_SYMLINK -> {
+                     prepareParentDirsForIncludedFile(task, sourceChildRelative);
+                     syncSymlinkLeaf(task, sourceChildAbsolute, targetChildAbsolute, sourceChildRelative, sourceAttrs);
+                     stats.onFileScanned();
                   }
-
-                  // For unfiltered syncs, eagerly mirror directory metadata as before.
-                  final var fileFilters = task.fileFilters;
-                  if (fileFilters == null || fileFilters.isEmpty()) {
+                  case DIRECTORY_SYMLINK -> {
+                     // handle directory symlink entries immediately (do not descend into them)
+                     // and ensure their parent directory chain exists on the target, just like for files.
+                     prepareParentDirsForIncludedFile(task, sourceChildRelative);
                      syncDirShallow(task, sourceChildAbsolute, targetChildAbsolute, sourceChildRelative);
+                     stats.onFileScanned();
+                  }
+                  case DIRECTORY -> {
+                     final Integer maxDepth = task.maxDepth;
+                     final int childDepth = sourceChildRelative.getNameCount();
+
+                     // respect optional max-depth: skip directories beyond maxDepth entirely
+                     if (maxDepth != null && childDepth > maxDepth) {
+                        if (LOG.isTraceEnabled()) {
+                           LOG.trace("Ignoring directory outside max-depth [%s]: %s", maxDepth, sourceChildRelative);
+                        }
+                        break;
+                     }
+
+                     // respect optional max-depth: only descend if child depth <= maxDepth
+                     if (!skipSubtreeScan && (maxDepth == null || childDepth <= maxDepth)) {
+                        dirJobs.add(new DirJob(sourceChildAbsolute, sourceChildRelative));
+                     }
+
+                     // For unfiltered syncs, eagerly mirror directory metadata as before.
+                     final var fileFilters = task.fileFilters;
+                     if (fileFilters == null || fileFilters.isEmpty()) {
+                        syncDirShallow(task, sourceChildAbsolute, targetChildAbsolute, sourceChildRelative);
+                     }
+                  }
+                  case OTHER -> {
+                     if (getVerbosity() > 0) {
+                        LOG.warn("Skipping unsupported filesystem entry [@|magenta %s|@].", sourceChildRelative);
+                     }
+                     stats.onFileScanned();
                   }
                }
             }
@@ -548,61 +564,62 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
          // target file does not exist
          targetPath = task.targetRootAbsolute.resolve(relativePath);
          copyCause = "NEW";
-
       } else {
-
          /*
           * target path points to file
           */
          final var targetAttrs = FileAttrs.get(targetPath);
-         if (targetAttrs.isFileOrFileSymlink()) {
-            if (sourceAttrs.isSymbolicLink() && targetAttrs.isSymlink()) { // both are symlinks
-               copyCause = null;
-
-            } else if (sourceAttrs.isSymbolicLink() == targetAttrs.isSymlink()) { // neither is a symlink
-               final var timeCompare = sourceAttrs.lastModifiedTime().compareTo(targetAttrs.lastModifiedTime());
-               if (timeCompare > 0) {
-                  copyCause = "NEWER";
-               } else if (timeCompare < 0) {
-                  if (isTrue(task.excludeOlderFiles)) {
-                     LOG.debug("Ignoring source file [@|magenta %s|@] because it is older than target file...", relativePath);
-                     copyCause = null;
+         switch (targetAttrs.type()) {
+            case FILE, FILE_SYMLINK, BROKEN_SYMLINK, OTHER_SYMLINK -> {
+               if (sourceAttrs.isSymbolicLink() && targetAttrs.isSymlink()) { // both are symlinks
+                  copyCause = null;
+               } else if (sourceAttrs.isSymbolicLink() == targetAttrs.isSymlink()) { // neither is a symlink
+                  final var timeCompare = sourceAttrs.lastModifiedTime().compareTo(targetAttrs.lastModifiedTime());
+                  if (timeCompare > 0) {
+                     copyCause = "NEWER";
+                  } else if (timeCompare < 0) {
+                     if (isTrue(task.excludeOlderFiles)) {
+                        LOG.debug("Ignoring source file [@|magenta %s|@] because it is older than target file...", relativePath);
+                        copyCause = null;
+                     } else {
+                        copyCause = "OLDER";
+                     }
                   } else {
-                     copyCause = "OLDER";
+                     final var sizeCompare = Long.compare(sourceAttrs.size(), targetAttrs.size());
+                     if (sizeCompare > 0) {
+                        copyCause = "LARGER";
+                     } else if (sizeCompare < 0) {
+                        copyCause = "SMALLER";
+                     } else {
+                        LOG.trace("Source file [@|magenta %s|@] is in sync...", relativePath);
+                        copyCause = null;
+                     }
                   }
-               } else {
-                  final var sizeCompare = Long.compare(sourceAttrs.size(), targetAttrs.size());
-                  if (sizeCompare > 0) {
-                     copyCause = "LARGER";
-                  } else if (sizeCompare < 0) {
-                     copyCause = "SMALLER";
+               } else { // one is symlink
+                  if (sourceAttrs.isSymbolicLink()) {
+                     LOG.debug("Deleting target [@|magenta %s|@] because source is symlink and target is not...", targetPath);
                   } else {
-                     LOG.trace("Source file [@|magenta %s|@] is in sync...", relativePath);
-                     copyCause = null;
+                     LOG.debug("Deleting target [@|magenta %s|@] because target is symlink and source is not...", targetPath);
                   }
+                  delFile(task, targetPath, targetAttrs, true);
+                  copyCause = "REPLACE";
                }
-
-            } else { // one is symlink
-               if (sourceAttrs.isSymbolicLink()) {
-                  LOG.debug("Deleting target [@|magenta %s|@] because source is symlink and target is not...", targetPath);
-               } else {
-                  LOG.debug("Deleting target [@|magenta %s|@] because target is symlink and source is not...", targetPath);
-               }
+            }
+            case OTHER -> {
+               LOG.info("Deleting target entry [@|magenta %s|@] because source is file...", targetPath);
                delFile(task, targetPath, targetAttrs, true);
                copyCause = "REPLACE";
             }
-
-            /*
-             * target path points to directory
-             */
-         } else {
-            LOG.info("Deleting target directory [@|magenta %s|@] because source is file...", targetPath);
-            if (targetAttrs.isSymlink()) {
-               delFile(task, targetPath, targetAttrs, true);
-            } else {
-               delDir(task, targetPath);
+            case DIRECTORY, DIRECTORY_SYMLINK -> {
+               LOG.info("Deleting target directory [@|magenta %s|@] because source is file...", targetPath);
+               if (targetAttrs.isSymlink()) {
+                  delFile(task, targetPath, targetAttrs, true);
+               } else {
+                  delDir(task, targetPath);
+               }
+               copyCause = "REPLACE";
             }
-            copyCause = "REPLACE";
+            default -> throw new IllegalStateException("Unknown type [" + targetAttrs.type() + "] of target [" + targetPath + "].");
          }
       }
 
@@ -616,5 +633,51 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
          }
          stats.onFileCopied(System.currentTimeMillis() - start, sourceAttrs.size());
       }
+   }
+
+   private void syncSymlinkLeaf(final SyncCommandConfig task, final Path sourcePath, @Nullable Path targetPath, final Path relativePath,
+         final FileAttrs sourceAttrs) throws IOException {
+
+      final String copyCause;
+      if (targetPath == null) {
+         targetPath = task.targetRootAbsolute.resolve(relativePath);
+         copyCause = "NEW";
+      } else {
+         final var targetAttrs = FileAttrs.get(targetPath);
+         if (targetAttrs.isSymlink()) {
+            copyCause = null;
+         } else {
+            if (targetAttrs.isDir()) {
+               delDir(task, targetPath);
+            } else {
+               delFile(task, targetPath, targetAttrs, true);
+            }
+            copyCause = "REPLACE";
+         }
+      }
+
+      if (copyCause == null)
+         return;
+
+      if ("NEW".equals(copyCause) && loggableEvents.contains(LogEvent.CREATE) || loggableEvents.contains(LogEvent.MODIFY)) {
+         try {
+            LOG.info("%s [@|magenta %s -> %s|@]...", copyCause, relativePath, Files.readSymbolicLink(sourcePath));
+         } catch (final IOException ex) {
+            LOG.info("%s [@|magenta %s|@]...", copyCause, relativePath);
+         }
+      }
+
+      final var start = System.currentTimeMillis();
+      if (not(task.dryRun)) {
+         try {
+            Files.copy(sourcePath, targetPath, SYMLINK_COPY_OPTIONS);
+         } catch (final FileSystemException ex) {
+            if (!Boolean.TRUE.equals(task.ignoreSymlinkErrors))
+               throw ex;
+            LOG.error("Symlink creation failed:" + ex.getMessage(), ex);
+            return;
+         }
+      }
+      stats.onFileCopied(System.currentTimeMillis() - start, sourceAttrs.size());
    }
 }

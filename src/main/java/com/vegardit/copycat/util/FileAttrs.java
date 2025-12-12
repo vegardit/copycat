@@ -7,6 +7,7 @@ package com.vegardit.copycat.util;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.FileTime;
@@ -18,12 +19,17 @@ import org.eclipse.jdt.annotation.Nullable;
  */
 public final class FileAttrs {
 
+   /**
+    * Represents the type of a file system entries
+    */
    public enum Type {
+      BROKEN_SYMLINK,
       DIRECTORY,
       DIRECTORY_SYMLINK,
       FILE,
       FILE_SYMLINK,
-      OTHER
+      OTHER,
+      OTHER_SYMLINK
    }
 
    public static @Nullable FileAttrs find(final Path path) throws IOException {
@@ -44,13 +50,31 @@ public final class FileAttrs {
       return new FileAttrs(path, attrs);
    }
 
-   private final Type type;
    private final BasicFileAttributes attrs;
+   private final Type type;
 
    private FileAttrs(final Path path, final BasicFileAttributes attrs) {
       this.attrs = attrs;
       if (attrs.isSymbolicLink()) {
-         type = Files.isRegularFile(path) ? Type.FILE_SYMLINK : Type.DIRECTORY_SYMLINK;
+         Type resolvedType;
+         try {
+            // Determine the target kind by following the link once.
+            // Only a definite missing-target error marks the link as BROKEN_SYMLINK.
+            // Other IO/security failures are treated conservatively to avoid accidental exclusion.
+            final var targetAttrs = Files.readAttributes(path, BasicFileAttributes.class);
+            if (targetAttrs.isDirectory()) {
+               resolvedType = Type.DIRECTORY_SYMLINK;
+            } else if (targetAttrs.isRegularFile()) {
+               resolvedType = Type.FILE_SYMLINK;
+            } else {
+               resolvedType = Type.OTHER_SYMLINK;
+            }
+         } catch (final NoSuchFileException | FileNotFoundException ex) {
+            resolvedType = Type.BROKEN_SYMLINK;
+         } catch (final SecurityException | IOException ex) {
+            resolvedType = Type.FILE_SYMLINK;
+         }
+         type = resolvedType;
       } else if (attrs.isDirectory()) {
          type = Type.DIRECTORY;
       } else if (attrs.isRegularFile()) {
@@ -62,6 +86,10 @@ public final class FileAttrs {
 
    public FileTime creationTime() {
       return attrs.creationTime();
+   }
+
+   public boolean isBrokenSymlink() {
+      return type == Type.BROKEN_SYMLINK;
    }
 
    public boolean isDir() {
@@ -76,14 +104,6 @@ public final class FileAttrs {
       return type == Type.FILE;
    }
 
-   public boolean isFileOrFileSymlink() {
-      return type == Type.FILE || type == Type.FILE_SYMLINK;
-   }
-
-   public boolean isFileOrSymlink() {
-      return type == Type.FILE || isSymlink();
-   }
-
    public boolean isFileSymlink() {
       return type == Type.FILE_SYMLINK;
    }
@@ -92,8 +112,12 @@ public final class FileAttrs {
       return type == Type.OTHER;
    }
 
+   public boolean isOtherSymlink() {
+      return type == Type.OTHER_SYMLINK;
+   }
+
    public boolean isSymlink() {
-      return type == Type.FILE_SYMLINK || type == Type.DIRECTORY_SYMLINK;
+      return type == Type.BROKEN_SYMLINK || type == Type.DIRECTORY_SYMLINK || type == Type.FILE_SYMLINK || type == Type.OTHER_SYMLINK;
    }
 
    public FileTime lastModifiedTime() {

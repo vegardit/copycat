@@ -5,6 +5,7 @@
 package com.vegardit.copycat.command.watch;
 
 import static com.vegardit.copycat.util.Booleans.*;
+import static net.sf.jstuff.core.validation.NullAnalysisHelper.asNonNull;
 
 import java.io.File;
 import java.io.IOException;
@@ -228,15 +229,26 @@ public class WatchCommand extends AbstractSyncCommand<WatchCommandConfig> {
       try {
          final var filterCtx = filterContexts.get(task);
 
-         final var sourceAbsolute = event.path();
-         final var sourceRelative = sourceAbsolute.subpath(task.sourceRootAbsolute.getNameCount(), sourceAbsolute.getNameCount());
-         final var sourceAttrs = FileAttrs.get(sourceAbsolute);
+         final Path sourceAbsolute = asNonNull(event.path());
+         final Path sourceRelative;
+         try {
+            sourceRelative = task.sourceRootAbsolute.relativize(sourceAbsolute);
+         } catch (final IllegalArgumentException ex) {
+            LOG.warn("Ignoring event outside watched root [%s]: %s", task.sourceRootAbsolute, sourceAbsolute);
+            return;
+         }
 
          final var eventType = event.eventType();
+         final @Nullable FileAttrs sourceAttrs;
          final boolean isDirEvent;
          if (eventType == DirectoryChangeEvent.EventType.CREATE || eventType == DirectoryChangeEvent.EventType.MODIFY) {
-            isDirEvent = Files.isDirectory(sourceAbsolute, NOFOLLOW_LINKS);
+            sourceAttrs = FileAttrs.get(sourceAbsolute);
+            isDirEvent = switch (sourceAttrs.type()) {
+               case DIRECTORY -> true;
+               default -> false;
+            };
          } else {
+            sourceAttrs = null;
             isDirEvent = false;
          }
 
@@ -255,6 +267,7 @@ public class WatchCommand extends AbstractSyncCommand<WatchCommandConfig> {
 
          switch (eventType) {
             case CREATE:
+               assert sourceAttrs != null;
                if (isDirEvent) {
                   if (filterCtx != null && !FilterEngine.includesSource(filterCtx, sourceAbsolute, sourceRelative, sourceAttrs)) {
                      LOG.debug("Ignoring CREATE of %s", sourceAbsolute);
@@ -281,6 +294,7 @@ public class WatchCommand extends AbstractSyncCommand<WatchCommandConfig> {
                break;
 
             case MODIFY:
+               assert sourceAttrs != null;
                if (isDirEvent) {
                   if (filterCtx != null && !FilterEngine.includesSource(filterCtx, sourceAbsolute, sourceRelative, sourceAttrs)) {
                      LOG.debug("Ignoring MODIFY of %s", sourceAbsolute);
@@ -322,7 +336,7 @@ public class WatchCommand extends AbstractSyncCommand<WatchCommandConfig> {
                         }
                      }
                   }
-                  if (targetAttrs.isDir()) {
+                  if (targetAttrs.type() == FileAttrs.Type.DIRECTORY) {
                      if (loggableEvents.contains(LogEvent.DELETE)) {
                         LOG.info("DELETE [@|magenta %s%s|@]...", sourceRelative, File.separator);
                      }
@@ -408,34 +422,36 @@ public class WatchCommand extends AbstractSyncCommand<WatchCommandConfig> {
       final boolean targetExists;
       if (Files.exists(targetPath, NOFOLLOW_LINKS)) {
          final var targetAttrs = FileAttrs.get(targetPath);
-         /*
-          * target path points to file
-          */
-         if (Files.isRegularFile(targetPath)) {
-            if (sourceAttrs.isSymbolicLink() != targetAttrs.isSymlink()) { // one is symlink
-               if (sourceAttrs.isSymbolicLink()) {
-                  LOG.debug("Deleting target [@|magenta %s|@] because source is symlink and target is not...", targetPath);
+         switch (targetAttrs.type()) {
+            case FILE, FILE_SYMLINK, BROKEN_SYMLINK, OTHER_SYMLINK -> {
+               if (sourceAttrs.isSymbolicLink() != targetAttrs.isSymlink()) { // one is symlink
+                  if (sourceAttrs.isSymbolicLink()) {
+                     LOG.debug("Deleting target [@|magenta %s|@] because source is symlink and target is not...", targetPath);
+                  } else {
+                     LOG.debug("Deleting target [@|magenta %s|@] because target is symlink and source is not...", targetPath);
+                  }
+                  delFile(targetPath);
+                  targetExists = false;
                } else {
-                  LOG.debug("Deleting target [@|magenta %s|@] because target is symlink and source is not...", targetPath);
+                  targetExists = true;
                }
+            }
+            case OTHER -> {
+               LOG.debug("Deleting target [@|magenta %s|@] because source is file...", targetPath);
                delFile(targetPath);
                targetExists = false;
-            } else {
-               targetExists = true;
             }
-
-            /*
-             * target path points to directory
-             */
-         } else {
-            LOG.debug("Deleting target directory [@|magenta %s|@] because source is file...", targetPath);
-            if (targetAttrs.isSymlink()) {
-               delFile(targetPath);
-               targetExists = false;
-            } else {
-               delDir(targetPath);
-               targetExists = false;
+            case DIRECTORY, DIRECTORY_SYMLINK -> {
+               LOG.debug("Deleting target directory [@|magenta %s|@] because source is file...", targetPath);
+               if (targetAttrs.isSymlink()) {
+                  delFile(targetPath);
+                  targetExists = false;
+               } else {
+                  delDir(targetPath);
+                  targetExists = false;
+               }
             }
+            default -> throw new IllegalStateException("Unknown type [" + targetAttrs.type() + "] of target [" + targetPath + "].");
          }
       } else {
          targetExists = false;

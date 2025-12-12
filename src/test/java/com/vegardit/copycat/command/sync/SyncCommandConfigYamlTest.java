@@ -180,4 +180,26 @@ class SyncCommandConfigYamlTest {
          assertThat(ChronoUnit.MINUTES.between(since, now)).isCloseTo(3 * 60 + 30, within(2L));
       }
    }
+
+   @Test
+   @DisplayName("Parse exclude-other-links from YAML")
+   void testExcludeOtherLinksFromYaml() {
+      final String yaml = """
+         sync:
+         - source: C:\\\\src
+           target: C:\\\\dst
+           exclude-other-links: true
+         """;
+
+      final Map<String, Object> root = YamlUtils.parseYaml(new BufferedReader(new StringReader(yaml)));
+
+      @SuppressWarnings("unchecked")
+      final var syncList = asNonNull((List<Map<String, Object>>) root.get("sync"));
+      final Map<String, Object> taskMap = syncList.get(0);
+      final var taskCfg = new SyncCommandConfig();
+      taskCfg.applyFrom(taskMap, true);
+      taskCfg.applyDefaults();
+
+      assertThat(taskCfg.excludeOtherLinks).isTrue();
+   }
 }

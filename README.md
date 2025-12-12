@@ -89,6 +89,7 @@ Options:
       --exclude-hidden-system-files
                             Don't synchronize hidden system files.
       --exclude-older-files Don't override newer files in target with older files in source.
+      --exclude-other-links Don't synchronize symlinks whose targets are neither files nor directories.
       --exclude-system-files
                             Don't synchronize system files.
       --filter (in|ex):<pattern>
@@ -208,6 +209,7 @@ Options:
                             Don't synchronize hidden files.
       --exclude-hidden-system-files
                             Don't synchronize hidden system files.
+      --exclude-other-links Don't synchronize symlinks whose targets are neither files nor directories.
       --exclude-system-files
                             Don't synchronize system files.
       --filter (in|ex):<pattern>

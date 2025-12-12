@@ -42,6 +42,7 @@ public final class FilterEngine {
 
       final @Nullable FileTime modifiedFrom;
       final @Nullable FileTime modifiedTo;
+      final boolean excludeOtherLinks;
       final boolean excludeHiddenFiles;
       final boolean excludeHiddenSystemFiles;
       final boolean excludeSystemFiles;
@@ -57,11 +58,13 @@ public final class FilterEngine {
 
       private FilterContext(final List<FilterRule> sourceRules, // CHECKSTYLE:IGNORE .*
             final @Nullable FileTime modifiedFrom, final @Nullable FileTime modifiedTo, //
+            final boolean excludeOtherLinks, //
             final boolean excludeHiddenFiles, final boolean excludeHiddenSystemFiles, final boolean excludeSystemFiles,
             final boolean hasIncludeRules, final boolean hasGlobalExcludeAll, final boolean ignoreGlobalExcludeForDirs) {
          this.sourceRules = sourceRules;
          this.modifiedFrom = modifiedFrom;
          this.modifiedTo = modifiedTo;
+         this.excludeOtherLinks = excludeOtherLinks;
          this.excludeHiddenFiles = excludeHiddenFiles;
          this.excludeHiddenSystemFiles = excludeHiddenSystemFiles;
          this.excludeSystemFiles = excludeSystemFiles;
@@ -170,6 +173,7 @@ public final class FilterEngine {
          rules.isEmpty() ? List.of() : List.copyOf(rules), //
          modifiedFrom, //
          modifiedTo, //
+         Boolean.TRUE.equals(cfg.excludeOtherLinks), //
          Boolean.TRUE.equals(cfg.excludeHiddenFiles), //
          Boolean.TRUE.equals(cfg.excludeHiddenSystemFiles), //
          Boolean.TRUE.equals(cfg.excludeSystemFiles), //
@@ -210,6 +214,9 @@ public final class FilterEngine {
     */
    private static boolean includesSource(final FilterContext filters, final Path absolutePath, final Path relativePath,
          final FileAttrs attrs, final int firstMatchIndex) throws IOException {
+
+      if (filters.excludeOtherLinks && (attrs.isOtherSymlink() || attrs.isBrokenSymlink()))
+         return false;
 
       // Hidden/system filters (apply to files and directories)
       if (filters.excludeHiddenSystemFiles || filters.excludeSystemFiles || filters.excludeHiddenFiles) {
