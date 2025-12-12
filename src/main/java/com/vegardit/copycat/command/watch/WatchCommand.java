@@ -244,7 +244,7 @@ public class WatchCommand extends AbstractSyncCommand<WatchCommandConfig> {
          if (eventType == DirectoryChangeEvent.EventType.CREATE || eventType == DirectoryChangeEvent.EventType.MODIFY) {
             sourceAttrs = FileAttrs.get(sourceAbsolute);
             isDirEvent = switch (sourceAttrs.type()) {
-               case DIRECTORY -> true;
+               case DIRECTORY, DIRECTORY_SYMLINK -> true;
                default -> false;
             };
          } else {
@@ -276,7 +276,22 @@ public class WatchCommand extends AbstractSyncCommand<WatchCommandConfig> {
                   if (loggableEvents.contains(LogEvent.CREATE)) {
                      LOG.info("CREATE [@|magenta %s%s|@]...", sourceRelative, File.separator);
                   }
-                  if (filterCtx != null && FilterEngine.isDirExplicitlyIncluded(filterCtx, sourceRelative)) {
+                  if (sourceAttrs.type() == FileAttrs.Type.DIRECTORY_SYMLINK) {
+                     prepareParentDirsForIncludedFile(task, sourceRelative);
+                     final Path existingTarget = Files.exists(targetAbsolute, NOFOLLOW_LINKS) ? targetAbsolute : null;
+                     DirectoryMirror.ensureDir(task, //
+                        false, //
+                        sourceAbsolute, //
+                        existingTarget, //
+                        targetAbsolute, //
+                        sourceRelative, //
+                        false, //
+                        LOG, //
+                        null, //
+                        (file, fileAttrs, countStats) -> delFile(file), //
+                        this::delDir, //
+                        true);
+                  } else if (filterCtx != null && FilterEngine.isDirExplicitlyIncluded(filterCtx, sourceRelative)) {
                      ensureTargetDirPrepared(task, sourceAbsolute, sourceRelative);
                   }
                } else {
@@ -302,6 +317,22 @@ public class WatchCommand extends AbstractSyncCommand<WatchCommandConfig> {
                   }
                   if (loggableEvents.contains(LogEvent.MODIFY)) {
                      LOG.info("MODIFY [@|magenta %s%s|@]...", sourceRelative, File.separator);
+                  }
+                  if (sourceAttrs.type() == FileAttrs.Type.DIRECTORY_SYMLINK) {
+                     prepareParentDirsForIncludedFile(task, sourceRelative);
+                     final Path existingTarget = Files.exists(targetAbsolute, NOFOLLOW_LINKS) ? targetAbsolute : null;
+                     DirectoryMirror.ensureDir(task, //
+                        false, //
+                        sourceAbsolute, //
+                        existingTarget, //
+                        targetAbsolute, //
+                        sourceRelative, //
+                        false, //
+                        LOG, //
+                        null, //
+                        (file, fileAttrs, countStats) -> delFile(file), //
+                        this::delDir, //
+                        true);
                   }
                } else {
                   if (filterCtx != null && !FilterEngine.includesSource(filterCtx, sourceAbsolute, sourceRelative, sourceAttrs)) {
