@@ -90,20 +90,31 @@ public final class DirectoryMirror {
 
       if (existingTargetPath != null) {
          final var targetAttrs = FileAttrs.get(existingTargetPath);
-         if (targetAttrs.isFile()) {
-            log.debug("Deleting target file [@|magenta %s|@] because source is directory...", relativePath);
-            fileDeleter.deleteFile(existingTargetPath, targetAttrs, true);
-         } else {
-            if (sourceAttrs.isSymbolicLink() == targetAttrs.isSymlink())
-               // both are either symlink or directory, thus nothing to do
+         if (!sourceAttrs.isSymbolicLink()) {
+            // source is a real directory
+            if (targetAttrs.isDir())
                return;
 
+            log.debug("Deleting target [@|magenta %s|@] because source is directory...", relativePath);
+            fileDeleter.deleteFile(existingTargetPath, targetAttrs, true);
+         } else {
+            // source is a directory symlink
             if (targetAttrs.isSymlink()) {
-               log.debug("Deleting target [@|magenta %s|@] because target is symlink and source is not...", existingTargetPath);
-               fileDeleter.deleteFile(existingTargetPath, targetAttrs, true);
-            } else {
+               try {
+                  final var sourceLink = Files.readSymbolicLink(sourcePath);
+                  final var targetLink = Files.readSymbolicLink(existingTargetPath);
+                  if (sourceLink.equals(targetLink))
+                     return;
+               } catch (final IOException ex) {
+                  // treat as mismatch and recreate
+               }
+               log.debug("Replacing target symlink [@|magenta %s|@] because symlink target changed...", relativePath);
+            } else if (targetAttrs.isDir()) {
                log.debug("Deleting target [@|magenta %s|@] because source is symlink and target is not...", existingTargetPath);
                dirDeleter.deleteDir(existingTargetPath);
+            } else {
+               log.debug("Deleting target [@|magenta %s|@] because source is symlink and target is not...", existingTargetPath);
+               fileDeleter.deleteFile(existingTargetPath, targetAttrs, true);
             }
          }
       }

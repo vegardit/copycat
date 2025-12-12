@@ -572,7 +572,8 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
          switch (targetAttrs.type()) {
             case FILE, FILE_SYMLINK, BROKEN_SYMLINK, OTHER_SYMLINK -> {
                if (sourceAttrs.isSymbolicLink() && targetAttrs.isSymlink()) { // both are symlinks
-                  copyCause = null;
+                  syncSymlinkLeaf(task, sourcePath, targetPath, relativePath, FileAttrs.get(sourcePath));
+                  return;
                } else if (sourceAttrs.isSymbolicLink() == targetAttrs.isSymlink()) { // neither is a symlink
                   final var timeCompare = sourceAttrs.lastModifiedTime().compareTo(targetAttrs.lastModifiedTime());
                   if (timeCompare > 0) {
@@ -645,7 +646,15 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
       } else {
          final var targetAttrs = FileAttrs.get(targetPath);
          if (targetAttrs.isSymlink()) {
-            copyCause = null;
+            try {
+               final var sourceLink = Files.readSymbolicLink(sourcePath);
+               final var targetLink = Files.readSymbolicLink(targetPath);
+               if (sourceLink.equals(targetLink))
+                  return;
+            } catch (final IOException ex) {
+               // treat as changed and recreate
+            }
+            copyCause = "UPDATE";
          } else {
             if (targetAttrs.isDir()) {
                delDir(task, targetPath);
@@ -655,9 +664,6 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
             copyCause = "REPLACE";
          }
       }
-
-      if (copyCause == null)
-         return;
 
       if ("NEW".equals(copyCause) && loggableEvents.contains(LogEvent.CREATE) || loggableEvents.contains(LogEvent.MODIFY)) {
          try {
