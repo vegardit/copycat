@@ -19,7 +19,10 @@ import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorCompletionService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 
@@ -183,6 +186,8 @@ public class WatchCommand extends AbstractSyncCommand<WatchCommandConfig> {
          BasicThreadFactory.builder().namingPattern("sync-%d").build() //
       );
 
+      final var completion = new ExecutorCompletionService<@Nullable Void>(threadPool);
+
       for (final var task : tasks) {
          final var filterCtx = task.toSourceFilterContext();
          filterContexts.put(task, filterCtx);
@@ -210,17 +215,37 @@ public class WatchCommand extends AbstractSyncCommand<WatchCommandConfig> {
             .listener(event -> onFileChanged(task, event)) //
             .build();
 
-         threadPool.submit(() -> {
+         completion.submit(() -> {
             watcher.watch();
             if (!Files.exists(task.sourceRootAbsolute))
                throw new IllegalStateException("Directory: [" + task.sourceRootAbsolute + "] does not exist anymore!");
+            return null;
          });
       }
 
       LOG.info("Now watching...");
 
       threadPool.shutdown();
-      threadPool.awaitTermination(Long.MAX_VALUE, TimeUnit.DAYS);
+      try {
+         // Block until any watcher thread ends (normally or exceptionally). Exceptions from watcher threads
+         // are otherwise captured by the Future and would never be surfaced.
+         final Future<@Nullable Void> firstCompleted = completion.take();
+         firstCompleted.get();
+         throw new IllegalStateException("Watcher stopped unexpectedly.");
+      } catch (final InterruptedException ex) {
+         Thread.currentThread().interrupt();
+         throw ex;
+      } catch (final ExecutionException ex) {
+         final Throwable cause = ex.getCause();
+         if (cause instanceof final Exception e)
+            throw e;
+         if (cause instanceof final Error e)
+            throw e;
+         throw new RuntimeException(cause);
+      } finally {
+         threadPool.shutdownNow();
+         threadPool.awaitTermination(Long.MAX_VALUE, TimeUnit.DAYS);
+      }
    }
 
    private ConcurrentMap<Path, FileHash> sourceFileHashes = new ConcurrentHashMap<>();
