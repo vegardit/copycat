@@ -17,7 +17,8 @@ import org.eclipse.jdt.annotation.Nullable;
 import org.yaml.snakeyaml.DumperOptions;
 import org.yaml.snakeyaml.LoaderOptions;
 import org.yaml.snakeyaml.Yaml;
-import org.yaml.snakeyaml.constructor.Constructor;
+import org.yaml.snakeyaml.constructor.SafeConstructor;
+import org.yaml.snakeyaml.inspector.UnTrustedTagInspector;
 import org.yaml.snakeyaml.introspector.Property;
 import org.yaml.snakeyaml.nodes.MappingNode;
 import org.yaml.snakeyaml.nodes.NodeTuple;
@@ -64,8 +65,10 @@ public final class YamlUtils {
     */
    public static LinkedHashMap<String, Object> parseYaml(final BufferedReader reader) {
       final var yamlLoaderOpts = new LoaderOptions();
+      // Disallow all global tags (e.g. !!com.acme.Foo) to prevent constructing arbitrary Java types.
+      yamlLoaderOpts.setTagInspector(new UnTrustedTagInspector());
       final var yamlDumperOpts = new DumperOptions();
-      final var yaml = new Yaml(new Constructor(yamlLoaderOpts), new Representer(yamlDumperOpts), yamlDumperOpts, yamlLoaderOpts,
+      final var yaml = new Yaml(new SafeConstructor(yamlLoaderOpts), new Representer(yamlDumperOpts), yamlDumperOpts, yamlLoaderOpts,
          new Resolver() {
             @Override
             protected void addImplicitResolvers() {
