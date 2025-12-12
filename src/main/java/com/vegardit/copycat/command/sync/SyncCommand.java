@@ -27,6 +27,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.logging.Level;
 
 import org.apache.commons.lang3.concurrent.BasicThreadFactory;
@@ -44,7 +45,6 @@ import net.sf.jstuff.core.concurrent.Threads;
 import net.sf.jstuff.core.io.MoreFiles;
 import net.sf.jstuff.core.io.Size;
 import net.sf.jstuff.core.logging.Logger;
-import net.sf.jstuff.core.ref.MutableRef;
 import picocli.CommandLine;
 import picocli.CommandLine.Option;
 
@@ -179,20 +179,22 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
                final var threadPool = Executors.newFixedThreadPool(task_threads, //
                   BasicThreadFactory.builder().namingPattern("sync-%d").build() //
                );
-               // CHECKSTYLE:IGNORE .* FOR NEXT LINE
-               final var exRef = MutableRef.create();
+               final var firstError = new AtomicReference<@Nullable Exception>();
                for (var i = 0; i < task_threads; i++) {
                   threadPool.submit(() -> {
                      try {
                         syncWorker(task, sourceFilterCtx, targetFilterCtx, dirJobs);
                      } catch (final Exception e) {
-                        exRef.set(e);
+                        if (firstError.compareAndSet(null, e)) {
+                           state = State.ABORT_BY_EXCEPTION;
+                        }
                      }
                   });
                }
                threadPool.shutdown();
                threadPool.awaitTermination(Long.MAX_VALUE, TimeUnit.DAYS);
-               if (exRef.get() instanceof final Exception ex) {
+               final var ex = firstError.get();
+               if (ex != null) {
                   DesktopNotifications.showSticky(MessageType.ERROR, "Syncing failed.", //
                      "ERROR: " + ex.getMessage() + "\nFROM: " + task.sourceRootAbsolute + "\nTO: " + task.targetRootAbsolute);
                   throw ex;
