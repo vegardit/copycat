@@ -60,7 +60,8 @@ public final class WindowsPowerShell {
 
       try {
          return Processes.builder(executable) //
-            .withArgs("-NoLogo", "-NoProfile", "-NonInteractive", "-Command", "$code=[Console]::In.ReadToEnd();Invoke-Expression $code") //
+            .withArgs("-NoLogo", "-NoProfile", "-NonInteractive", "-Command",
+               "$code=[Console]::In.ReadToEnd();& ([ScriptBlock]::Create($code))") //
             .withInput(script) //
             .withRedirectOutput(line -> {
                synchronized (out) {
@@ -87,7 +88,7 @@ public final class WindowsPowerShell {
 
       try {
          return Processes.builder(executable).withArgs("-NoLogo", "-NoProfile", "-NonInteractive", "-Command",
-            "$code=[Console]::In.ReadToEnd();Invoke-Expression $code").withInput(script) // feed script
+            "$code=[Console]::In.ReadToEnd();& ([ScriptBlock]::Create($code))").withInput(script) // feed script
             .withInheritOutput() // stdout -> real console
             .withInheritError() // stderr -> real console
             .start() //
