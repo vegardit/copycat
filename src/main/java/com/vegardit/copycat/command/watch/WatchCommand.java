@@ -15,6 +15,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -58,6 +59,8 @@ import picocli.CommandLine.Option;
    description = "Continuously watches a directory recursively for changes and synchronizes them to another directory." //
 )
 public class WatchCommand extends AbstractSyncCommand<WatchCommandConfig> {
+
+   private static final long FORCE_SHUTDOWN_TIMEOUT_MILLIS = 30_000;
 
    /**
     * custom visitor that WatchCommandConfig excludes into account
@@ -183,68 +186,100 @@ public class WatchCommand extends AbstractSyncCommand<WatchCommandConfig> {
       DesktopNotifications.setTrayIconToolTip("copycat is watching...");
 
       final var threadPool = Executors.newFixedThreadPool(tasks.size(), //
-         BasicThreadFactory.builder().namingPattern("sync-%d").build() //
+         BasicThreadFactory.builder().namingPattern("watch-%d").build() //
       );
 
       final var completion = new ExecutorCompletionService<@Nullable Void>(threadPool);
+      final var watchers = new ArrayList<DirectoryWatcher>(tasks.size());
 
-      for (final var task : tasks) {
-         final var filterCtx = task.toSourceFilterContext();
-         filterContexts.put(task, filterCtx);
-         final var targetFilterCtx = task.toTargetFilterContext();
-         targetFilterContexts.put(task, targetFilterCtx);
-         preparedTargetDirs.clear();
-         preparedParentDirsRelative.clear();
+      @Nullable
+      Throwable failure = null;
+      try {
+         for (final var task : tasks) {
+            final var filterCtx = task.toSourceFilterContext();
+            filterContexts.put(task, filterCtx);
+            final var targetFilterCtx = task.toTargetFilterContext();
+            targetFilterContexts.put(task, targetFilterCtx);
+            preparedTargetDirs.clear();
+            preparedParentDirsRelative.clear();
 
-         JdkLoggingUtils.withRootLogLevel(Level.INFO, () -> {
-            LOG.info("Effective Config:\n%s", YamlUtils.toYamlString(task));
-         });
+            JdkLoggingUtils.withRootLogLevel(Level.INFO, () -> {
+               LOG.info("Effective Config:\n%s", YamlUtils.toYamlString(task));
+            });
 
-         if (!Files.exists(task.targetRootAbsolute, NOFOLLOW_LINKS)) {
-            if (loggableEvents.contains(LogEvent.CREATE)) {
-               LOG.info("NEW [@|magenta %s%s|@]...", task.targetRootAbsolute, File.separator);
+            if (!Files.exists(task.targetRootAbsolute, NOFOLLOW_LINKS)) {
+               if (loggableEvents.contains(LogEvent.CREATE)) {
+                  LOG.info("NEW [@|magenta %s%s|@]...", task.targetRootAbsolute, File.separator);
+               }
+               FileUtils.copyDirShallow(task.sourceRootAbsolute, task.targetRootAbsolute, isTrue(task.copyACL));
             }
-            FileUtils.copyDirShallow(task.sourceRootAbsolute, task.targetRootAbsolute, isTrue(task.copyACL));
+
+            LOG.info("Preparing watching of [%s]...", task.sourceRootAbsolute);
+            final var watcher = DirectoryWatcher.builder() //
+               .path(task.sourceRootAbsolute) //
+               .fileHashing(false) // disable file hashing which takes too much time on large trees during initialization
+               .fileTreeVisitor(new CustomFileTreeVisitor(task)) //
+               .listener(event -> onFileChanged(task, event)) //
+               .build();
+            watchers.add(watcher);
+
+            completion.submit(() -> {
+               watcher.watch();
+               if (!Files.exists(task.sourceRootAbsolute))
+                  throw new IllegalStateException("Directory: [" + task.sourceRootAbsolute + "] does not exist anymore!");
+               return null;
+            });
          }
 
-         LOG.info("Preparing watching of [%s]...", task.sourceRootAbsolute);
-         final var watcher = DirectoryWatcher.builder() //
-            .path(task.sourceRootAbsolute) //
-            .fileHashing(false) // disable file hashing which takes too much time on large trees during initialization
-            .fileTreeVisitor(new CustomFileTreeVisitor(task)) //
-            .listener(event -> onFileChanged(task, event)) //
-            .build();
+         LOG.info("Now watching...");
 
-         completion.submit(() -> {
-            watcher.watch();
-            if (!Files.exists(task.sourceRootAbsolute))
-               throw new IllegalStateException("Directory: [" + task.sourceRootAbsolute + "] does not exist anymore!");
-            return null;
-         });
-      }
+         threadPool.shutdown();
 
-      LOG.info("Now watching...");
-
-      threadPool.shutdown();
-      try {
          // Block until any watcher thread ends (normally or exceptionally). Exceptions from watcher threads
          // are otherwise captured by the Future and would never be surfaced.
          final Future<@Nullable Void> firstCompleted = completion.take();
          firstCompleted.get();
          throw new IllegalStateException("Watcher stopped unexpectedly.");
-      } catch (final InterruptedException ex) {
-         Thread.currentThread().interrupt();
-         throw ex;
-      } catch (final ExecutionException ex) {
-         final Throwable cause = ex.getCause();
-         if (cause instanceof final Exception e)
-            throw e;
-         if (cause instanceof final Error e)
-            throw e;
-         throw new RuntimeException(cause);
+      } catch (final Throwable t) { // CHECKSTYLE:IGNORE .*
+         final Throwable primary;
+         if (t instanceof final ExecutionException ex) {
+            final Throwable cause = ex.getCause();
+            primary = cause == null ? ex : cause;
+         } else {
+            primary = t;
+         }
+         failure = primary;
+         if (primary instanceof InterruptedException) {
+            Thread.currentThread().interrupt();
+         }
+         if (primary instanceof final Exception ex)
+            throw ex;
+         if (primary instanceof final Error ex)
+            throw ex;
+         throw new RuntimeException(primary);
       } finally {
+         for (final var watcher : watchers) {
+            try {
+               watcher.close();
+            } catch (final IOException ex) {
+               if (failure != null) {
+                  failure.addSuppressed(ex);
+               } else {
+                  LOG.warn("Failed to close directory watcher: %s", ex.toString());
+               }
+            }
+         }
          threadPool.shutdownNow();
-         threadPool.awaitTermination(Long.MAX_VALUE, TimeUnit.DAYS);
+         try {
+            if (!threadPool.awaitTermination(FORCE_SHUTDOWN_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS)) {
+               LOG.warn("Watcher thread pool did not terminate within %sms.", FORCE_SHUTDOWN_TIMEOUT_MILLIS);
+            }
+         } catch (final InterruptedException ex) {
+            if (failure != null) {
+               failure.addSuppressed(ex);
+            }
+            Thread.currentThread().interrupt();
+         }
       }
    }
 
