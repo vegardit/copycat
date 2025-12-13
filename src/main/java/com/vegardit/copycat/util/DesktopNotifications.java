@@ -115,7 +115,10 @@ public final class DesktopNotifications {
             WindowsPowerShell.executeAsync("" //
                   + "Add-Type -AssemblyName System.Windows.Forms;" //
                   + "Add-Type -AssemblyName System.Drawing;" //
+                  + "$appIconStream=$null;" //
+                  + "$appIcon=$null;" //
                   + "$msg=New-Object System.Windows.Forms.NotifyIcon;" //
+                  + "try{" //
                   // https://learn.microsoft.com/en-us/dotnet/api/system.windows.forms.notifyicon?view=windowsdesktop-9.0#properties
                   + "$msg.BalloonTipTitle='[copycat] " + escapePowerShellSingleQuoted(title) + "';" //
                   + "$msg.BalloonTipText='" + escapePowerShellSingleQuoted(message) + "';" //
@@ -124,12 +127,19 @@ public final class DesktopNotifications {
                         ? "$msg.Icon=[System.Drawing.SystemIcons]::Application;" //
                         : "$iconB64='" + APP_ICON_BASE64 + "';" //
                               + "$bytes=[Convert]::FromBase64String($iconB64);" //
-                              + "$ms=New-Object System.IO.MemoryStream(,$bytes);" //
-                              + "$appIcon=[System.Drawing.Image]::FromStream($ms);" //
+                              + "$appIconStream=New-Object System.IO.MemoryStream(,$bytes);" //
+                              + "$appIcon=[System.Drawing.Image]::FromStream($appIconStream);" //
                               + "$msg.Icon=[System.Drawing.Icon]::FromHandle($appIcon.GetHicon());" //
                   ) //
                   + "$msg.Visible=$True;" //
                   + "$msg.ShowBalloonTip(5000);" //
+                  + "Start-Sleep -Milliseconds 5000;" //
+                  + "}finally{" //
+                  + "  try{$msg.Visible=$False;}catch{};" //
+                  + "  try{$msg.Dispose();}catch{};" //
+                  + "  if($appIcon){try{$appIcon.Dispose();}catch{}};" //
+                  + "  if($appIconStream){try{$appIconStream.Dispose();}catch{}};" //
+                  + "}" //
             );
             return true;
          } catch (final Exception ex) {
@@ -153,7 +163,10 @@ public final class DesktopNotifications {
             WindowsPowerShell.executeAsync("" //
                   + "Add-Type -AssemblyName System.Windows.Forms;" //
                   + "Add-Type -AssemblyName System.Drawing;" //
+                  + "$appIconStream=$null;" //
+                  + "$appIcon=$null;" //
                   + "$msg=New-Object System.Windows.Forms.NotifyIcon;" //
+                  + "try{" //
                   // https://learn.microsoft.com/en-us/dotnet/api/system.windows.forms.notifyicon?view=windowsdesktop-9.0#properties
                   + "$msg.BalloonTipTitle='[copycat] " + escapePowerShellSingleQuoted(title) + "';" //
                   + "$msg.BalloonTipText='" + escapePowerShellSingleQuoted(message) + "';" //
@@ -162,14 +175,19 @@ public final class DesktopNotifications {
                         ? "$msg.Icon=[System.Drawing.SystemIcons]::Application;" //
                         : "$iconB64='" + APP_ICON_BASE64 + "';" //
                               + "$bytes=[Convert]::FromBase64String($iconB64);" //
-                              + "$ms=New-Object System.IO.MemoryStream(,$bytes);" //
-                              + "$appIcon=[System.Drawing.Image]::FromStream($ms);" //
+                              + "$appIconStream=New-Object System.IO.MemoryStream(,$bytes);" //
+                              + "$appIcon=[System.Drawing.Image]::FromStream($appIconStream);" //
                               + "$msg.Icon=[System.Drawing.Icon]::FromHandle($appIcon.GetHicon());" //
                   ) //
                   + "$msg.Visible=$True;" //
                   + "$msg.ShowBalloonTip(2000);" //
                   + "Start-Sleep -Milliseconds 2000;" //
-                  + "$msg.Visible=$False;" //
+                  + "}finally{" //
+                  + "  $msg.Visible=$False;" //
+                  + "  try{$msg.Dispose();}catch{};" //
+                  + "  if($appIcon){try{$appIcon.Dispose();}catch{}};" //
+                  + "  if($appIconStream){try{$appIconStream.Dispose();}catch{}};" //
+                  + "}" //
             );
             return true;
          } catch (final Exception ex) {
