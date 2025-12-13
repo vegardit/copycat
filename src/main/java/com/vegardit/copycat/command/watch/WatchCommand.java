@@ -153,8 +153,16 @@ public class WatchCommand extends AbstractSyncCommand<WatchCommandConfig> {
    private final Set<LogEvent> loggableEvents = Sets.newHashSet(LogEvent.values());
    private final ConcurrentMap<WatchCommandConfig, FilterContext> filterContexts = new ConcurrentHashMap<>();
    private final ConcurrentMap<WatchCommandConfig, FilterContext> targetFilterContexts = new ConcurrentHashMap<>();
-   private final Set<Path> preparedTargetDirs = ConcurrentHashMap.newKeySet();
-   private final Set<Path> preparedParentDirsRelative = ConcurrentHashMap.newKeySet();
+   private final ConcurrentMap<WatchCommandConfig, Set<Path>> preparedTargetDirsByTask = new ConcurrentHashMap<>();
+   private final ConcurrentMap<WatchCommandConfig, Set<Path>> preparedParentDirsRelativeByTask = new ConcurrentHashMap<>();
+
+   private Set<Path> preparedTargetDirs(final WatchCommandConfig task) {
+      return preparedTargetDirsByTask.computeIfAbsent(task, t -> ConcurrentHashMap.newKeySet());
+   }
+
+   private Set<Path> preparedParentDirsRelative(final WatchCommandConfig task) {
+      return preparedParentDirsRelativeByTask.computeIfAbsent(task, t -> ConcurrentHashMap.newKeySet());
+   }
 
    public WatchCommand() {
       super(WatchCommandConfig::new);
@@ -200,8 +208,8 @@ public class WatchCommand extends AbstractSyncCommand<WatchCommandConfig> {
             filterContexts.put(task, filterCtx);
             final var targetFilterCtx = task.toTargetFilterContext();
             targetFilterContexts.put(task, targetFilterCtx);
-            preparedTargetDirs.clear();
-            preparedParentDirsRelative.clear();
+            preparedTargetDirsByTask.put(task, ConcurrentHashMap.newKeySet());
+            preparedParentDirsRelativeByTask.put(task, ConcurrentHashMap.newKeySet());
 
             JdkLoggingUtils.withRootLogLevel(Level.INFO, () -> {
                LOG.info("Effective Config:\n%s", YamlUtils.toYamlString(task));
@@ -466,7 +474,7 @@ public class WatchCommand extends AbstractSyncCommand<WatchCommandConfig> {
 
       // If the immediate parent is already known to be prepared (and thus its ancestors as well),
       // we can skip rebuilding and walking the full parent chain.
-      if (preparedParentDirsRelative.contains(parentRelative))
+      if (preparedParentDirsRelative(task).contains(parentRelative))
          return;
 
       final var parents = new java.util.ArrayDeque<Path>();
@@ -485,10 +493,10 @@ public class WatchCommand extends AbstractSyncCommand<WatchCommandConfig> {
 
    private void ensureTargetDirPrepared(final WatchCommandConfig task, final Path sourceDir, final Path dirRelative) throws IOException {
       final Path targetDir = task.targetRootAbsolute.resolve(dirRelative);
-      if (!preparedTargetDirs.add(targetDir))
+      if (!preparedTargetDirs(task).add(targetDir))
          return;
 
-      preparedParentDirsRelative.add(dirRelative);
+      preparedParentDirsRelative(task).add(dirRelative);
 
       final Path existingTarget = Files.exists(targetDir, NOFOLLOW_LINKS) ? targetDir : null;
 
