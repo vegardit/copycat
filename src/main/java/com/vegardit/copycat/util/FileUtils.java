@@ -25,6 +25,7 @@ import java.nio.file.attribute.UserDefinedFileAttributeView;
 
 import org.apache.commons.lang3.CharUtils;
 import org.eclipse.jdt.annotation.NonNull;
+import org.eclipse.jdt.annotation.Nullable;
 
 import com.sun.nio.file.ExtendedOpenOption;
 
@@ -63,56 +64,70 @@ public final class FileUtils {
       final var sourceSupportedAttrs = sourceFS.supportedFileAttributeViews();
       final var targetSupportedAttrs = targetFS.supportedFileAttributeViews();
 
-      if (sourceAttrs instanceof final DosFileAttributes sourceDosAttrs) {
-         final var targetDosAttrs = targetFSP.getFileAttributeView(target, DosFileAttributeView.class, NOFOLLOW_LINKS);
-         if (targetDosAttrs != null) {
-            targetDosAttrs.setArchive(sourceDosAttrs.isArchive());
-            targetDosAttrs.setHidden(sourceDosAttrs.isHidden());
-            targetDosAttrs.setReadOnly(sourceDosAttrs.isReadOnly());
-            targetDosAttrs.setSystem(sourceDosAttrs.isSystem());
-         }
-         if (copyACL && sourceSupportedAttrs.contains("acl") && targetSupportedAttrs.contains("acl")) {
-            final var sourceFSP = sourceFS.provider();
-            final var sourceAclAttrs = sourceFSP.getFileAttributeView(source, AclFileAttributeView.class, NOFOLLOW_LINKS);
-            final var targetAclAttrs = targetFSP.getFileAttributeView(target, AclFileAttributeView.class, NOFOLLOW_LINKS);
-            if (sourceAclAttrs != null && targetAclAttrs != null) {
-               targetAclAttrs.setAcl(sourceAclAttrs.getAcl());
-               if (SystemUtils.isRunningAsAdmin()) {
-                  targetAclAttrs.setOwner(sourceAclAttrs.getOwner());
-               }
+      @Nullable
+      DosFileAttributes sourceDosAttrs = null;
+      if (SystemUtils.IS_OS_WINDOWS && sourceAttrs instanceof final DosFileAttributes dosAttrs) {
+         sourceDosAttrs = dosAttrs;
+      }
+
+      final var targetDosAttrs = SystemUtils.IS_OS_WINDOWS //
+            ? targetFSP.getFileAttributeView(target, DosFileAttributeView.class, NOFOLLOW_LINKS)
+            : null;
+      final var targetPosixAttrs = targetFSP.getFileAttributeView(target, PosixFileAttributeView.class, NOFOLLOW_LINKS);
+
+      if (sourceDosAttrs != null && targetDosAttrs != null) {
+         targetDosAttrs.setArchive(sourceDosAttrs.isArchive());
+         targetDosAttrs.setHidden(sourceDosAttrs.isHidden());
+         targetDosAttrs.setReadOnly(sourceDosAttrs.isReadOnly());
+         targetDosAttrs.setSystem(sourceDosAttrs.isSystem());
+      }
+
+      if (copyACL && SystemUtils.IS_OS_WINDOWS && sourceSupportedAttrs.contains("acl") && targetSupportedAttrs.contains("acl")) {
+         final var sourceFSP = sourceFS.provider();
+         final var sourceAclAttrs = sourceFSP.getFileAttributeView(source, AclFileAttributeView.class, NOFOLLOW_LINKS);
+         final var targetAclAttrs = targetFSP.getFileAttributeView(target, AclFileAttributeView.class, NOFOLLOW_LINKS);
+         if (sourceAclAttrs != null && targetAclAttrs != null) {
+            targetAclAttrs.setAcl(sourceAclAttrs.getAcl());
+            if (SystemUtils.isRunningAsAdmin()) {
+               targetAclAttrs.setOwner(sourceAclAttrs.getOwner());
             }
          }
-         copyUserAttrs(source, target);
-         if (targetDosAttrs != null) {
-            copyTimeAttrs(sourceDosAttrs, targetDosAttrs);
-         } else if (targetBasicAttrs != null) {
-            copyTimeAttrs(sourceDosAttrs, targetBasicAttrs);
-         }
-         return;
       }
 
-      if (sourceAttrs instanceof final PosixFileAttributes sourcePosixAttrs) {
-         final var targetPosixAttrs = targetFSP.getFileAttributeView(target, PosixFileAttributeView.class, NOFOLLOW_LINKS);
-         if (copyACL && targetPosixAttrs != null) {
-            targetPosixAttrs.setOwner(sourcePosixAttrs.owner());
-            targetPosixAttrs.setGroup(sourcePosixAttrs.group());
-            targetPosixAttrs.setPermissions(sourcePosixAttrs.permissions());
+      boolean ownerCopied = false;
+
+      @Nullable
+      PosixFileAttributes sourcePosixAttrs = null;
+      if (sourceAttrs instanceof final PosixFileAttributes posixAttrs) {
+         sourcePosixAttrs = posixAttrs;
+      } else if (copyACL && targetPosixAttrs != null && sourceSupportedAttrs.contains("posix")) {
+         try {
+            sourcePosixAttrs = Files.readAttributes(source, PosixFileAttributes.class, NOFOLLOW_LINKS);
+         } catch (final UnsupportedOperationException ex) {
+            // ignore
          }
-         copyUserAttrs(source, target);
-         if (targetPosixAttrs != null) {
-            copyTimeAttrs(sourcePosixAttrs, targetPosixAttrs);
-         } else if (targetBasicAttrs != null) {
-            copyTimeAttrs(sourcePosixAttrs, targetBasicAttrs);
-         }
-         return;
       }
 
-      if (copyACL && sourceSupportedAttrs.contains("owner") && targetSupportedAttrs.contains("owner")) {
+      if (copyACL && sourcePosixAttrs != null && targetPosixAttrs != null) {
+         targetPosixAttrs.setOwner(sourcePosixAttrs.owner());
+         targetPosixAttrs.setGroup(sourcePosixAttrs.group());
+         targetPosixAttrs.setPermissions(sourcePosixAttrs.permissions());
+         ownerCopied = true;
+      }
+
+      if (copyACL && !ownerCopied && !SystemUtils.IS_OS_WINDOWS //
+            && sourceSupportedAttrs.contains("owner") && targetSupportedAttrs.contains("owner")) {
          Files.setOwner(target, Files.getOwner(source, NOFOLLOW_LINKS));
       }
+
       copyUserAttrs(source, target);
+
       if (targetBasicAttrs != null) {
          copyTimeAttrs(sourceAttrs, targetBasicAttrs);
+      } else if (targetPosixAttrs != null) {
+         copyTimeAttrs(sourceAttrs, targetPosixAttrs);
+      } else if (targetDosAttrs != null) {
+         copyTimeAttrs(sourceAttrs, targetDosAttrs);
       }
    }
 
