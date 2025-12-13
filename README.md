@@ -44,6 +44,18 @@ No installation is required.
 - Windows: download the `.exe` and either run it directly or place it somewhere on your `PATH`.
 - Linux/macOS: download the binary, `chmod +x copycat`, then run it (optionally move to a directory on your `PATH`, e.g. `/usr/local/bin`).
 
+### Bash completion
+
+Copycat provides a generated Bash completion script that you can download from https://github.com/vegardit/copycat/releases/download/latest/bashcompletion.sh
+
+Example (Linux/macOS, or Git Bash on Windows):
+```bash
+curl -fsSL -o bash-completions.sh https://github.com/vegardit/copycat/releases/download/latest/bashcompletion.sh
+source ./bash-completions.sh
+```
+
+To enable it permanently, source it from your `~/.bashrc` (or equivalent).
+
 
 ## <a name="quick-start"></a>Quick Start
 
