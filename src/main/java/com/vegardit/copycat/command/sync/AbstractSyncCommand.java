@@ -17,7 +17,6 @@ import java.nio.file.attribute.FileTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.function.Supplier;
 
 import org.eclipse.jdt.annotation.Nullable;
@@ -152,16 +151,6 @@ public abstract class AbstractSyncCommand<C extends AbstractSyncCommandConfig<C>
    }
 
    private boolean isDeprecatedExcludeUsed;
-
-   @Option(names = "--exclude", split = ",", paramLabel = "<pattern>", hidden = true, //
-      description = "[DEPRECATED] Glob pattern for files/directories to be excluded from sync. Use --filters instead")
-   private void setExcludes(final List<String> excludes) {
-      if (!isDeprecatedExcludeUsed && cfgCLI.fileFilters != null)
-         throw new ParameterException(commandSpec.commandLine(), "--exclude cannot be used together with --filters");
-      isDeprecatedExcludeUsed = true;
-      LOG.warn("Option --exclude is deprecated. Please use new --filters option.");
-      cfgCLI.fileFilters = excludes.stream().map(exclude -> "ex:" + exclude).filter(Objects::nonNull).toList();
-   }
 
    @Option(names = "--exclude-hidden-files", description = "Don't synchronize hidden files.")
    private void setExcludeHiddenFiles(final boolean excludeHiddenFiles) {
