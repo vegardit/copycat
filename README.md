@@ -108,9 +108,12 @@ Options:
       --no-log <op>[,<op>...]
                             Don't log the given sync operation. Valid values: CREATE, MODIFY, DELETE, SCAN
   -q, --quiet               Quiet mode.
-      --since <when>        Sync only items modified after this date/time.Accepts ISO-8601 (2024-12-25,
+      --since <when>        Sync only items modified after this date/time. Accepts ISO-8601 (2024-12-25,
                               2024-12-25T14:30, 2024-12-25T14:30Z), durations (P3D, PT2H), or relative
                               expressions (3 days ago, yesterday 14:00).
+      --stall-timeout       Abort sync if no progress is observed for this long.
+                            Examples: PT10M, 10m, 2h 30m. Use 0 to disable.
+                            Bare numbers are minutes. Default: 10m
       --threads <count>     Number of concurrent threads. Default: 2
       --until <when>        Sync only items modified before this date/time. Format same as --since. Combined
                               with --since to define a date range.

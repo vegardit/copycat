@@ -25,9 +25,10 @@ import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedDeque;
+import java.util.concurrent.ExecutorCompletionService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.logging.Level;
 
 import org.apache.commons.lang3.concurrent.BasicThreadFactory;
@@ -38,6 +39,7 @@ import com.vegardit.copycat.util.DesktopNotifications;
 import com.vegardit.copycat.util.FileAttrs;
 import com.vegardit.copycat.util.FileUtils;
 import com.vegardit.copycat.util.JdkLoggingUtils;
+import com.vegardit.copycat.util.ProgressTracker;
 import com.vegardit.copycat.util.YamlUtils;
 
 import net.sf.jstuff.core.collection.Sets;
@@ -81,6 +83,11 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
 
    private static final Logger LOG = Logger.create();
 
+   private static final long AWAIT_POLL_MILLIS = 5_000;
+   private static final long FORCE_SHUTDOWN_TIMEOUT_MILLIS = 30_000;
+
+   private final ProgressTracker progressTracker = new ProgressTracker();
+
    private final Set<LogEvent> loggableEvents = Sets.newHashSet(LogEvent.values());
    private final Set<Path> preparedTargetDirs = ConcurrentHashMap.newKeySet();
    private final Set<Path> preparedParentDirsRelative = ConcurrentHashMap.newKeySet();
@@ -93,13 +100,14 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
    }
 
    private void delDir(final SyncCommandConfig task, final Path dir) throws IOException {
-      final var start = System.currentTimeMillis();
+      final long startNanos = System.nanoTime();
       final var filesDeleted = new MutableLong();
       final var filesDeletedSize = new MutableLong();
 
       Files.walkFileTree(dir, new SimpleFileVisitor<>() {
          @Override
          public FileVisitResult postVisitDirectory(final Path subdir, final @Nullable IOException exc) throws IOException {
+            progressTracker.markProgress();
             LOG.info("Deleting [@|magenta %s%s|@]...", dir.relativize(subdir), File.separator);
             if (not(task.dryRun)) {
                Files.delete(subdir);
@@ -110,6 +118,7 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
 
          @Override
          public FileVisitResult visitFile(final Path file, final BasicFileAttributes attrs) throws IOException {
+            progressTracker.markProgress();
             LOG.info("Deleting [@|magenta %s|@]...", dir.relativize(file));
             if (not(task.dryRun)) {
                Files.delete(file);
@@ -119,16 +128,18 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
             return FileVisitResult.CONTINUE;
          }
       });
-      stats.onDirDeleted(System.currentTimeMillis() - start, filesDeleted.longValue(), filesDeletedSize.longValue());
+      stats.onDirDeleted(TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startNanos), filesDeleted.longValue(), filesDeletedSize
+         .longValue());
    }
 
    private void delFile(final SyncCommandConfig task, final Path file, final FileAttrs fileAttrs, final boolean count) throws IOException {
-      final var start = System.currentTimeMillis(); // CHECKSTYLE:IGNORE MoveVariableInsideIfCheck
+      final long startNanos = System.nanoTime(); // CHECKSTYLE:IGNORE MoveVariableInsideIfCheck
+      progressTracker.markProgress();
       if (not(task.dryRun)) {
          Files.delete(file);
       }
       if (count) {
-         stats.onFileDeleted(System.currentTimeMillis() - start, fileAttrs.size());
+         stats.onFileDeleted(TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startNanos), fileAttrs.size());
       }
    }
 
@@ -140,6 +151,7 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
 
       try {
          for (final SyncCommandConfig task : tasks) {
+            progressTracker.reset();
             final var sourceFilterCtx = task.toSourceFilterContext();
             final var targetFilterCtx = task.toTargetFilterContext();
             preparedTargetDirs.clear();
@@ -149,15 +161,17 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
                LOG.info("Executing sync task with effective config:\n%s", YamlUtils.toYamlString(task));
             });
 
-            int task_threads = asNonNull(task.threads);
+            final long stallTimeoutMillis = Math.max(asNonNull(task.stallTimeout).toMillis(), 0);
+            final long awaitPollMillis = stallTimeoutMillis > 0 ? Math.min(AWAIT_POLL_MILLIS, stallTimeoutMillis) : AWAIT_POLL_MILLIS;
+
+            final int taskThreads = Math.max(asNonNull(task.threads), 1);
             final Queue<DirJob> dirJobs;
-            if (task_threads < 0 || task_threads == 1) {
-               task_threads = task.threads = 1;
+            if (taskThreads <= 1) {
                dirJobs = new ArrayDeque<>();
             } else {
                dirJobs = new ConcurrentLinkedDeque<>();
             }
-            LOG.info("Working hard using %s thread(s)%s...", task_threads, isTrue(task.dryRun) ? " (DRY RUN)" : "");
+            LOG.info("Working hard using %s thread(s)%s...", taskThreads, isTrue(task.dryRun) ? " (DRY RUN)" : "");
 
             if (!Files.exists(task.targetRootAbsolute, NOFOLLOW_LINKS)) {
                if (loggableEvents.contains(LogEvent.CREATE)) {
@@ -173,36 +187,72 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
              */
             DesktopNotifications.showTransient(MessageType.INFO, "Syncing started...", //
                "FROM: " + task.sourceRootAbsolute + "\nTO: " + task.targetRootAbsolute);
-            if (task_threads == 1) {
-               syncWorker(task, sourceFilterCtx, targetFilterCtx, dirJobs);
-            } else {
-               final var threadPool = Executors.newFixedThreadPool(task_threads, //
-                  BasicThreadFactory.builder().namingPattern("sync-%d").build() //
-               );
-               final var firstError = new AtomicReference<@Nullable Exception>();
-               for (var i = 0; i < task_threads; i++) {
-                  threadPool.submit(() -> {
-                     try {
-                        syncWorker(task, sourceFilterCtx, targetFilterCtx, dirJobs);
-                     } catch (final Exception e) {
-                        if (firstError.compareAndSet(null, e)) {
-                           state = State.ABORT_BY_EXCEPTION;
-                        }
-                     }
-                  });
-               }
-               threadPool.shutdown();
-               threadPool.awaitTermination(Long.MAX_VALUE, TimeUnit.DAYS);
-               final var ex = firstError.get();
-               if (ex != null) {
-                  DesktopNotifications.showSticky(MessageType.ERROR, "Syncing failed.", //
-                     "ERROR: " + ex.getMessage() + "\nFROM: " + task.sourceRootAbsolute + "\nTO: " + task.targetRootAbsolute);
-                  throw ex;
-               }
-
-               DesktopNotifications.showSticky(MessageType.INFO, "Syncing done.", //
-                  "FROM: " + task.sourceRootAbsolute + "\nTO: " + task.targetRootAbsolute);
+            final var threadPool = Executors.newFixedThreadPool(taskThreads, //
+               BasicThreadFactory.builder().namingPattern("sync-%d").build() //
+            );
+            final var completion = new ExecutorCompletionService<@Nullable Void>(threadPool);
+            for (var i = 0; i < taskThreads; i++) {
+               completion.submit(() -> {
+                  try {
+                     syncWorker(task, sourceFilterCtx, targetFilterCtx, dirJobs);
+                     return null;
+                  } catch (final Exception ex) {
+                     state = State.ABORT_BY_EXCEPTION;
+                     throw ex;
+                  }
+               });
             }
+            threadPool.shutdown();
+            @Nullable
+            Exception stallError = null;
+            @Nullable
+            Throwable workerError = null;
+            int remainingThreads = taskThreads;
+            while (remainingThreads > 0) {
+               final @Nullable Future<@Nullable Void> completed = completion.poll(awaitPollMillis, TimeUnit.MILLISECONDS);
+               if (completed == null) {
+                  if (state != State.NORMAL) {
+                     break;
+                  }
+                  try {
+                     progressTracker.checkStalled(stallTimeoutMillis, "Sync");
+                  } catch (final IOException ex) {
+                     stallError = ex;
+                     state = State.ABORT_BY_EXCEPTION;
+                     break;
+                  }
+                  continue;
+               }
+               remainingThreads--;
+               try {
+                  completed.get();
+               } catch (final java.util.concurrent.ExecutionException ex) {
+                  state = State.ABORT_BY_EXCEPTION;
+                  workerError = ex.getCause();
+                  break;
+               }
+            }
+            if (state != State.NORMAL) {
+               threadPool.shutdownNow();
+               threadPool.awaitTermination(FORCE_SHUTDOWN_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS);
+            }
+            if (stallError != null) {
+               DesktopNotifications.showSticky(MessageType.ERROR, "Syncing failed.", //
+                  "ERROR: " + stallError.getMessage() + "\nFROM: " + task.sourceRootAbsolute + "\nTO: " + task.targetRootAbsolute);
+               throw stallError;
+            }
+            if (workerError != null) {
+               DesktopNotifications.showSticky(MessageType.ERROR, "Syncing failed.", //
+                  "ERROR: " + workerError.getMessage() + "\nFROM: " + task.sourceRootAbsolute + "\nTO: " + task.targetRootAbsolute);
+               if (workerError instanceof final Exception ex)
+                  throw ex;
+               if (workerError instanceof final Error ex)
+                  throw ex;
+               throw new RuntimeException(workerError);
+            }
+
+            DesktopNotifications.showSticky(MessageType.INFO, "Syncing done.", //
+               "FROM: " + task.sourceRootAbsolute + "\nTO: " + task.targetRootAbsolute);
          }
       } finally {
          JdkLoggingUtils.withRootLogLevel(Level.INFO, stats::logStats);
@@ -258,6 +308,18 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
       cfgCLI.threads = i;
    }
 
+   @Option(names = "--stall-timeout", paramLabel = "<duration>", description = {"Abort sync if no progress is observed for this long.",
+      "Examples: PT10M, 10m, 2h 30m. Use 0 to disable.", "Bare numbers are minutes. Default: 10m"})
+   private void setStallTimeout(final String value) {
+      final String v = value.strip();
+      if (v.matches("\\d+")) {
+         final long minutes = Long.parseLong(v);
+         cfgCLI.stallTimeout = minutes == 0 ? java.time.Duration.ZERO : java.time.Duration.ofMinutes(minutes);
+         return;
+      }
+      cfgCLI.stallTimeout = SyncCommandConfig.parseDuration(v, "--stall-timeout");
+   }
+
    private void syncWorker(final SyncCommandConfig task, final FilterEngine.FilterContext sourceFilterCtx,
          final FilterEngine.FilterContext targetFilterCtx, final Queue<DirJob> dirJobs) throws IOException {
       final var sourceChildren = new HashMap<Path, Path>(256); // Map<SourcePathRelativeToRoot, SourcePathAbsolute>
@@ -279,6 +341,7 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
          }
 
          try {
+            progressTracker.markProgress();
             final Path source = job.sourceDir;
             final Path sourceRelative = job.relativeDir;
             final Path target = source.equals(task.sourceRootAbsolute) //
@@ -294,8 +357,10 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
              */
             sourceChildren.clear();
             try (var ds = Files.newDirectoryStream(source)) {
-               ds.forEach(child -> sourceChildren //
-                  .put(child.subpath(sourceRootNameCount, child.getNameCount()), child));
+               ds.forEach(child -> {
+                  progressTracker.markProgress();
+                  sourceChildren.put(child.subpath(sourceRootNameCount, child.getNameCount()), child);
+               });
             }
 
             /*
@@ -308,8 +373,10 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
             targetChildren.clear();
             if (not(task.dryRun) || Files.isDirectory(target, NOFOLLOW_LINKS)) {
                try (var ds = Files.newDirectoryStream(target)) {
-                  ds.forEach(child -> targetChildren //
-                     .put(child.subpath(targetRootNameCount, child.getNameCount()), child));
+                  ds.forEach(child -> {
+                     progressTracker.markProgress();
+                     targetChildren.put(child.subpath(targetRootNameCount, child.getNameCount()), child);
+                  });
                } catch (final NoSuchFileException ex) {
                   // target directory does not exist; treat as empty
                }
@@ -323,6 +390,7 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
                   if (state != State.NORMAL) {
                      break;
                   }
+                  progressTracker.markProgress();
                   final var targetChildEntry = it.next();
                   final var targetChildRelative = targetChildEntry.getKey();
                   final var targetChildAbsolute = targetChildEntry.getValue();
@@ -376,6 +444,7 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
                if (state != State.NORMAL) {
                   break;
                }
+               progressTracker.markProgress();
                final var sourceChildRelative = sourceEntry.getKey();
                final var sourceChildAbsolute = sourceEntry.getValue();
                final var targetChildAbsolute = targetChildren.get(sourceChildRelative);
@@ -630,11 +699,13 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
          if ("NEW".equals(copyCause) && loggableEvents.contains(LogEvent.CREATE) || loggableEvents.contains(LogEvent.MODIFY)) {
             LOG.info("%s [@|magenta %s|@] %s...", copyCause, relativePath, Size.ofBytes(sourceAttrs.size()));
          }
-         final var start = System.currentTimeMillis();
+         final long startNanos = System.nanoTime();
          if (not(task.dryRun)) {
-            FileUtils.copyFile(sourcePath, sourceAttrs, targetPath, isTrue(task.copyACL), (bytesWritten, totalBytesWritten) -> { /**/ });
+            FileUtils.copyFile(sourcePath, sourceAttrs, targetPath, isTrue(task.copyACL), (bytesWritten, totalBytesWritten) -> {
+               progressTracker.markProgress();
+            });
          }
-         stats.onFileCopied(System.currentTimeMillis() - start, sourceAttrs.size());
+         stats.onFileCopied(TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startNanos), sourceAttrs.size());
       }
    }
 
@@ -675,7 +746,7 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
          }
       }
 
-      final var start = System.currentTimeMillis();
+      final long startNanos = System.nanoTime();
       if (not(task.dryRun)) {
          try {
             Files.copy(sourcePath, targetPath, SYMLINK_COPY_OPTIONS);
@@ -686,6 +757,6 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
             return;
          }
       }
-      stats.onFileCopied(System.currentTimeMillis() - start, sourceAttrs.size());
+      stats.onFileCopied(TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startNanos), sourceAttrs.size());
    }
 }

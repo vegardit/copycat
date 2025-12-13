@@ -15,12 +15,8 @@ import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeFormatterBuilder;
 import java.time.format.DateTimeParseException;
 import java.time.temporal.ChronoField;
-import java.time.temporal.ChronoUnit;
 import java.util.Locale;
 import java.util.regex.Matcher;
-import java.util.regex.Pattern;
-
-import org.eclipse.jdt.annotation.Nullable;
 
 /**
  * Parses absolute or relative date/time expressions into {@link LocalDateTime}.
@@ -49,34 +45,6 @@ public final class DateTimeParser {
       .parseDefaulting(ChronoField.MINUTE_OF_HOUR, 0) //
       .parseDefaulting(ChronoField.SECOND_OF_MINUTE, 0) //
       .toFormatter(Locale.ROOT);
-
-   private static final Pattern RELATIVE = Pattern.compile("(\\d+)\\s*(d(?:ays?)?|h(?:ours?)?|m(?:in(?:s|utes?)?)?|s(?:ec(?:s|onds?)?)?)",
-      Pattern.CASE_INSENSITIVE);
-
-   private enum Unit {
-      DAYS(ChronoUnit.DAYS, "d", "day", "days"),
-      HOURS(ChronoUnit.HOURS, "h", "hour", "hours"),
-      MINUTES(ChronoUnit.MINUTES, "m", "min", "mins", "minute", "minutes"),
-      SECONDS(ChronoUnit.SECONDS, "s", "sec", "secs", "second", "seconds");
-
-      final ChronoUnit chronoUnit;
-      final String[] aliases;
-
-      Unit(final ChronoUnit cu, final String... a) {
-         chronoUnit = cu;
-         aliases = a;
-      }
-
-      static @Nullable Unit of(final String token) {
-         final String t = token.toLowerCase(Locale.ROOT);
-         for (final Unit u : values()) {
-            for (final String a : u.aliases)
-               if (a.equals(t))
-                  return u;
-         }
-         return null;
-      }
-   }
 
    /**
     * Parses an absolute or relative date/time expression into a {@link LocalDateTime}.
@@ -215,7 +183,7 @@ public final class DateTimeParser {
       if (str.matches(".*\\s-\\d+.*") || str.startsWith("-"))
          throw fail(raw);
 
-      final Matcher m = RELATIVE.matcher(str);
+      final Matcher m = DurationParser.HUMAN_READABLE_DURATION_PATTERN.matcher(str);
       if (!m.find())
          throw fail(raw);
 
@@ -243,7 +211,7 @@ public final class DateTimeParser {
          if (value > 100_000_000)
             throw fail(raw);
          @SuppressWarnings("null")
-         final Unit unit = Unit.of(m.group(2));
+         final var unit = DurationParser.Unit.of(m.group(2));
          if (unit == null)
             throw fail(raw); // Don't skip unknown units, fail instead
          try {
