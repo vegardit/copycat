@@ -39,7 +39,7 @@ public final class YamlUtils {
       String name() default "";
    }
 
-   private static CharSequence camelCaseToHyphen(final String str) {
+   public static CharSequence camelCaseToHyphen(final String str) {
       if (str.isEmpty())
          return str;
 

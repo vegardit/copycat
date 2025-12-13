@@ -186,6 +186,16 @@ sync:
   until: 2024-12-31
 ```
 
+To enable editor validation/autocompletion for `config.yaml`, a JSON schema is published at:
+
+- https://github.com/vegardit/copycat/releases/download/latest/config.schema.json
+
+If you use the YAML Language Server (e.g. via VS Code), you can reference it by adding this as the first line of your YAML file:
+
+```yaml
+# yaml-language-server: $schema=https://github.com/vegardit/copycat/releases/download/latest/config.schema.json
+```
+
 
 ### <a name="watch"></a>`watch` command
 
