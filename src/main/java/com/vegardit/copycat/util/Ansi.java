@@ -42,6 +42,9 @@ public final class Ansi {
                }
             }
          } catch (final Throwable ex) { // CHECKSTYLE:IGNORE .*
+            if (ex instanceof InterruptedException) {
+               Thread.currentThread().interrupt();
+            }
             LOG.warn("Failed to enable ANSI support. " + ex.getClass().getName() + ": " + ex.getMessage());
          }
       }
