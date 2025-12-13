@@ -191,6 +191,9 @@ public class WatchCommand extends AbstractSyncCommand<WatchCommandConfig> {
    @Override
    protected void doExecute(final List<WatchCommandConfig> tasks) throws Exception {
 
+      if (tasks.isEmpty())
+         throw new CommandLine.ParameterException(commandSpec.commandLine(), "No watch tasks configured.");
+
       DesktopNotifications.setTrayIconToolTip("copycat is watching...");
 
       final var threadPool = Executors.newFixedThreadPool(tasks.size(), //
