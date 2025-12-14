@@ -9,6 +9,7 @@ import static org.assertj.core.api.Assertions.*;
 
 import java.io.BufferedReader;
 import java.io.StringReader;
+import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
@@ -179,5 +180,71 @@ class SyncCommandConfigYamlTest {
          assertThat(since).isBefore(now);
          assertThat(ChronoUnit.MINUTES.between(since, now)).isCloseTo(3 * 60 + 30, within(2L));
       }
+   }
+
+   @Test
+   @DisplayName("Parse exclude-other-links from YAML")
+   void testExcludeOtherLinksFromYaml() {
+      final String yaml = """
+         sync:
+         - source: C:\\\\src
+           target: C:\\\\dst
+           exclude-other-links: true
+         """;
+
+      final Map<String, Object> root = YamlUtils.parseYaml(new BufferedReader(new StringReader(yaml)));
+
+      @SuppressWarnings("unchecked")
+      final var syncList = asNonNull((List<Map<String, Object>>) root.get("sync"));
+      final Map<String, Object> taskMap = syncList.get(0);
+      final var taskCfg = new SyncCommandConfig();
+      taskCfg.applyFrom(taskMap, true);
+      taskCfg.applyDefaults();
+
+      assertThat(taskCfg.excludeOtherLinks).isTrue();
+   }
+
+   @Test
+   @DisplayName("Parse stall-timeout from YAML")
+   void testStallTimeoutFromYaml() {
+      final String yaml = """
+         sync:
+         - source: C:\\\\src
+           target: C:\\\\dst
+           stall-timeout: 2m
+         """;
+
+      final Map<String, Object> root = YamlUtils.parseYaml(new BufferedReader(new StringReader(yaml)));
+
+      @SuppressWarnings("unchecked")
+      final var syncList = asNonNull((List<Map<String, Object>>) root.get("sync"));
+      final Map<String, Object> taskMap = syncList.get(0);
+      final var taskCfg = new SyncCommandConfig();
+      taskCfg.applyFrom(taskMap, true);
+      taskCfg.applyDefaults();
+
+      assertThat(taskCfg.stallTimeout).isEqualTo(Duration.ofMinutes(2));
+   }
+
+   @Test
+   @DisplayName("Parse numeric stall-timeout from YAML as minutes")
+   void testNumericStallTimeoutFromYamlDefaultsToMinutes() {
+      final String yaml = """
+         sync:
+         - source: C:\\\\src
+           target: C:\\\\dst
+           stall-timeout: 2
+         """;
+
+      final Map<String, Object> root = YamlUtils.parseYaml(new BufferedReader(new StringReader(yaml)));
+
+      @SuppressWarnings("unchecked")
+      final var syncList = asNonNull((List<Map<String, Object>>) root.get("sync"));
+      final Map<String, Object> taskMap = syncList.get(0);
+      final var taskCfg = new SyncCommandConfig();
+      taskCfg.applyFrom(taskMap, true);
+      taskCfg.applyDefaults();
+
+      assertThat(taskCfg.stallTimeout).isEqualTo(Duration.ofMinutes(2));
    }
 }

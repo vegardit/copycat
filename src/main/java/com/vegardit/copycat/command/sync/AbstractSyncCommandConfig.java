@@ -4,11 +4,9 @@
  */
 package com.vegardit.copycat.command.sync;
 
-import static com.vegardit.copycat.util.Booleans.isTrue;
 import static com.vegardit.copycat.util.MapUtils.*;
 import static net.sf.jstuff.core.validation.NullAnalysisHelper.lateNonNull;
 
-import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.PathMatcher;
@@ -28,7 +26,6 @@ import com.vegardit.copycat.util.YamlUtils.ToYamlString;
 
 import net.sf.jstuff.core.Strings;
 import net.sf.jstuff.core.SystemUtils;
-import net.sf.jstuff.core.collection.tuple.Tuple2;
 import net.sf.jstuff.core.concurrent.Threads;
 import net.sf.jstuff.core.logging.Logger;
 
@@ -67,9 +64,6 @@ public abstract class AbstractSyncCommandConfig<THIS extends AbstractSyncCommand
    public @Nullable @ToYamlString(name = "filters") List<String> fileFilters;
    public @Nullable Integer maxDepth;
 
-   protected @ToYamlString(ignore = true) Tuple2<FileFilterAction, PathMatcher> @Nullable [] fileFiltersSource; // computed value
-   protected @ToYamlString(ignore = true) Tuple2<FileFilterAction, PathMatcher> @Nullable [] fileFiltersTarget; // computed value
-
    /**
     * Additional matcher used purely to decide whether a directory subtree can be skipped during traversal without changing filter
     * semantics for individual files.
@@ -92,6 +86,7 @@ public abstract class AbstractSyncCommandConfig<THIS extends AbstractSyncCommand
    public @Nullable Boolean excludeHiddenFiles;
    public @Nullable Boolean excludeHiddenSystemFiles;
    public @Nullable Boolean excludeSystemFiles;
+   public @Nullable Boolean excludeOtherLinks;
 
    public @Nullable @ToYamlString(name = "since") FileTime modifiedFrom;
    public @Nullable @ToYamlString(name = "until") FileTime modifiedTo;
@@ -112,6 +107,7 @@ public abstract class AbstractSyncCommandConfig<THIS extends AbstractSyncCommand
       defaults.excludeHiddenFiles = false;
       defaults.excludeHiddenSystemFiles = false;
       defaults.excludeSystemFiles = false;
+      defaults.excludeOtherLinks = false;
       defaults.maxDepth = null;
       applyFrom(defaults, false);
    }
@@ -133,12 +129,6 @@ public abstract class AbstractSyncCommandConfig<THIS extends AbstractSyncCommand
       if (override && other_fileFilters != null || fileFilters == null) {
          fileFilters = other_fileFilters;
       }
-      if (override && other.fileFiltersSource != null || fileFiltersSource == null) {
-         fileFiltersSource = other.fileFiltersSource;
-      }
-      if (override && other.fileFiltersTarget != null || fileFiltersTarget == null) {
-         fileFiltersTarget = other.fileFiltersTarget;
-      }
       if (override && other.excludeHiddenFiles != null || excludeHiddenFiles == null) {
          excludeHiddenFiles = other.excludeHiddenFiles;
       }
@@ -147,6 +137,9 @@ public abstract class AbstractSyncCommandConfig<THIS extends AbstractSyncCommand
       }
       if (override && other.excludeSystemFiles != null || excludeSystemFiles == null) {
          excludeSystemFiles = other.excludeSystemFiles;
+      }
+      if (override && other.excludeOtherLinks != null || excludeOtherLinks == null) {
+         excludeOtherLinks = other.excludeOtherLinks;
       }
       if (override && other.maxDepth != null || maxDepth == null) {
          maxDepth = other.maxDepth;
@@ -178,6 +171,7 @@ public abstract class AbstractSyncCommandConfig<THIS extends AbstractSyncCommand
       defaults.excludeHiddenFiles = getBoolean(cfg, "exclude-hidden-files", true);
       defaults.excludeHiddenSystemFiles = getBoolean(cfg, "exclude-hidden-system-files", true);
       defaults.excludeSystemFiles = getBoolean(cfg, "exclude-system-files", true);
+      defaults.excludeOtherLinks = getBoolean(cfg, "exclude-other-links", true);
       defaults.maxDepth = getInteger(cfg, "max-depth", true);
       defaults.modifiedFrom = getFileTime(cfg, "since", true);
       defaults.modifiedTo = getFileTime(cfg, "until", true);
@@ -244,22 +238,35 @@ public abstract class AbstractSyncCommandConfig<THIS extends AbstractSyncCommand
       computePathMatchers();
    }
 
+   /**
+    * Builds a {@link FilterEngine.FilterContext} snapshot for this config that can be used with
+    * {@link FilterEngine#includesSource(FilterEngine.FilterContext, Path, Path, com.vegardit.copycat.util.FileAttrs)}.
+    */
+   public FilterEngine.FilterContext toSourceFilterContext() {
+      return FilterEngine.buildSourceFilterContext(this);
+   }
+
+   /**
+    * Builds a {@link FilterEngine.FilterContext} snapshot for target-side evaluation of this config.
+    */
+   public FilterEngine.FilterContext toTargetFilterContext() {
+      return FilterEngine.buildTargetFilterContext(this);
+   }
+
    @SuppressWarnings("resource")
    private void computePathMatchers() {
       hasGlobalExcludeForSubtrees = false;
       includePatternHints = null;
+      subtreeExcludeSource = null;
 
       final var filters = fileFilters;
       if (filters != null && !filters.isEmpty()) {
-         final var sourceFilters = new ArrayList<Tuple2<FileFilterAction, PathMatcher>>(filters.size() * 2);
-         final var targetFilters = new ArrayList<Tuple2<FileFilterAction, PathMatcher>>(filters.size() * 2);
-         final var sourceSubtreeFilters = new ArrayList<PathMatcher>();
-         final var targetSubtreeFilters = new ArrayList<PathMatcher>();
-         final var includeHints = new ArrayList<IncludePatternHint>();
          boolean hasIncludeFilters = false;
          boolean hasExcludeFilters = false;
+
+         final var sourceSubtreeFilters = new ArrayList<PathMatcher>();
+         final var includeHints = new ArrayList<IncludePatternHint>();
          final var sourceFS = sourceRootAbsolute.getFileSystem();
-         final var targetFS = targetRootAbsolute.getFileSystem();
          for (final String filterSpec : filters) {
             final FileFilterAction action;
             if (Strings.startsWithIgnoreCase(filterSpec, "in:")) {
@@ -325,31 +332,13 @@ public abstract class AbstractSyncCommandConfig<THIS extends AbstractSyncCommand
                   if (prefixPattern.startsWith("**/") && prefixPattern.length() > 3) {
                      final var withoutStarStar = prefixPattern.substring(3);
                      sourceSubtreeFilters.add(sourceFS.getPathMatcher("glob:" + prefixPattern));
-                     targetSubtreeFilters.add(targetFS.getPathMatcher("glob:" + prefixPattern));
                      sourceSubtreeFilters.add(sourceFS.getPathMatcher("glob:" + withoutStarStar));
-                     targetSubtreeFilters.add(targetFS.getPathMatcher("glob:" + withoutStarStar));
                   } else {
                      sourceSubtreeFilters.add(sourceFS.getPathMatcher("glob:" + prefixPattern));
-                     targetSubtreeFilters.add(targetFS.getPathMatcher("glob:" + prefixPattern));
                   }
                }
             }
-
-            for (final var p : effectivePatterns) {
-               final var globPattern = "glob:" + p;
-
-               sourceFilters.add(Tuple2.create(action, sourceFS.getPathMatcher(globPattern)));
-               targetFilters.add(Tuple2.create(action, targetFS.getPathMatcher(globPattern)));
-
-               if (!globPattern.endsWith("/**")) {
-                  final var recursiveGlobPattern = globPattern + "/**";
-                  sourceFilters.add(Tuple2.create(action, sourceFS.getPathMatcher(recursiveGlobPattern)));
-                  targetFilters.add(Tuple2.create(action, targetFS.getPathMatcher(recursiveGlobPattern)));
-               }
-            }
          }
-         fileFiltersSource = sourceFilters.toArray(new Tuple2[sourceFilters.size()]);
-         fileFiltersTarget = targetFilters.toArray(new Tuple2[targetFilters.size()]);
          includePatternHints = includeHints.isEmpty() ? null : includeHints.toArray(new IncludePatternHint[includeHints.size()]);
          if (hasIncludeFilters && !hasExcludeFilters) {
             LOG.warn(
@@ -364,19 +353,11 @@ public abstract class AbstractSyncCommandConfig<THIS extends AbstractSyncCommand
       }
    }
 
-   public boolean isExcludedSourcePath(final Path sourceAbsolute, final Path sourceRelative) throws IOException {
-      return isExcludedPath(sourceAbsolute, sourceRelative, fileFiltersSource);
-   }
-
-   public boolean isExcludedTargetPath(final Path targetAbsolute, final Path targetRelative) throws IOException {
-      return isExcludedPath(targetAbsolute, targetRelative, fileFiltersTarget);
-   }
-
    /**
     * Returns true if the given source-relative directory should have its subtree skipped.
     *
     * This is used purely as a traversal optimization. It must never change which individual files are considered
-    * included or excluded according to {@link #isExcludedSourcePath(Path, Path)}.
+    * included or excluded according to the main filter evaluation in {@link FilterEngine}.
     *
     * Current implementation combines:
     * <ul>
@@ -493,39 +474,5 @@ public abstract class AbstractSyncCommandConfig<THIS extends AbstractSyncCommand
          p++;
       }
       return p == pattern.length();
-   }
-
-   private boolean isExcludedPath(final Path absolutePath, final Path relativePath,
-         final Tuple2<FileFilterAction, PathMatcher> @Nullable [] fileFilters) throws IOException {
-      if (isTrue(excludeHiddenSystemFiles) && Files.isHidden(absolutePath) && FileUtils.isDosSystemFile(absolutePath) //
-            || isTrue(excludeSystemFiles) && FileUtils.isDosSystemFile(absolutePath) //
-            || isTrue(excludeHiddenFiles) && Files.isHidden(absolutePath))
-         return true;
-
-      // Check modification time filters
-      if ((modifiedFrom != null || modifiedTo != null) && Files.isRegularFile(absolutePath)) {
-         final var lastModified = Files.getLastModifiedTime(absolutePath);
-
-         // Exclude files modified before the "since" date or after the "until" date
-         if (modifiedFrom != null && lastModified.compareTo(modifiedFrom) < 0 || modifiedTo != null && lastModified.compareTo(
-            modifiedTo) > 0)
-            return true;
-      }
-
-      if (fileFilters != null) {
-         for (final var filter : fileFilters) {
-            switch (filter.get1()) {
-               case EXCLUDE:
-                  if (filter.get2().matches(relativePath))
-                     return true;
-                  break;
-               case INCLUDE:
-                  if (filter.get2().matches(relativePath))
-                     return false;
-                  break;
-            }
-         }
-      }
-      return false;
    }
 }

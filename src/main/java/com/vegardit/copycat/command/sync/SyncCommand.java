@@ -5,7 +5,7 @@
 package com.vegardit.copycat.command.sync;
 
 import static com.vegardit.copycat.util.Booleans.*;
-import static net.sf.jstuff.core.validation.NullAnalysisHelper.*;
+import static net.sf.jstuff.core.validation.NullAnalysisHelper.asNonNull;
 
 import java.awt.TrayIcon.MessageType;
 import java.io.File;
@@ -13,6 +13,7 @@ import java.io.IOException;
 import java.nio.file.FileSystemException;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.SimpleFileVisitor;
@@ -23,11 +24,11 @@ import java.util.List;
 import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentLinkedDeque;
+import java.util.concurrent.ExecutorCompletionService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.BooleanSupplier;
 import java.util.logging.Level;
 
 import org.apache.commons.lang3.concurrent.BasicThreadFactory;
@@ -35,8 +36,10 @@ import org.apache.commons.lang3.mutable.MutableLong;
 import org.eclipse.jdt.annotation.Nullable;
 
 import com.vegardit.copycat.util.DesktopNotifications;
+import com.vegardit.copycat.util.FileAttrs;
 import com.vegardit.copycat.util.FileUtils;
 import com.vegardit.copycat.util.JdkLoggingUtils;
+import com.vegardit.copycat.util.ProgressTracker;
 import com.vegardit.copycat.util.YamlUtils;
 
 import net.sf.jstuff.core.collection.Sets;
@@ -44,7 +47,6 @@ import net.sf.jstuff.core.concurrent.Threads;
 import net.sf.jstuff.core.io.MoreFiles;
 import net.sf.jstuff.core.io.Size;
 import net.sf.jstuff.core.logging.Logger;
-import net.sf.jstuff.core.ref.MutableRef;
 import picocli.CommandLine;
 import picocli.CommandLine.Option;
 
@@ -69,14 +71,95 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
       ABORT_BY_SIGNAL
    }
 
+   private static final class DirJob {
+      final Path sourceDir;
+      final Path relativeDir;
+
+      DirJob(final Path sourceDir, final Path relativeDir) {
+         this.sourceDir = sourceDir;
+         this.relativeDir = relativeDir;
+      }
+   }
+
    private static final Logger LOG = Logger.create();
 
+   private static final long AWAIT_POLL_MILLIS = 5_000;
+   private static final long FORCE_SHUTDOWN_TIMEOUT_MILLIS = 30_000;
+   private static final long WORKER_IDLE_SLEEP_MILLIS = 25;
+
+   /**
+    * Multi-producer/multi-consumer directory job queue with a simple "all workers idle => done" termination
+    * condition.
+    * <p>
+    * Important invariant: only active workers can enqueue new directory jobs. Therefore, if all workers are
+    * simultaneously waiting for work and the queue is empty, no new work will appear and workers can exit.
+    */
+   private static final class DirJobQueue {
+      private final int workerCount;
+      private final Queue<DirJob> jobs;
+
+      private int workersWaiting;
+      private boolean workersDone;
+
+      DirJobQueue(final int workerCount) {
+         this(workerCount, new ArrayDeque<>());
+      }
+
+      DirJobQueue(final int workerCount, final Queue<DirJob> jobs) {
+         this.workerCount = workerCount;
+         this.jobs = jobs;
+      }
+
+      synchronized void add(final DirJob job) {
+         if (workersDone)
+            return;
+         jobs.add(job);
+         notifyAll();
+      }
+
+      synchronized @Nullable DirJob pollOrWait(final BooleanSupplier keepRunning) {
+         final var immediate = jobs.poll();
+         if (immediate != null || workerCount <= 1)
+            return immediate;
+
+         workersWaiting++;
+         try {
+            while (!workersDone && keepRunning.getAsBoolean()) {
+               final var next = jobs.poll();
+               if (next != null)
+                  return next;
+
+               // If all workers are waiting for a new job, the queue is drained and no further work will be enqueued,
+               // because only active workers can discover/enqueue new directory jobs.
+               if (workersWaiting == workerCount) {
+                  workersDone = true;
+                  notifyAll();
+                  return null;
+               }
+
+               try {
+                  wait(WORKER_IDLE_SLEEP_MILLIS);
+               } catch (final InterruptedException ex) {
+                  Thread.currentThread().interrupt();
+                  workersDone = true;
+                  notifyAll();
+                  return null;
+               }
+            }
+            return null;
+         } finally {
+            workersWaiting--;
+         }
+      }
+   }
+
+   private final ProgressTracker progressTracker = new ProgressTracker();
+
    private final Set<LogEvent> loggableEvents = Sets.newHashSet(LogEvent.values());
-   private final AtomicInteger threadsWaiting = new AtomicInteger();
-   private final AtomicBoolean threadsDone = new AtomicBoolean();
+   private final Set<Path> preparedTargetDirs = ConcurrentHashMap.newKeySet();
+   private final Set<Path> preparedParentDirsRelative = ConcurrentHashMap.newKeySet();
 
    private final SyncStats stats = new SyncStats();
-   private Queue<Path> sourceDirsToScan = lateNonNull();
    private volatile State state = State.NORMAL;
 
    public SyncCommand() {
@@ -84,13 +167,14 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
    }
 
    private void delDir(final SyncCommandConfig task, final Path dir) throws IOException {
-      final var start = System.currentTimeMillis();
+      final long startNanos = System.nanoTime();
       final var filesDeleted = new MutableLong();
       final var filesDeletedSize = new MutableLong();
 
       Files.walkFileTree(dir, new SimpleFileVisitor<>() {
          @Override
          public FileVisitResult postVisitDirectory(final Path subdir, final @Nullable IOException exc) throws IOException {
+            progressTracker.markProgress();
             LOG.info("Deleting [@|magenta %s%s|@]...", dir.relativize(subdir), File.separator);
             if (not(task.dryRun)) {
                Files.delete(subdir);
@@ -101,6 +185,7 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
 
          @Override
          public FileVisitResult visitFile(final Path file, final BasicFileAttributes attrs) throws IOException {
+            progressTracker.markProgress();
             LOG.info("Deleting [@|magenta %s|@]...", dir.relativize(file));
             if (not(task.dryRun)) {
                Files.delete(file);
@@ -110,17 +195,18 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
             return FileVisitResult.CONTINUE;
          }
       });
-      stats.onDirDeleted(System.currentTimeMillis() - start, filesDeleted.longValue(), filesDeletedSize.longValue());
+      stats.onDirDeleted(TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startNanos), filesDeleted.longValue(), filesDeletedSize
+         .longValue());
    }
 
-   private void delFile(final SyncCommandConfig task, final Path file, final boolean count) throws IOException {
-      final var fileSize = Files.size(file); // CHECKSTYLE:IGNORE MoveVariableInsideIfCheck
-      final var start = System.currentTimeMillis(); // CHECKSTYLE:IGNORE MoveVariableInsideIfCheck
+   private void delFile(final SyncCommandConfig task, final Path file, final FileAttrs fileAttrs, final boolean count) throws IOException {
+      final long startNanos = System.nanoTime(); // CHECKSTYLE:IGNORE MoveVariableInsideIfCheck
+      progressTracker.markProgress();
       if (not(task.dryRun)) {
          Files.delete(file);
       }
       if (count) {
-         stats.onFileDeleted(System.currentTimeMillis() - start, fileSize);
+         stats.onFileDeleted(TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startNanos), fileAttrs.size());
       }
    }
 
@@ -132,18 +218,22 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
 
       try {
          for (final SyncCommandConfig task : tasks) {
+            progressTracker.reset();
+            final var sourceFilterCtx = task.toSourceFilterContext();
+            final var targetFilterCtx = task.toTargetFilterContext();
+            preparedTargetDirs.clear();
+            preparedParentDirsRelative.clear();
+
             JdkLoggingUtils.withRootLogLevel(Level.INFO, () -> {
                LOG.info("Executing sync task with effective config:\n%s", YamlUtils.toYamlString(task));
             });
 
-            int task_threads = asNonNull(task.threads);
-            if (task_threads < 0 || task_threads == 1) {
-               task_threads = task.threads = 1;
-               sourceDirsToScan = new ArrayDeque<>();
-            } else {
-               sourceDirsToScan = new ConcurrentLinkedDeque<>();
-            }
-            LOG.info("Working hard using %s thread(s)%s...", task_threads, isTrue(task.dryRun) ? " (DRY RUN)" : "");
+            final long stallTimeoutMillis = Math.max(asNonNull(task.stallTimeout).toMillis(), 0);
+            final long awaitPollMillis = stallTimeoutMillis > 0 ? Math.min(AWAIT_POLL_MILLIS, stallTimeoutMillis) : AWAIT_POLL_MILLIS;
+
+            final int taskThreads = Math.max(asNonNull(task.threads), 1);
+            final var dirJobs = new DirJobQueue(taskThreads);
+            LOG.info("Working hard using %s thread(s)%s...", taskThreads, isTrue(task.dryRun) ? " (DRY RUN)" : "");
 
             if (!Files.exists(task.targetRootAbsolute, NOFOLLOW_LINKS)) {
                if (loggableEvents.contains(LogEvent.CREATE)) {
@@ -152,74 +242,83 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
                FileUtils.copyDirShallow(task.sourceRootAbsolute, task.targetRootAbsolute, isTrue(task.copyACL));
             }
 
-            sourceDirsToScan.add(task.sourceRootAbsolute);
+            dirJobs.add(new DirJob(task.sourceRootAbsolute, Paths.get(".")));
 
             /*
              * start syncing
              */
             DesktopNotifications.showTransient(MessageType.INFO, "Syncing started...", //
                "FROM: " + task.sourceRootAbsolute + "\nTO: " + task.targetRootAbsolute);
-            threadsDone.set(false);
-            if (task_threads == 1) {
-               sync(task);
-            } else {
-               final var threadPool = Executors.newFixedThreadPool(task_threads, //
-                  BasicThreadFactory.builder().namingPattern("sync-%d").build() //
-               );
-               // CHECKSTYLE:IGNORE .* FOR NEXT LINE
-               final var exRef = MutableRef.create();
-               for (var i = 0; i < task_threads; i++) {
-                  threadPool.submit(() -> {
-                     try {
-                        sync(task);
-                     } catch (final Exception e) {
-                        exRef.set(e);
-                     }
-                  });
-               }
-               threadPool.shutdown();
-               threadPool.awaitTermination(Long.MAX_VALUE, TimeUnit.DAYS);
-               if (exRef.get() instanceof final Exception ex) {
-                  DesktopNotifications.showSticky(MessageType.ERROR, "Syncing failed.", //
-                     "ERROR: " + ex.getMessage() + "\nFROM: " + task.sourceRootAbsolute + "\nTO: " + task.targetRootAbsolute);
-                  throw ex;
-               }
-
-               DesktopNotifications.showSticky(MessageType.INFO, "Syncing done.", //
-                  "FROM: " + task.sourceRootAbsolute + "\nTO: " + task.targetRootAbsolute);
+            final var threadPool = Executors.newFixedThreadPool(taskThreads, //
+               BasicThreadFactory.builder().namingPattern("sync-%d").build() //
+            );
+            final var completion = new ExecutorCompletionService<@Nullable Void>(threadPool);
+            for (var i = 0; i < taskThreads; i++) {
+               completion.submit(() -> {
+                  try {
+                     syncWorker(task, sourceFilterCtx, targetFilterCtx, dirJobs);
+                     return null;
+                  } catch (final Exception ex) {
+                     state = State.ABORT_BY_EXCEPTION;
+                     throw ex;
+                  }
+               });
             }
+            threadPool.shutdown();
+            @Nullable
+            Exception stallError = null;
+            @Nullable
+            Throwable workerError = null;
+            int remainingThreads = taskThreads;
+            while (remainingThreads > 0) {
+               final @Nullable Future<@Nullable Void> completed = completion.poll(awaitPollMillis, TimeUnit.MILLISECONDS);
+               if (completed == null) {
+                  if (state != State.NORMAL) {
+                     break;
+                  }
+                  try {
+                     progressTracker.checkStalled(stallTimeoutMillis, "Sync");
+                  } catch (final IOException ex) {
+                     stallError = ex;
+                     state = State.ABORT_BY_EXCEPTION;
+                     break;
+                  }
+                  continue;
+               }
+               remainingThreads--;
+               try {
+                  completed.get();
+               } catch (final java.util.concurrent.ExecutionException ex) {
+                  state = State.ABORT_BY_EXCEPTION;
+                  workerError = ex.getCause();
+                  break;
+               }
+            }
+            if (state != State.NORMAL) {
+               threadPool.shutdownNow();
+               threadPool.awaitTermination(FORCE_SHUTDOWN_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS);
+            }
+            if (stallError != null) {
+               DesktopNotifications.showSticky(MessageType.ERROR, "Syncing failed.", //
+                  "ERROR: " + stallError.getMessage() + "\nFROM: " + task.sourceRootAbsolute + "\nTO: " + task.targetRootAbsolute);
+               throw stallError;
+            }
+            if (workerError != null) {
+               DesktopNotifications.showSticky(MessageType.ERROR, "Syncing failed.", //
+                  "ERROR: " + workerError.getMessage() + "\nFROM: " + task.sourceRootAbsolute + "\nTO: " + task.targetRootAbsolute);
+               if (workerError instanceof final Exception ex)
+                  throw ex;
+               if (workerError instanceof final Error ex)
+                  throw ex;
+               throw new RuntimeException(workerError);
+            }
+
+            DesktopNotifications.showSticky(MessageType.INFO, "Syncing done.", //
+               "FROM: " + task.sourceRootAbsolute + "\nTO: " + task.targetRootAbsolute);
          }
       } finally {
          JdkLoggingUtils.withRootLogLevel(Level.INFO, stats::logStats);
       }
-   }
-
-   private @Nullable Path getNextSourceEntry(final SyncCommandConfig task) {
-      var entry = sourceDirsToScan.poll();
-      if (entry != null)
-         return entry;
-
-      if (asNonNullUnsafe(task.threads) > 1) {
-         threadsWaiting.incrementAndGet();
-         try {
-            while (!threadsDone.get()) {
-               entry = sourceDirsToScan.poll();
-               if (entry != null)
-                  return entry;
-
-               Threads.sleep(100);
-
-               // if all threads are waiting for a new entry we scanned all files
-               if (threadsWaiting.get() == task.threads) {
-                  threadsDone.set(true);
-                  return null;
-               }
-            }
-         } finally {
-            threadsWaiting.decrementAndGet();
-         }
-      }
-      return null;
    }
 
    @Override
@@ -271,26 +370,54 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
       cfgCLI.threads = i;
    }
 
-   private void sync(final SyncCommandConfig task) throws IOException {
-      final var sourceChildren = new HashMap<Path, Path>(); // Map<SourcePathRelativeToRoot, SourcePathAbsolute>
-      final var targetChildren = new ConcurrentHashMap<Path, Path>(); // Map<TargetPathRelativeToRoot, TargetPathAbsolute>
+   @Option(names = "--stall-timeout", paramLabel = "<duration>", description = {"Abort sync if no progress is observed for this long.",
+      "Examples: PT10M, 10m, 2h 30m. Use 0 to disable.", "Bare numbers are minutes. Default: 10m"})
+   private void setStallTimeout(final String value) {
+      final String v = value.strip();
+      if (v.matches("\\d+")) {
+         final long minutes = Long.parseLong(v);
+         cfgCLI.stallTimeout = minutes == 0 ? java.time.Duration.ZERO : java.time.Duration.ofMinutes(minutes);
+         return;
+      }
+      cfgCLI.stallTimeout = SyncCommandConfig.parseDuration(v, "--stall-timeout");
+   }
+
+   private void syncWorker(final SyncCommandConfig task, final FilterEngine.FilterContext sourceFilterCtx,
+         final FilterEngine.FilterContext targetFilterCtx, final DirJobQueue dirJobs) throws IOException {
+      final var sourceChildren = new HashMap<Path, Path>(256); // Map<SourcePathRelativeToRoot, SourcePathAbsolute>
+      final var targetChildren = new HashMap<Path, Path>(256); // Map<TargetPathRelativeToRoot, TargetPathAbsolute>
+      final int sourceRootNameCount = task.sourceRootAbsolute.getNameCount();
+      final int targetRootNameCount = task.targetRootAbsolute.getNameCount();
+      final boolean targetFilterHasEffects = targetFilterCtx.modifiedFrom != null //
+            || targetFilterCtx.modifiedTo != null //
+            || targetFilterCtx.excludeHiddenFiles //
+            || targetFilterCtx.excludeHiddenSystemFiles //
+            || targetFilterCtx.excludeOtherLinks //
+            || targetFilterCtx.excludeSystemFiles //
+            || !targetFilterCtx.sourceRules.isEmpty();
 
       while (state == State.NORMAL) {
-         final var source = getNextSourceEntry(task);
-         if (source == null) {
-            LOG.debug("Done.");
+         final var job = dirJobs.pollOrWait(() -> state == State.NORMAL);
+         if (job == null) {
+            LOG.debug("Worker done.");
             break;
          }
 
          try {
-            final Path target;
-            final Path sourceRelative;
-            if (source.equals(task.sourceRootAbsolute)) { // is root ?
-               target = task.targetRootAbsolute;
-               sourceRelative = Paths.get(".");
-            } else {
-               sourceRelative = source.subpath(task.sourceRootAbsolute.getNameCount(), source.getNameCount());
-               target = task.targetRootAbsolute.resolve(sourceRelative);
+            progressTracker.markProgress();
+            final Path source = job.sourceDir;
+            final Path sourceRelative = job.relativeDir;
+            final Path target = source.equals(task.sourceRootAbsolute) //
+                  ? task.targetRootAbsolute
+                  : task.targetRootAbsolute.resolve(sourceRelative);
+
+            // In unfiltered syncs directories are mirrored eagerly. With multiple worker threads a child directory
+            // may be scanned before its parent thread has created the corresponding target directory. Ensure the
+            // target directory exists before attempting to copy files into it.
+            final var taskFileFilters = task.fileFilters;
+            if (taskFileFilters == null || taskFileFilters.isEmpty()) {
+               final Path existingTarget = Files.exists(target, NOFOLLOW_LINKS) ? target : null;
+               syncDirShallow(task, source, existingTarget, sourceRelative);
             }
 
             if (loggableEvents.contains(LogEvent.SCAN)) {
@@ -302,18 +429,28 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
              */
             sourceChildren.clear();
             try (var ds = Files.newDirectoryStream(source)) {
-               ds.forEach(child -> sourceChildren //
-                  .put(child.subpath(task.sourceRootAbsolute.getNameCount(), child.getNameCount()), child));
+               ds.forEach(child -> {
+                  progressTracker.markProgress();
+                  sourceChildren.put(child.subpath(sourceRootNameCount, child.getNameCount()), child);
+               });
             }
 
             /*
              * read direct children of target dir
+             *
+             * With lazy directory creation some source directories may not yet have a corresponding
+             * directory on the target side. In that case attempting to list the target would raise
+             * NoSuchFileException; we catch that below and simply treat the target as empty.
              */
             targetChildren.clear();
-            if (!(isTrue(task.dryRun) && !Files.exists(target))) { // in dry run mode the target directory may not exist
+            if (not(task.dryRun) || Files.isDirectory(target, NOFOLLOW_LINKS)) {
                try (var ds = Files.newDirectoryStream(target)) {
-                  ds.forEach(child -> targetChildren //
-                     .put(child.subpath(task.targetRootAbsolute.getNameCount(), child.getNameCount()), child));
+                  ds.forEach(child -> {
+                     progressTracker.markProgress();
+                     targetChildren.put(child.subpath(targetRootNameCount, child.getNameCount()), child);
+                  });
+               } catch (final NoSuchFileException ex) {
+                  // target directory does not exist; treat as empty
                }
             }
 
@@ -321,38 +458,54 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
              * remove extraneous entries in target dir
              */
             if (isTrue(task.delete)) {
-               for (final var targetChildEntry : targetChildren.entrySet()) {
+               for (final var it = targetChildren.entrySet().iterator(); it.hasNext();) {
                   if (state != State.NORMAL) {
                      break;
                   }
+                  progressTracker.markProgress();
+                  final var targetChildEntry = it.next();
                   final var targetChildRelative = targetChildEntry.getKey();
                   final var targetChildAbsolute = targetChildEntry.getValue();
 
                   final boolean existsInSource = sourceChildren.containsKey(targetChildRelative);
-                  final boolean isExcludedFromSync = task.isExcludedTargetPath(targetChildAbsolute, targetChildRelative);
 
                   final boolean needRemoval;
-                  if (existsInSource) {
-                     needRemoval = isExcludedFromSync && isTrue(task.deleteExcluded);
+                  final FileAttrs targetAttrs;
+                  if (!targetFilterHasEffects) {
+                     // Fast path: no target-side filters/flags or date constraints; default-include semantics.
+                     // In this case only entries that do not exist in the source are removed.
+                     if (existsInSource) {
+                        continue;
+                     }
+                     needRemoval = true;
+                     targetAttrs = FileAttrs.get(targetChildAbsolute);
                   } else {
-                     needRemoval = !isExcludedFromSync || isExcludedFromSync && isTrue(task.deleteExcluded);
-                  }
+                     targetAttrs = FileAttrs.get(targetChildAbsolute);
+                     final boolean isIncludedTarget = FilterEngine.includesSource(targetFilterCtx, targetChildAbsolute, targetChildRelative,
+                        targetAttrs);
+                     final boolean isExcludedFromSync = !isIncludedTarget;
 
-                  if (!needRemoval) {
-                     continue;
+                     if (existsInSource) {
+                        needRemoval = isExcludedFromSync && isTrue(task.deleteExcluded);
+                     } else {
+                        needRemoval = !isExcludedFromSync || isExcludedFromSync && isTrue(task.deleteExcluded);
+                     }
+
+                     if (!needRemoval) {
+                        continue;
+                     }
                   }
 
                   if (loggableEvents.contains(LogEvent.DELETE)) {
                      LOG.info("DELETE [@|magenta %s|@]...", targetChildRelative);
                   }
-                  if (Files.isDirectory(targetChildAbsolute, NOFOLLOW_LINKS)) {
+                  if (targetAttrs.isDir()) {
                      delDir(task, targetChildAbsolute);
                   } else {
-                     delFile(task, targetChildAbsolute, true);
+                     delFile(task, targetChildAbsolute, targetAttrs, true);
                   }
 
-                  // this requires targetChildEntries to be a ConcurrentHashMap
-                  targetChildren.remove(targetChildRelative);
+                  it.remove();
                }
             }
 
@@ -363,38 +516,59 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
                if (state != State.NORMAL) {
                   break;
                }
+               progressTracker.markProgress();
                final var sourceChildRelative = sourceEntry.getKey();
                final var sourceChildAbsolute = sourceEntry.getValue();
                final var targetChildAbsolute = targetChildren.get(sourceChildRelative);
 
-               if (task.isExcludedSourcePath(sourceChildAbsolute, sourceChildRelative)) {
+               final boolean skipSubtreeScan = task.isExcludedSourceSubtreeDir(sourceChildRelative);
+
+               final var sourceAttrs = FilterEngine.getFileAttrsIfIncluded(sourceFilterCtx, sourceChildAbsolute, sourceChildRelative,
+                  skipSubtreeScan);
+               if (sourceAttrs == null) {
                   continue;
                }
 
-               if (Files.isRegularFile(sourceChildAbsolute)) {
-                  syncFile(task, sourceChildAbsolute, targetChildAbsolute, sourceChildRelative);
-                  stats.onFileScanned();
-               } else {
-                  final Integer maxDepth = task.maxDepth;
-                  final int childDepth = sourceChildRelative.getNameCount();
-
-                  // respect optional max-depth: skip directories beyond maxDepth entirely
-                  if (maxDepth != null && childDepth > maxDepth && !Files.isSymbolicLink(sourceChildAbsolute)) {
-                     if (LOG.isTraceEnabled()) {
-                        LOG.trace("Ignoring directory outside max-depth [%s]: %s", maxDepth, sourceChildRelative);
-                     }
-                     continue;
-                  }
-
-                  syncDirShallow(task, sourceChildAbsolute, targetChildAbsolute, sourceChildRelative);
-                  if (Files.isSymbolicLink(sourceChildAbsolute)) {
+               switch (sourceAttrs.type()) {
+                  case FILE, FILE_SYMLINK -> {
+                     prepareParentDirsForIncludedFile(task, sourceChildRelative);
+                     syncFile(task, sourceChildAbsolute, targetChildAbsolute, sourceChildRelative);
                      stats.onFileScanned();
-                  } else {
-                     final boolean pruneSubtree = task.isExcludedSourceSubtreeDir(sourceChildRelative);
-                     // respect optional max-depth: only descend if child depth <= maxDepth
-                     if (!pruneSubtree && (maxDepth == null || childDepth <= maxDepth)) {
-                        sourceDirsToScan.add(sourceChildAbsolute);
+                  }
+                  case BROKEN_SYMLINK, OTHER_SYMLINK -> {
+                     prepareParentDirsForIncludedFile(task, sourceChildRelative);
+                     syncSymlinkLeaf(task, sourceChildAbsolute, targetChildAbsolute, sourceChildRelative, sourceAttrs);
+                     stats.onFileScanned();
+                  }
+                  case DIRECTORY_SYMLINK -> {
+                     // handle directory symlink entries immediately (do not descend into them)
+                     // and ensure their parent directory chain exists on the target, just like for files.
+                     prepareParentDirsForIncludedFile(task, sourceChildRelative);
+                     syncDirShallow(task, sourceChildAbsolute, targetChildAbsolute, sourceChildRelative);
+                     stats.onFileScanned();
+                  }
+                  case DIRECTORY -> {
+                     final Integer maxDepth = task.maxDepth;
+                     final int childDepth = sourceChildRelative.getNameCount();
+
+                     // respect optional max-depth: skip directories beyond maxDepth entirely
+                     if (maxDepth != null && childDepth > maxDepth) {
+                        if (LOG.isTraceEnabled()) {
+                           LOG.trace("Ignoring directory outside max-depth [%s]: %s", maxDepth, sourceChildRelative);
+                        }
+                        break;
                      }
+
+                     // respect optional max-depth: only descend if child depth <= maxDepth
+                     if (!skipSubtreeScan && (maxDepth == null || childDepth <= maxDepth)) {
+                        dirJobs.add(new DirJob(sourceChildAbsolute, sourceChildRelative));
+                     }
+                  }
+                  case OTHER -> {
+                     if (getVerbosity() > 0) {
+                        LOG.warn("Skipping unsupported filesystem entry [@|magenta %s|@].", sourceChildRelative);
+                     }
+                     stats.onFileScanned();
                   }
                }
             }
@@ -410,9 +584,87 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
                LOG.error(ex.getClass().getSimpleName() + ": " + ex.getMessage());
             }
          } finally {
-            stats.onDirScanned();
+            try {
+               // explicitly included empty directories
+               if (!job.sourceDir.equals(task.sourceRootAbsolute)) {
+                  final var fileFilters = task.fileFilters;
+                  if (fileFilters != null && !fileFilters.isEmpty() //
+                        && FilterEngine.isDirExplicitlyIncluded(sourceFilterCtx, job.relativeDir)) {
+                     final var dirAttrs = FileAttrs.get(job.sourceDir);
+                     if (FilterEngine.includesSource(sourceFilterCtx, job.sourceDir, job.relativeDir, dirAttrs)) {
+                        prepareParentDirsForExplicitlyIncludedDir(task, job.relativeDir);
+                        ensureTargetDirPrepared(task, job.sourceDir, job.relativeDir);
+                     }
+                  }
+               }
+            } finally {
+               stats.onDirScanned();
+            }
          }
       }
+   }
+
+   private void prepareParentDirsForIncludedFile(final SyncCommandConfig task, final Path fileRelative) throws IOException {
+      final var fileFilters = task.fileFilters;
+      if (fileFilters == null || fileFilters.isEmpty())
+         // In unfiltered syncs, directories are mirrored eagerly via syncDirShallow.
+         return;
+
+      final Path parentRelative = fileRelative.getParent();
+      // If the immediate parent is already known to be prepared (and thus its ancestors as well),
+      // we can skip rebuilding and walking the full parent chain.
+      if (parentRelative == null || preparedParentDirsRelative.contains(parentRelative))
+         return;
+
+      // build parent chain from root -> immediate parent
+      final var parents = new ArrayDeque<Path>();
+      Path current = parentRelative;
+      while (current != null && current.getNameCount() > 0) {
+         parents.push(current);
+         current = current.getParent();
+      }
+
+      while (!parents.isEmpty()) {
+         final var dirRelative = parents.pop();
+         final var sourceDir = task.sourceRootAbsolute.resolve(dirRelative);
+         ensureTargetDirPrepared(task, sourceDir, dirRelative);
+      }
+   }
+
+   private void prepareParentDirsForExplicitlyIncludedDir(final SyncCommandConfig task, final Path dirRelative) throws IOException {
+      final var fileFilters = task.fileFilters;
+      if (fileFilters == null || fileFilters.isEmpty())
+         // In unfiltered syncs, directories are mirrored eagerly via syncDirShallow.
+         return;
+
+      final Path parentRelative = dirRelative.getParent();
+      if (parentRelative == null || preparedParentDirsRelative.contains(parentRelative))
+         return;
+
+      // build parent chain from root -> immediate parent
+      final var parents = new ArrayDeque<Path>();
+      Path current = parentRelative;
+      while (current != null && current.getNameCount() > 0) {
+         parents.push(current);
+         current = current.getParent();
+      }
+
+      while (!parents.isEmpty()) {
+         final var rel = parents.pop();
+         final var sourceDir = task.sourceRootAbsolute.resolve(rel);
+         ensureTargetDirPrepared(task, sourceDir, rel);
+      }
+   }
+
+   private void ensureTargetDirPrepared(final SyncCommandConfig task, final Path sourceDir, final Path dirRelative) throws IOException {
+      final Path targetDir = task.targetRootAbsolute.resolve(dirRelative);
+      if (!preparedTargetDirs.add(targetDir))
+         return;
+
+      preparedParentDirsRelative.add(dirRelative);
+
+      final Path existingTarget = Files.exists(targetDir, NOFOLLOW_LINKS) ? targetDir : null;
+      syncDirShallow(task, sourceDir, existingTarget, dirRelative);
    }
 
    /**
@@ -420,57 +672,20 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
     */
    private void syncDirShallow(final SyncCommandConfig task, final Path sourcePath, final @Nullable Path targetPath,
          final Path relativePath) throws IOException {
-      final var sourceAttrs = Files.readAttributes(sourcePath, BasicFileAttributes.class, NOFOLLOW_LINKS);
+      final Path resolvedTargetPath = targetPath == null ? task.targetRootAbsolute.resolve(relativePath) : targetPath;
 
-      final Path resolvedTargetPath;
-      if (targetPath == null) {
-         resolvedTargetPath = task.targetRootAbsolute.resolve(relativePath);
-      } else {
-         if (Files.isRegularFile(targetPath)) {
-            LOG.debug("Deleting target file [@|magenta %s|@] because source is directory...", relativePath);
-            delFile(task, targetPath, true);
-         } else {
-            final var targetEntryIsSymlink = Files.isSymbolicLink(targetPath);
-
-            if (sourceAttrs.isSymbolicLink() == targetEntryIsSymlink)
-               // both are either symlink or directory, thus nothing to do
-               return;
-
-            if (targetEntryIsSymlink) {
-               LOG.debug("Deleting target [@|magenta %s|@] because target is symlink and source is not...", targetPath);
-               delFile(task, targetPath, true);
-            } else {
-               LOG.debug("Deleting target [@|magenta %s|@] because source is symlink and target is not...", targetPath);
-               delDir(task, targetPath);
-            }
-         }
-         resolvedTargetPath = targetPath;
-      }
-
-      final var start = System.currentTimeMillis();
-      if (sourceAttrs.isSymbolicLink()) {
-         if (loggableEvents.contains(LogEvent.CREATE)) {
-            LOG.info("NEW [@|magenta %s -> %s%s|@]...", relativePath, Files.readSymbolicLink(sourcePath), File.separator);
-         }
-         try {
-            if (not(task.dryRun)) {
-               Files.copy(sourcePath, resolvedTargetPath, SYMLINK_COPY_OPTIONS);
-            }
-            stats.onFileCopied(System.currentTimeMillis() - start, sourceAttrs.size());
-         } catch (final FileSystemException ex) {
-            if (not(task.ignoreSymlinkErrors))
-               throw ex;
-            LOG.error("Symlink creation failed:" + ex.getMessage(), ex);
-         }
-      } else {
-         if (loggableEvents.contains(LogEvent.CREATE)) {
-            LOG.info("NEW [@|magenta %s%s|@]...", relativePath, File.separator);
-         }
-         if (not(task.dryRun)) {
-            FileUtils.copyDirShallow(sourcePath, sourceAttrs, resolvedTargetPath, isTrue(task.copyACL));
-         }
-         stats.onFileCopied(System.currentTimeMillis() - start, sourceAttrs.size());
-      }
+      DirectoryMirror.ensureDir(task, //
+         isTrue(task.dryRun), //
+         sourcePath, //
+         targetPath, //
+         resolvedTargetPath, //
+         relativePath, //
+         loggableEvents.contains(LogEvent.CREATE), //
+         LOG, //
+         stats, //
+         (file, fileAttrs, countStats) -> delFile(task, file, fileAttrs, countStats), //
+         dir -> delDir(task, dir), //
+         Boolean.TRUE.equals(task.ignoreSymlinkErrors));
    }
 
    /**
@@ -486,61 +701,63 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
          // target file does not exist
          targetPath = task.targetRootAbsolute.resolve(relativePath);
          copyCause = "NEW";
-
       } else {
-
          /*
           * target path points to file
           */
-         if (Files.isRegularFile(targetPath)) {
-            final var targetAttrs = Files.readAttributes(targetPath, BasicFileAttributes.class, NOFOLLOW_LINKS);
-            if (sourceAttrs.isSymbolicLink() && targetAttrs.isSymbolicLink()) { // both are symlinks
-               copyCause = null;
-
-            } else if (sourceAttrs.isSymbolicLink() == targetAttrs.isSymbolicLink()) { // neither is a symlink
-               final var timeCompare = sourceAttrs.lastModifiedTime().compareTo(targetAttrs.lastModifiedTime());
-               if (timeCompare > 0) {
-                  copyCause = "NEWER";
-               } else if (timeCompare < 0) {
-                  if (isTrue(task.excludeOlderFiles)) {
-                     LOG.debug("Ignoring source file [@|magenta %s|@] because it is older than target file...", relativePath);
-                     copyCause = null;
+         final var targetAttrs = FileAttrs.get(targetPath);
+         switch (targetAttrs.type()) {
+            case FILE, FILE_SYMLINK, BROKEN_SYMLINK, OTHER_SYMLINK -> {
+               if (sourceAttrs.isSymbolicLink() && targetAttrs.isSymlink()) { // both are symlinks
+                  syncSymlinkLeaf(task, sourcePath, targetPath, relativePath, FileAttrs.get(sourcePath));
+                  return;
+               } else if (sourceAttrs.isSymbolicLink() == targetAttrs.isSymlink()) { // neither is a symlink
+                  final var timeCompare = sourceAttrs.lastModifiedTime().compareTo(targetAttrs.lastModifiedTime());
+                  if (timeCompare > 0) {
+                     copyCause = "NEWER";
+                  } else if (timeCompare < 0) {
+                     if (isTrue(task.excludeOlderFiles)) {
+                        LOG.debug("Ignoring source file [@|magenta %s|@] because it is older than target file...", relativePath);
+                        copyCause = null;
+                     } else {
+                        copyCause = "OLDER";
+                     }
                   } else {
-                     copyCause = "OLDER";
+                     final var sizeCompare = Long.compare(sourceAttrs.size(), targetAttrs.size());
+                     if (sizeCompare > 0) {
+                        copyCause = "LARGER";
+                     } else if (sizeCompare < 0) {
+                        copyCause = "SMALLER";
+                     } else {
+                        LOG.trace("Source file [@|magenta %s|@] is in sync...", relativePath);
+                        copyCause = null;
+                     }
                   }
-               } else {
-                  final var sizeCompare = Long.compare(sourceAttrs.size(), targetAttrs.size());
-                  if (sizeCompare > 0) {
-                     copyCause = "LARGER";
-                  } else if (sizeCompare < 0) {
-                     copyCause = "SMALLER";
+               } else { // one is symlink
+                  if (sourceAttrs.isSymbolicLink()) {
+                     LOG.debug("Deleting target [@|magenta %s|@] because source is symlink and target is not...", targetPath);
                   } else {
-                     LOG.trace("Source file [@|magenta %s|@] is in sync...", relativePath);
-                     copyCause = null;
+                     LOG.debug("Deleting target [@|magenta %s|@] because target is symlink and source is not...", targetPath);
                   }
+                  delFile(task, targetPath, targetAttrs, true);
+                  copyCause = "REPLACE";
                }
-
-            } else { // one is symlink
-               if (sourceAttrs.isSymbolicLink()) {
-                  LOG.debug("Deleting target [@|magenta %s|@] because source is symlink and target is not...", targetPath);
-               } else {
-                  LOG.debug("Deleting target [@|magenta %s|@] because target is symlink and source is not...", targetPath);
-               }
-               delFile(task, targetPath, true);
+            }
+            case OTHER -> {
+               LOG.info("Deleting target entry [@|magenta %s|@] because source is file...", targetPath);
+               delFile(task, targetPath, targetAttrs, true);
                copyCause = "REPLACE";
             }
-
-            /*
-             * target path points to directory
-             */
-         } else {
-            LOG.info("Deleting target directory [@|magenta %s|@] because source is file...", targetPath);
-            if (Files.isSymbolicLink(targetPath)) {
-               delFile(task, targetPath, true);
-            } else {
-               delDir(task, targetPath);
+            case DIRECTORY, DIRECTORY_SYMLINK -> {
+               LOG.info("Deleting target directory [@|magenta %s|@] because source is file...", targetPath);
+               if (targetAttrs.isSymlink()) {
+                  delFile(task, targetPath, targetAttrs, true);
+               } else {
+                  delDir(task, targetPath);
+               }
+               copyCause = "REPLACE";
             }
-            copyCause = "REPLACE";
+            default -> throw new IllegalStateException("Unknown type [" + targetAttrs.type() + "] of target [" + targetPath + "].");
          }
       }
 
@@ -548,11 +765,64 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
          if ("NEW".equals(copyCause) && loggableEvents.contains(LogEvent.CREATE) || loggableEvents.contains(LogEvent.MODIFY)) {
             LOG.info("%s [@|magenta %s|@] %s...", copyCause, relativePath, Size.ofBytes(sourceAttrs.size()));
          }
-         final var start = System.currentTimeMillis();
+         final long startNanos = System.nanoTime();
          if (not(task.dryRun)) {
-            FileUtils.copyFile(sourcePath, sourceAttrs, targetPath, isTrue(task.copyACL), (bytesWritten, totalBytesWritten) -> { /**/ });
+            FileUtils.copyFile(sourcePath, sourceAttrs, targetPath, isTrue(task.copyACL), (bytesWritten, totalBytesWritten) -> {
+               progressTracker.markProgress();
+            });
          }
-         stats.onFileCopied(System.currentTimeMillis() - start, sourceAttrs.size());
+         stats.onFileCopied(TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startNanos), sourceAttrs.size());
       }
+   }
+
+   private void syncSymlinkLeaf(final SyncCommandConfig task, final Path sourcePath, @Nullable Path targetPath, final Path relativePath,
+         final FileAttrs sourceAttrs) throws IOException {
+
+      final String copyCause;
+      if (targetPath == null) {
+         targetPath = task.targetRootAbsolute.resolve(relativePath);
+         copyCause = "NEW";
+      } else {
+         final var targetAttrs = FileAttrs.get(targetPath);
+         if (targetAttrs.isSymlink()) {
+            try {
+               final var sourceLink = Files.readSymbolicLink(sourcePath);
+               final var targetLink = Files.readSymbolicLink(targetPath);
+               if (sourceLink.equals(targetLink))
+                  return;
+            } catch (final IOException ex) {
+               // treat as changed and recreate
+            }
+            copyCause = "UPDATE";
+         } else {
+            if (targetAttrs.isDir()) {
+               delDir(task, targetPath);
+            } else {
+               delFile(task, targetPath, targetAttrs, true);
+            }
+            copyCause = "REPLACE";
+         }
+      }
+
+      if ("NEW".equals(copyCause) && loggableEvents.contains(LogEvent.CREATE) || loggableEvents.contains(LogEvent.MODIFY)) {
+         try {
+            LOG.info("%s [@|magenta %s -> %s|@]...", copyCause, relativePath, Files.readSymbolicLink(sourcePath));
+         } catch (final IOException ex) {
+            LOG.info("%s [@|magenta %s|@]...", copyCause, relativePath);
+         }
+      }
+
+      final long startNanos = System.nanoTime();
+      if (not(task.dryRun)) {
+         try {
+            Files.copy(sourcePath, targetPath, SYMLINK_COPY_OPTIONS);
+         } catch (final FileSystemException ex) {
+            if (!Boolean.TRUE.equals(task.ignoreSymlinkErrors))
+               throw ex;
+            LOG.error("Symlink creation failed:" + ex.getMessage(), ex);
+            return;
+         }
+      }
+      stats.onFileCopied(TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startNanos), sourceAttrs.size());
    }
 }

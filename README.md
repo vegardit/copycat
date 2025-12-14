@@ -101,6 +101,7 @@ Options:
       --exclude-hidden-system-files
                             Don't synchronize hidden system files.
       --exclude-older-files Don't override newer files in target with older files in source.
+      --exclude-other-links Don't synchronize symlinks whose targets are neither files nor directories.
       --exclude-system-files
                             Don't synchronize system files.
       --filter (in|ex):<pattern>
@@ -119,15 +120,27 @@ Options:
       --no-log <op>[,<op>...]
                             Don't log the given sync operation. Valid values: CREATE, MODIFY, DELETE, SCAN
   -q, --quiet               Quiet mode.
-      --since <when>        Sync only items modified after this date/time.Accepts ISO-8601 (2024-12-25,
+      --since <when>        Sync only items modified after this date/time. Accepts ISO-8601 (2024-12-25,
                               2024-12-25T14:30, 2024-12-25T14:30Z), durations (P3D, PT2H), or relative
                               expressions (3 days ago, yesterday 14:00).
+      --stall-timeout       Abort sync if no progress is observed for this long.
+                            Examples: PT10M, 10m, 2h 30m. Use 0 to disable.
+                            Bare numbers are minutes. Default: 10m
       --threads <count>     Number of concurrent threads. Default: 2
       --until <when>        Sync only items modified before this date/time. Format same as --since. Combined
                               with --since to define a date range.
   -v, --verbose             Specify multiple -v options to increase verbosity.
                             For example `-v -v -v` or `-vvv`.
 ```
+
+Under the hood, the `sync` command uses a first-match-wins include/exclude filter engine with directory creation aligned to filtering:
+
+- First matching `in:` / `ex:` rule wins; unmatched paths are included by default.
+- Date filters (`--since`, `--until`) apply only to files; directories are never excluded based on modification time.
+- Hidden/system flags apply to both files and directories.
+- Directory creation follows the filter rules:
+  - Directories are created when they contain at least one included entry.
+  - Empty directories are created if they are explicitly included (e.g. in:somedir) or when no filters are configured.
 
 Examples:
 ```batch
@@ -221,6 +234,7 @@ Options:
                             Don't synchronize hidden files.
       --exclude-hidden-system-files
                             Don't synchronize hidden system files.
+      --exclude-other-links Don't synchronize symlinks whose targets are neither files nor directories.
       --exclude-system-files
                             Don't synchronize system files.
       --filter (in|ex):<pattern>
@@ -281,6 +295,17 @@ sync:
 
 By default all files are synced from source to target.
 
+#### Filter semantics
+
+- Filters apply to both files and directories.
+- Each filter is prefixed with `in:` (include) or `ex:` (exclude); the prefix is case-insensitive.
+- Paths are matched against the full source-relative or target-relative path using `/` as separator; on Windows, backslashes in patterns are normalized to `/`.
+- Filters are evaluated in the order they are defined; the first matching filter decides:
+  - `ex:` → excluded
+  - `in:` → included
+- If no filter matches, the entry is included by default, even if only `in:` filters are configured.
+- Date filters (`--since`, `--until`) are applied only to files, never to directories; hidden/system flags apply to both files and directories and are evaluated before glob filters.
+
 #### Pattern-Based Filtering
 
 Files/folders can be excluded/included using [glob](https://docs.oracle.com/en/java/javase/17/docs/api/java.base/java/nio/file/FileSystem.html#getPathMatcher(java.lang.String)) patterns.
@@ -307,6 +332,44 @@ Copycat checks the relative path of each file to be synced against the configure
    ```batch
    copycat --filter ex:**/node_modules --filter in:logs/latest.log --filter ex:logs/*.log C:\mydata \\myserver\mydata
    ```
+
+#### Directories and traversal
+
+- Copycat distinguishes between:
+  - *Traversal*: whether a directory is descended into.
+  - *Inclusion/materialization*: whether a directory itself is created on the target.
+- A global `ex:**` (or `ex:**/*`) does not by itself stop traversal when there are `in:` rules that might match descendants (for example `in:**/patch.xml, ex:**` still traverses into `dev/...` to find `patch.xml`).
+- Directories on the target are created lazily:
+  - A directory is created when the first included child (file or subdirectory) under it is synced, or
+  - When the directory itself is explicitly included by a pattern.
+- Empty directory semantics:
+  - `in:somedir` includes an empty `somedir` directory (it will be created even without files).
+  - `in:somedir/**` matches only descendants of `somedir`, so an empty `somedir` is not created.
+
+#### Whitelist and blacklist recipes
+
+- Whitelist-style (copy only some patterns):
+  ```yaml
+  filters:
+    - in:dir/subdir/*.log
+    - in:**/patch.xml
+    - ex:**          # exclude everything else
+  ```
+- Blacklist-style (copy everything except some patterns):
+  ```yaml
+  filters:
+    - ex:**/node_modules/**
+    - ex:logs/*.log
+    - in:logs/latest.log # re-include a specific file
+  ```
+
+#### Target filters and deletes
+
+- Target-side filters use the same syntax and semantics as source filters (same `in:`/`ex:` rules, first match wins, default include).
+- They are mainly used when `--delete` or `--delete-excluded` is enabled:
+  - `--delete` considers target entries that do not exist in the source; filters can protect some of them.
+  - `--delete-excluded` also deletes target entries that are excluded by filters.
+- Matching is done on target-relative paths, again using `/` as separator (backslashes in patterns are normalized on Windows).
 
 #### Date/Time Filtering
 

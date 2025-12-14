@@ -162,6 +162,11 @@ public abstract class AbstractSyncCommand<C extends AbstractSyncCommandConfig<C>
       cfgCLI.excludeHiddenSystemFiles = excludeHiddenSystemFiles;
    }
 
+   @Option(names = "--exclude-other-links", description = "Don't synchronize symlinks whose targets are missing or are neither files nor directories.")
+   private void setExcludeOtherLinks(final boolean excludeOtherLinks) {
+      cfgCLI.excludeOtherLinks = excludeOtherLinks;
+   }
+
    @Option(names = "--exclude-system-files", description = "Don't synchronize system files.")
    private void setExcludeSystemFiles(final boolean excludeSystemFiles) {
       cfgCLI.excludeSystemFiles = excludeSystemFiles;

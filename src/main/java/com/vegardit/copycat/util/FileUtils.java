@@ -8,6 +8,7 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.file.CopyOption;
+import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.OpenOption;
@@ -39,7 +40,7 @@ import net.sf.jstuff.core.io.MoreFiles;
  */
 public final class FileUtils {
    private static final @NonNull CopyOption[] COPY_WITH_ATTRS_OPTIONS = {StandardCopyOption.COPY_ATTRIBUTES, LinkOption.NOFOLLOW_LINKS};
-   private static final @NonNull LinkOption[] NOFOLLOW_LINKS = {LinkOption.NOFOLLOW_LINKS};
+   static final @NonNull LinkOption[] NOFOLLOW_LINKS = {LinkOption.NOFOLLOW_LINKS};
 
    private static final OpenOption[] FILE_READ_OPTIONS = SystemUtils.IS_OS_WINDOWS //
          ? new OpenOption[] {ExtendedOpenOption.NOSHARE_WRITE, StandardOpenOption.READ}
@@ -132,22 +133,28 @@ public final class FileUtils {
    }
 
    public static void copyDirShallow(final Path source, final Path target, final boolean copyACL) throws IOException {
-      if (copyACL) {
-         Files.copy(source, target, NOFOLLOW_LINKS);
-         final var sourceAttrs = MoreFiles.readAttributes(source);
-         copyAttributes(source, sourceAttrs, target, copyACL);
-      } else {
-         Files.copy(source, target, COPY_WITH_ATTRS_OPTIONS);
-      }
+      final var sourceAttrs = MoreFiles.readAttributes(source);
+      copyDirShallow(source, sourceAttrs, target, copyACL);
    }
 
    public static void copyDirShallow(final Path source, final BasicFileAttributes sourceAttrs, final Path target, final boolean copyACL)
          throws IOException {
       if (copyACL) {
-         Files.copy(source, target, NOFOLLOW_LINKS);
+         try {
+            Files.copy(source, target, NOFOLLOW_LINKS);
+         } catch (final FileAlreadyExistsException ex) {
+            if (!Files.isDirectory(target, NOFOLLOW_LINKS))
+               throw ex;
+         }
          copyAttributes(source, sourceAttrs, target, true);
       } else {
-         Files.copy(source, target, COPY_WITH_ATTRS_OPTIONS);
+         try {
+            Files.copy(source, target, COPY_WITH_ATTRS_OPTIONS);
+         } catch (final FileAlreadyExistsException ex) {
+            if (!Files.isDirectory(target, NOFOLLOW_LINKS))
+               throw ex;
+            copyAttributes(source, sourceAttrs, target, false);
+         }
       }
    }
 

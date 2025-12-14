@@ -24,10 +24,10 @@ public class SyncStats {
    private final LongAdder filesScanned = new LongAdder();
    private final Queue<String> errors = new ConcurrentLinkedDeque<>();
    private final LongAdder filesCopied = new LongAdder();
-   private final LongAdder filesCopiedDuration = new LongAdder();
+   private final LongAdder filesCopiedDurationMillis = new LongAdder();
    private final LongAdder filesCopiedSize = new LongAdder();
    private final LongAdder filesDeleted = new LongAdder();
-   private final LongAdder filesDeletedDuration = new LongAdder();
+   private final LongAdder filesDeletedDurationMillis = new LongAdder();
    private final LongAdder filesDeletedSize = new LongAdder();
    private long startAt;
 
@@ -52,12 +52,12 @@ public class SyncStats {
       LOG.info("Source files copied: %s (%s) @ %s/s", filesCopied, //
          FileUtils.byteCountToDisplaySize(filesCopiedSize.longValue()), //
          filesCopiedSize.longValue() == 0 ? "0 bytes"
-               : FileUtils.byteCountToDisplaySize((long) (filesCopiedSize.longValue() / (filesCopiedDuration.longValue() / 1000.0))) //
+               : FileUtils.byteCountToDisplaySize((long) (filesCopiedSize.longValue() / (filesCopiedDurationMillis.longValue() / 1000.0))) //
       );
       LOG.info("Target files deleted: %s (%s) @ %s/s", filesDeleted, //
          FileUtils.byteCountToDisplaySize(filesDeletedSize.longValue()), //
          filesDeletedSize.longValue() == 0 ? "0 bytes"
-               : FileUtils.byteCountToDisplaySize((long) (filesDeletedSize.longValue() / (filesDeletedDuration.longValue() / 1000.0))) //
+               : FileUtils.byteCountToDisplaySize((long) (filesDeletedSize.longValue() / (filesDeletedDurationMillis.longValue() / 1000.0))) //
       );
       LOG.info("Errors: %s", errors.size());
       LOG.info("Duration: %s", DurationFormatUtils.formatDurationWords(System.currentTimeMillis() - startAt, true, true));
@@ -65,7 +65,7 @@ public class SyncStats {
    }
 
    public void onDirDeleted(final long duration, final long fileCount, final long fileSize) {
-      filesDeletedDuration.add(duration);
+      filesDeletedDurationMillis.add(duration);
       filesDeleted.add(fileCount);
       filesDeletedSize.add(fileSize);
    }
@@ -82,14 +82,14 @@ public class SyncStats {
       errors.add(ex.getClass().getSimpleName() + ": " + Strings.trimNullable(ex.getMessage()));
    }
 
-   public void onFileCopied(final long duration, final long size) {
-      filesCopiedDuration.add(duration);
+   public void onFileCopied(final long durationMillis, final long size) {
+      filesCopiedDurationMillis.add(durationMillis);
       filesCopied.increment();
       filesCopiedSize.add(size);
    }
 
-   public void onFileDeleted(final long duration, final long size) {
-      filesDeletedDuration.add(duration);
+   public void onFileDeleted(final long durationMillis, final long size) {
+      filesDeletedDurationMillis.add(durationMillis);
       filesDeleted.increment();
       filesDeletedSize.add(size);
    }
@@ -99,10 +99,10 @@ public class SyncStats {
       filesScanned.reset();
       errors.clear();
       filesCopied.reset();
-      filesCopiedDuration.reset();
+      filesCopiedDurationMillis.reset();
       filesCopiedSize.reset();
       filesDeleted.reset();
-      filesDeletedDuration.reset();
+      filesDeletedDurationMillis.reset();
       filesDeletedSize.reset();
       startAt = 0;
       statsLogged = false;

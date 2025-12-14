@@ -58,6 +58,19 @@ class FileUtilsTest {
    }
 
    @Test
+   void copyDirShallowDoesNotFailIfDirectoryExists() throws IOException {
+      final var sourceDir = Files.createDirectory(tempDir.resolve("srcDir"));
+      Files.writeString(sourceDir.resolve("nested.txt"), "data");
+      final BasicFileAttributes sourceAttrs = Files.readAttributes(sourceDir, BasicFileAttributes.class, FileUtils.NOFOLLOW_LINKS);
+
+      final var targetDir = Files.createDirectory(tempDir.resolve("dstDir"));
+      FileUtils.copyDirShallow(sourceDir, sourceAttrs, targetDir, false);
+
+      assertThat(targetDir).isDirectory();
+      assertThat(targetDir.resolve("nested.txt")).doesNotExist();
+   }
+
+   @Test
    void copyFileCopiesContent() throws IOException {
       final var source = Files.writeString(tempDir.resolve("src.txt"), "hello");
       final BasicFileAttributes sourceAttrs = Files.readAttributes(source, BasicFileAttributes.class, FileUtils.NOFOLLOW_LINKS);
