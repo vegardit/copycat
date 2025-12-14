@@ -189,28 +189,38 @@ jobs:
         include:
           - arch: "linux-amd64"
             os: "ubuntu-24.04"
-            # not using newer graalvm release which fail to build
-            graal_version: 23
+            # GraalVM > 24 doesn't compile at all, see https://github.com/oracle/graal/issues/12694
+            # GraalVM > 17 creates larger binaries (14.2 MB 12.7 MB; Liberica 14.3 MB vs 13.2 MB)
+            graal_version: 17
+            graal_distribution: liberica  # https://github.com/graalvm/setup-graalvm#supported-distributions
 
           - arch: "linux-arm64"
             os: "ubuntu-24.04-arm"  # https://github.com/actions/partner-runner-images#available-images
-            # not using newer graalvm release which fail to build
-            graal_version: 23
+            # GraalVM > 24 doesn't compile at all, see https://github.com/oracle/graal/issues/12694
+            # GraalVM > 17 creates larger binaries (GraalVM 13 MB vs 11.6 MB; Liberica 13.2 MB vs 12.1 MB)
+            graal_version: 17
+            graal_distribution: liberica  # https://github.com/graalvm/setup-graalvm#supported-distributions
 
           - arch: "darwin-amd64"
             os: "macos-15-intel"
-            # not using newer graalvm release which fail to build
-            graal_version: 23
+            # GraalVM > 24 doesn't compile at all, see https://github.com/oracle/graal/issues/12694
+            # GraalVM < 21 always fails during build step "Collect metadata"
+            graal_version: 21
+            graal_distribution: liberica  # https://github.com/graalvm/setup-graalvm#supported-distributions
 
           - arch: "darwin-arm64"
             os: "macos-latest"
-            # not using newer graalvm release which fail to build
-            graal_version: 23
+            # GraalVM > 24 doesn't compile at all, see https://github.com/oracle/graal/issues/12694
+            # GraalVM < 21 doesn't support MacOS ARM
+            graal_version: 21
+            graal_distribution: liberica  # https://github.com/graalvm/setup-graalvm#supported-distributions
 
           - arch: "windows-amd64"
             os: "windows-latest"
-            # not using newer graalvm release which don't support full static builds on Windows anymore
-            graal_version: 21
+            # GraalVM > 24 doesn't compile at all, see https://github.com/oracle/graal/issues/12694
+            # GraalVM > 17 creates larger binaries (GraalVM 34.9 MB vs 33.7 MB; Liberica 35.4 MB vs 34 MB)
+            graal_version: 17
+            graal_distribution: liberica  # https://github.com/graalvm/setup-graalvm#supported-distributions
 
 
     env:
@@ -250,7 +260,7 @@ jobs:
       uses: graalvm/setup-graalvm@v1
       with:
         java-version: ${{ matrix.graal_version }}
-        distribution: graalvm-community
+        distribution: ${{ matrix.graal_distribution }}
         github-token: ${{ secrets.GITHUB_TOKEN }}
 
 
@@ -323,26 +333,32 @@ jobs:
 
 
     - name: "Collect metadata"
-      run: |
-        set -eu
+      uses: nick-fields/retry@v3
+      # using retry wrapper because GraalVM sometimes hangs unexpectedly during tracing 
+      with:
+        max_attempts: 3
+        timeout_minutes: 1
+        shell: bash
+        command: |
+          set -eu
 
-        # https://www.graalvm.org/jdk21/reference-manual/native-image/metadata/AutomaticMetadataCollection/#tracing-agent
-        rm -rf native-image-metadata
-        function traceCall() {
-          echo "Tracing copycat ${@}..."
-          java -agentlib:native-image-agent=config-merge-dir=native-image-metadata/META-INF/native-image/ -jar copycat-fat.jar ${@} >/dev/null
-        }
+          # https://www.graalvm.org/jdk21/reference-manual/native-image/metadata/AutomaticMetadataCollection/#tracing-agent
+          rm -rf native-image-metadata
+          function traceCall() {
+            echo "Tracing copycat ${@}..."
+            java -agentlib:native-image-agent=config-merge-dir=native-image-metadata/META-INF/native-image/ -jar copycat-fat.jar ${@} >/dev/null
+          }
 
-        traceCall --help
-        traceCall --version
-        traceCall sync --help
-        traceCall watch --help
+          traceCall --help
+          traceCall --version
+          traceCall sync --help
+          traceCall watch --help
 
-        rm -rf workdir
-        mkdir -p workdir/source/dir1
-        touch workdir/source/dir1/file1
-        traceCall sync workdir/source workdir/target
-        rm -rf workdir
+          rm -rf workdir
+          mkdir -p workdir/source/dir1
+          touch workdir/source/dir1/file1
+          traceCall sync workdir/source workdir/target
+          rm -rf workdir
 
 
     - name: "Build executable"
@@ -359,12 +375,10 @@ jobs:
               ${{ env.NATIVE_IMAGE_ARGS }}
           ;;
           darwin-*)
-            # not using "--static" because of error: DARWIN does not support building static executable images.
             native-image ${{ env.NATIVE_IMAGE_ARGS }}
           ;;
           windows-amd64)
-            # https://www.graalvm.org/jdk21/reference-manual/native-image/guides/build-static-executables/#build-a-static-native-executable
-            native-image.cmd --static ${{ env.NATIVE_IMAGE_ARGS }}
+            native-image.cmd ${{ env.NATIVE_IMAGE_ARGS }}
           ;;
         esac
 
