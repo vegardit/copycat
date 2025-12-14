@@ -24,11 +24,11 @@ import java.util.List;
 import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.ExecutorCompletionService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.function.BooleanSupplier;
 import java.util.logging.Level;
 
 import org.apache.commons.lang3.concurrent.BasicThreadFactory;
@@ -85,6 +85,73 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
 
    private static final long AWAIT_POLL_MILLIS = 5_000;
    private static final long FORCE_SHUTDOWN_TIMEOUT_MILLIS = 30_000;
+   private static final long WORKER_IDLE_SLEEP_MILLIS = 25;
+
+   /**
+    * Multi-producer/multi-consumer directory job queue with a simple "all workers idle => done" termination
+    * condition.
+    * <p>
+    * Important invariant: only active workers can enqueue new directory jobs. Therefore, if all workers are
+    * simultaneously waiting for work and the queue is empty, no new work will appear and workers can exit.
+    */
+   private static final class DirJobQueue {
+      private final int workerCount;
+      private final Queue<DirJob> jobs;
+
+      private int workersWaiting;
+      private boolean workersDone;
+
+      DirJobQueue(final int workerCount) {
+         this(workerCount, new ArrayDeque<>());
+      }
+
+      DirJobQueue(final int workerCount, final Queue<DirJob> jobs) {
+         this.workerCount = workerCount;
+         this.jobs = jobs;
+      }
+
+      synchronized void add(final DirJob job) {
+         if (workersDone)
+            return;
+         jobs.add(job);
+         notifyAll();
+      }
+
+      synchronized @Nullable DirJob pollOrWait(final BooleanSupplier keepRunning) {
+         final var immediate = jobs.poll();
+         if (immediate != null || workerCount <= 1)
+            return immediate;
+
+         workersWaiting++;
+         try {
+            while (!workersDone && keepRunning.getAsBoolean()) {
+               final var next = jobs.poll();
+               if (next != null)
+                  return next;
+
+               // If all workers are waiting for a new job, the queue is drained and no further work will be enqueued,
+               // because only active workers can discover/enqueue new directory jobs.
+               if (workersWaiting == workerCount) {
+                  workersDone = true;
+                  notifyAll();
+                  return null;
+               }
+
+               try {
+                  wait(WORKER_IDLE_SLEEP_MILLIS);
+               } catch (final InterruptedException ex) {
+                  Thread.currentThread().interrupt();
+                  workersDone = true;
+                  notifyAll();
+                  return null;
+               }
+            }
+            return null;
+         } finally {
+            workersWaiting--;
+         }
+      }
+   }
 
    private final ProgressTracker progressTracker = new ProgressTracker();
 
@@ -165,12 +232,7 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
             final long awaitPollMillis = stallTimeoutMillis > 0 ? Math.min(AWAIT_POLL_MILLIS, stallTimeoutMillis) : AWAIT_POLL_MILLIS;
 
             final int taskThreads = Math.max(asNonNull(task.threads), 1);
-            final Queue<DirJob> dirJobs;
-            if (taskThreads <= 1) {
-               dirJobs = new ArrayDeque<>();
-            } else {
-               dirJobs = new ConcurrentLinkedDeque<>();
-            }
+            final var dirJobs = new DirJobQueue(taskThreads);
             LOG.info("Working hard using %s thread(s)%s...", taskThreads, isTrue(task.dryRun) ? " (DRY RUN)" : "");
 
             if (!Files.exists(task.targetRootAbsolute, NOFOLLOW_LINKS)) {
@@ -321,7 +383,7 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
    }
 
    private void syncWorker(final SyncCommandConfig task, final FilterEngine.FilterContext sourceFilterCtx,
-         final FilterEngine.FilterContext targetFilterCtx, final Queue<DirJob> dirJobs) throws IOException {
+         final FilterEngine.FilterContext targetFilterCtx, final DirJobQueue dirJobs) throws IOException {
       final var sourceChildren = new HashMap<Path, Path>(256); // Map<SourcePathRelativeToRoot, SourcePathAbsolute>
       final var targetChildren = new HashMap<Path, Path>(256); // Map<TargetPathRelativeToRoot, TargetPathAbsolute>
       final int sourceRootNameCount = task.sourceRootAbsolute.getNameCount();
@@ -334,7 +396,7 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
             || !targetFilterCtx.sourceRules.isEmpty();
 
       while (state == State.NORMAL) {
-         final var job = dirJobs.poll();
+         final var job = dirJobs.pollOrWait(() -> state == State.NORMAL);
          if (job == null) {
             LOG.debug("Worker done.");
             break;
