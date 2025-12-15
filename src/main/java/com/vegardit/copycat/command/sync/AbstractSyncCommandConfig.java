@@ -91,6 +91,7 @@ public abstract class AbstractSyncCommandConfig<THIS extends AbstractSyncCommand
 
    public @Nullable @ToYamlString(name = "since") FileTime modifiedFrom;
    public @Nullable @ToYamlString(name = "until") FileTime modifiedTo;
+   public @Nullable @ToYamlString(name = "before") FileTime modifiedBefore;
 
    @SuppressWarnings({"unchecked", "rawtypes"})
    protected THIS newInstance() {
@@ -151,6 +152,9 @@ public abstract class AbstractSyncCommandConfig<THIS extends AbstractSyncCommand
       if (override && other.modifiedTo != null || modifiedTo == null) {
          modifiedTo = other.modifiedTo;
       }
+      if (override && other.modifiedBefore != null || modifiedBefore == null) {
+         modifiedBefore = other.modifiedBefore;
+      }
       if (override && other.source != null || source == null) {
          source = other.source;
       }
@@ -176,6 +180,9 @@ public abstract class AbstractSyncCommandConfig<THIS extends AbstractSyncCommand
       defaults.maxDepth = getInteger(cfg, "max-depth", true);
       defaults.modifiedFrom = getFileTime(cfg, "since", true, DateTimeParser.DateOnlyInterpretation.START_OF_DAY);
       defaults.modifiedTo = getFileTime(cfg, "until", true, DateTimeParser.DateOnlyInterpretation.END_OF_DAY);
+      defaults.modifiedBefore = getFileTime(cfg, "before", true, DateTimeParser.DateOnlyInterpretation.START_OF_DAY);
+      if (defaults.modifiedTo != null && defaults.modifiedBefore != null)
+         throw new IllegalArgumentException("Options 'until' and 'before' found in config cannot be specified at the same time.");
       defaults.source = getPath(cfg, "source", true);
       defaults.target = getPath(cfg, "target", true);
 

@@ -188,9 +188,12 @@ public abstract class AbstractSyncCommand<C extends AbstractSyncCommandConfig<C>
       cfgCLI.maxDepth = maxDepth;
    }
 
+   private boolean isUntilSet;
+   private boolean isBeforeSet;
+
    @Option(names = "--since", paramLabel = "<when>", //
       description = """
-         Sync only items modified after this date/time. \
+         Sync only files modified on or after this date/time. \
          Accepts ISO-8601 (2024-12-25, 2024-12-25T14:30, 2024-12-25T14:30Z), \
          durations (P3D, PT2H), or relative expressions (3 days ago, yesterday 14:00).""")
    private void setSince(final String when) {
@@ -199,19 +202,36 @@ public abstract class AbstractSyncCommand<C extends AbstractSyncCommandConfig<C>
       validateSinceUntil();
    }
 
+   @Option(names = "--before", paramLabel = "<when>", //
+      description = "Sync only files modified before this date/time (exclusive). "
+            + "Format same as --since. Mutually exclusive with --until.")
+   private void setBefore(final String when) {
+      if (isUntilSet)
+         throw new ParameterException(commandSpec.commandLine(), "Option --before cannot be used together with --until.");
+      isBeforeSet = true;
+      final var dateTime = DateTimeParser.parseDateTime(when, DateTimeParser.DateOnlyInterpretation.START_OF_DAY);
+      cfgCLI.modifiedBefore = FileTime.from(dateTime.atZone(java.time.ZoneId.systemDefault()).toInstant());
+      validateSinceUntil();
+   }
+
    @Option(names = "--until", paramLabel = "<when>", //
-      description = "Sync only items modified before this date/time. "
-            + "Format same as --since. Combined with --since to define a date range.")
+      description = "Sync only files modified on or before this date/time (inclusive). "
+            + "Format same as --since. Combined with --since to define a date range. Mutually exclusive with --before.")
    private void setUntil(final String when) {
+      if (isBeforeSet)
+         throw new ParameterException(commandSpec.commandLine(), "Option --until cannot be used together with --before.");
+      isUntilSet = true;
       final var dateTime = DateTimeParser.parseDateTime(when, DateTimeParser.DateOnlyInterpretation.END_OF_DAY);
       cfgCLI.modifiedTo = FileTime.from(dateTime.atZone(java.time.ZoneId.systemDefault()).toInstant());
       validateSinceUntil();
    }
 
    private void validateSinceUntil() {
-      if (cfgCLI.modifiedFrom != null && cfgCLI.modifiedTo != null && cfgCLI.modifiedFrom.compareTo(cfgCLI.modifiedTo) > 0)
-         throw new ParameterException(commandSpec.commandLine(), "--since date (" + cfgCLI.modifiedFrom + ") is after --until date ("
-               + cfgCLI.modifiedTo + ")");
+      final var lower = cfgCLI.modifiedFrom;
+      final FileTime upper = cfgCLI.modifiedTo != null ? cfgCLI.modifiedTo : cfgCLI.modifiedBefore;
+      if (lower != null && upper != null && lower.compareTo(upper) > 0)
+         throw new ParameterException(commandSpec.commandLine(), "--since date (" + lower + ") is after " + (cfgCLI.modifiedBefore != null
+               && cfgCLI.modifiedTo == null ? "--before" : "--until") + " date (" + upper + ")");
    }
 
    @Parameters(index = "0", arity = "0..1", paramLabel = "SOURCE", description = "Directory to copy from files.")

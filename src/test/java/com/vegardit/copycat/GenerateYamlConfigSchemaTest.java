@@ -259,7 +259,7 @@ final class GenerateYamlConfigSchemaTest {
       if (fieldType == FileTime.class)
          return Map.of( //
             "type", "string", //
-            "description", "Date/time expression (see --since/--until)." //
+            "description", "Date/time expression (see --before/--since/--until)." //
          );
 
       return Map.of("type", "string");

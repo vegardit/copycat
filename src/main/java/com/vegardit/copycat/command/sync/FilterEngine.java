@@ -42,6 +42,7 @@ public final class FilterEngine {
 
       final @Nullable FileTime modifiedFrom;
       final @Nullable FileTime modifiedTo;
+      final boolean modifiedToExclusive;
       final boolean excludeOtherLinks;
       final boolean excludeHiddenFiles;
       final boolean excludeHiddenSystemFiles;
@@ -57,13 +58,14 @@ public final class FilterEngine {
       final boolean ignoreGlobalExcludeForDirs;
 
       private FilterContext(final List<FilterRule> sourceRules, // CHECKSTYLE:IGNORE .*
-            final @Nullable FileTime modifiedFrom, final @Nullable FileTime modifiedTo, //
+            final @Nullable FileTime modifiedFrom, final @Nullable FileTime modifiedTo, final boolean modifiedToExclusive, //
             final boolean excludeOtherLinks, //
             final boolean excludeHiddenFiles, final boolean excludeHiddenSystemFiles, final boolean excludeSystemFiles,
             final boolean hasIncludeRules, final boolean hasGlobalExcludeAll, final boolean ignoreGlobalExcludeForDirs) {
          this.sourceRules = sourceRules;
          this.modifiedFrom = modifiedFrom;
          this.modifiedTo = modifiedTo;
+         this.modifiedToExclusive = modifiedToExclusive;
          this.excludeOtherLinks = excludeOtherLinks;
          this.excludeHiddenFiles = excludeHiddenFiles;
          this.excludeHiddenSystemFiles = excludeHiddenSystemFiles;
@@ -167,12 +169,21 @@ public final class FilterEngine {
       }
 
       final FileTime modifiedFrom = cfg.modifiedFrom;
-      final FileTime modifiedTo = cfg.modifiedTo;
+      final FileTime modifiedTo;
+      final boolean modifiedToExclusive;
+      if (cfg.modifiedBefore != null) {
+         modifiedTo = cfg.modifiedBefore;
+         modifiedToExclusive = true;
+      } else {
+         modifiedTo = cfg.modifiedTo;
+         modifiedToExclusive = false;
+      }
 
       return new FilterContext( //
          rules.isEmpty() ? List.of() : List.copyOf(rules), //
          modifiedFrom, //
          modifiedTo, //
+         modifiedToExclusive, //
          Boolean.TRUE.equals(cfg.excludeOtherLinks), //
          Boolean.TRUE.equals(cfg.excludeHiddenFiles), //
          Boolean.TRUE.equals(cfg.excludeHiddenSystemFiles), //
@@ -255,7 +266,8 @@ public final class FilterEngine {
          }
 
          if (lastModified != null && (modifiedFrom != null && lastModified.compareTo(modifiedFrom) < 0 //
-               || modifiedTo != null && lastModified.compareTo(modifiedTo) > 0))
+               || modifiedTo != null && (filters.modifiedToExclusive ? lastModified.compareTo(modifiedTo) >= 0
+                     : lastModified.compareTo(modifiedTo) > 0)))
             return false;
       }
 

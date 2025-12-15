@@ -32,7 +32,7 @@ Advantages over robocopy:
 - ANSI-colored, concise console output
 - Desktop notifications and tray icon on major sync events
 - YAML config for defaults and multiple tasks
-- Date/time filters (`--since`, `--until`) with natural language support
+- Date/time filters (`--since`, `--before`, `--until`) with natural language support
 
 
 ## <a name="installation"></a>Installation
@@ -79,10 +79,11 @@ Copycat understands two commands:
 $ copycat sync --help
 
 Usage: copycat sync [-hqVv] [--copy-acl] [--delete] [--delete-excluded] [--dry-run] [--exclude-hidden-files]
-                    [--exclude-hidden-system-files] [--exclude-older-files] [--exclude-system-files]
-                    [--ignore-errors] [--ignore-symlink-errors] [--log-errors-to-stdout] [--config <path>]
-                    [--log-file <path>] [--max-depth <depth>] [--since <when>] [--threads <count>] [--until
-                    <when>] [--filter (in|ex):<pattern>]... [--no-log <op>[,<op>...]]... [SOURCE] [TARGET]
+                    [--exclude-hidden-system-files] [--exclude-older-files] [--exclude-other-links]
+                    [--exclude-system-files] [--ignore-errors] [--ignore-symlink-errors] [--log-errors-to-stdout]
+                    [--before <when>] [--config <path>] [--log-file <path>] [--max-depth <depth>] [--since <when>]
+                    [--stall-timeout <duration>] [--threads <count>] [--until <when>] [--filter (in|ex):<pattern>]...
+                    [--no-log <op>[,<op>...]]... [SOURCE] [TARGET]
 
 Performs one-way recursive directory synchronization copying new files/directories.
 
@@ -91,6 +92,8 @@ Positional parameters:
       [TARGET]              Directory to copy files to.
 
 Options:
+      --before <when>       Sync only files modified before this date/time (exclusive). Format same as --since.
+                              Mutually exclusive with --until.
       --config <path>       Path to a YAML config file.
       --copy-acl            Copy file permissions (ACL) for newly copied files.
       --delete              Delete extraneous files/directories from target.
@@ -101,7 +104,7 @@ Options:
       --exclude-hidden-system-files
                             Don't synchronize hidden system files.
       --exclude-older-files Don't override newer files in target with older files in source.
-      --exclude-other-links Don't synchronize symlinks whose targets are neither files nor directories.
+      --exclude-other-links Don't synchronize symlinks whose targets are missing or are neither files nor directories.
       --exclude-system-files
                             Don't synchronize system files.
       --filter (in|ex):<pattern>
@@ -120,15 +123,16 @@ Options:
       --no-log <op>[,<op>...]
                             Don't log the given sync operation. Valid values: CREATE, MODIFY, DELETE, SCAN
   -q, --quiet               Quiet mode.
-      --since <when>        Sync only items modified after this date/time. Accepts ISO-8601 (2024-12-25,
+      --since <when>        Sync only files modified on or after this date/time. Accepts ISO-8601 (2024-12-25,
                               2024-12-25T14:30, 2024-12-25T14:30Z), durations (P3D, PT2H), or relative
                               expressions (3 days ago, yesterday 14:00).
-      --stall-timeout       Abort sync if no progress is observed for this long.
+      --stall-timeout <duration>
+                            Abort sync if no progress is observed for this long.
                             Examples: PT10M, 10m, 2h 30m. Use 0 to disable.
                             Bare numbers are minutes. Default: 10m
       --threads <count>     Number of concurrent threads. Default: 2
-      --until <when>        Sync only items modified before this date/time. Format same as --since. Combined
-                              with --since to define a date range.
+      --until <when>        Sync only files modified on or before this date/time (inclusive). Format same as --since.
+                              Combined with --since to define a date range. Mutually exclusive with --before.
   -v, --verbose             Specify multiple -v options to increase verbosity.
                             For example `-v -v -v` or `-vvv`.
 ```
@@ -136,7 +140,7 @@ Options:
 Under the hood, the `sync` command uses a first-match-wins include/exclude filter engine with directory creation aligned to filtering:
 
 - First matching `in:` / `ex:` rule wins; unmatched paths are included by default.
-- Date filters (`--since`, `--until`) apply only to files; directories are never excluded based on modification time.
+- Date filters (`--since`, `--before`, `--until`) apply only to files; directories are never excluded based on modification time.
 - Hidden/system flags apply to both files and directories.
 - Directory creation follows the filter rules:
   - Directories are created when they contain at least one included entry.
@@ -179,8 +183,9 @@ defaults:
   # Optional: limit directory traversal depth (0=no subdirs)
   # max-depth: 0
   # Optional: sync only recent files
-  # since: "7 days ago"  # or "2024-01-01" or "yesterday"
-  # until: "today"       # or "2024-12-31" or "tomorrow"
+  # since: "7 days ago"   # or "2024-01-01" or "yesterday"
+  # until: "today"        # inclusive upper bound (mutually exclusive with 'before')
+  # before: "tomorrow"    # exclusive upper bound (mutually exclusive with 'until')
 
 # one or more sync tasks
 sync:
@@ -218,7 +223,8 @@ $ copycat watch --help
 Usage: copycat watch [-hqVv] [--copy-acl] [--delete-excluded] [--exclude-hidden-files]
                      [--exclude-hidden-system-files] [--exclude-system-files] [--log-errors-to-stdout]
                      [--config <path>] [--log-file <path>] [--max-depth <depth>] [--since <when>] [--until
-                     <when>] [--filter (in|ex):<pattern>]... [--no-log <op>[,<op>...]]... [SOURCE] [TARGET]
+                     <when>] [--before <when>] [--filter (in|ex):<pattern>]... [--no-log <op>[,<op>...]]...
+                     [SOURCE] [TARGET]
 
 Continuously watches a directory recursively for changes and synchronizes them to another directory.
 
@@ -227,6 +233,8 @@ Positional parameters:
       [TARGET]              Directory to copy files to.
 
 Options:
+      --before <when>       Sync only files modified before this date/time (exclusive). Format same as --since.
+                              Mutually exclusive with --until.
       --config <path>       Path to a YAML config file.
       --copy-acl            Copy file permissions (ACL) for newly copied files.
       --delete-excluded     Delete excluded files/directories from target.
@@ -250,11 +258,12 @@ Options:
       --no-log <op>[,<op>...]
                             Don't log the given filesystem operation. Valid values: CREATE, MODIFY, DELETE
   -q, --quiet               Quiet mode.
-      --since <when>        Sync only items modified after this date/time.Accepts ISO-8601 (2024-12-25,
+      --since <when>        Sync only files modified on or after this date/time. Accepts ISO-8601 (2024-12-25,
                               2024-12-25T14:30, 2024-12-25T14:30Z), durations (P3D, PT2H), or relative
                               expressions (3 days ago, yesterday 14:00).
-      --until <when>        Sync only items modified before this date/time. Format same as --since. Combined
-                              with --since to define a date range.
+      --until <when>        Sync only files modified on or before this date/time (inclusive). Format same as
+                              --since. Combined with --since to define a date range. Mutually exclusive with
+                              --before.
   -v, --verbose             Specify multiple -v options to increase verbosity.
                             For example `-v -v -v` or `-vvv`.
 ```
@@ -304,7 +313,7 @@ By default all files are synced from source to target.
   - `ex:` → excluded
   - `in:` → included
 - If no filter matches, the entry is included by default, even if only `in:` filters are configured.
-- Date filters (`--since`, `--until`) are applied only to files, never to directories; hidden/system flags apply to both files and directories and are evaluated before glob filters.
+- Date filters (`--since`, `--until`, `--before`) are applied only to files, never to directories; hidden/system flags apply to both files and directories and are evaluated before glob filters.
 
 #### Pattern-Based Filtering
 
@@ -373,7 +382,7 @@ Copycat checks the relative path of each file to be synced against the configure
 
 #### Date/Time Filtering
 
-You can filter files based on their modification time using `--since` and `--until` options:
+You can filter files based on their modification time using `--since`, `--until`, and `--before` options:
 
 **Supported date/time formats:**
 - **ISO-8601 dates**: `2024-12-25`, `2024-12-25T14:30`, `2024-12-25 14:30:45`
