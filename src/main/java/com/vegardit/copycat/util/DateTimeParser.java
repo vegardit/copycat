@@ -9,6 +9,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
@@ -22,19 +23,24 @@ import java.util.regex.Matcher;
  * Parses absolute or relative date/time expressions into {@link LocalDateTime}.
  *
  * <p>
- * This utility provides a single entry point {@link #parseDateTime(String)}
+ * This utility provides a single entry point {@link #parseDateTime(String, DateOnlyInterpretation)}
  * that accepts a variety of absolute and relative input formats and normalizes
  * them into a {@link LocalDateTime} based on the current system clock.
  * </p>
  *
  * <p>
  * For a detailed list of supported formats and error conditions, see
- * {@link #parseDateTime(String)}.
+ * {@link #parseDateTime(String, DateOnlyInterpretation)}.
  * </p>
  *
  * @author Sebastian Thomschke, Vegard IT GmbH
  */
 public final class DateTimeParser {
+
+   public enum DateOnlyInterpretation {
+      START_OF_DAY,
+      END_OF_DAY
+   }
 
    @SuppressWarnings("null")
    private static final DateTimeFormatter ABSOLUTE = new DateTimeFormatterBuilder() //
@@ -45,6 +51,18 @@ public final class DateTimeParser {
       .parseDefaulting(ChronoField.MINUTE_OF_HOUR, 0) //
       .parseDefaulting(ChronoField.SECOND_OF_MINUTE, 0) //
       .toFormatter(Locale.ROOT);
+
+   private static boolean isDateOnlyExpression(final String raw) {
+      final String str = raw.strip();
+      if (str.isEmpty())
+         return false;
+
+      final String lower = str.toLowerCase(Locale.ROOT);
+      if ("today".equals(lower) || "yesterday".equals(lower) || "tomorrow".equals(lower))
+         return true;
+
+      return str.matches("\\d{4}-\\d{2}-\\d{2}");
+   }
 
    /**
     * Parses an absolute or relative date/time expression into a {@link LocalDateTime}.
@@ -78,12 +96,18 @@ public final class DateTimeParser {
     * {@link IllegalArgumentException}.
     * </p>
     *
+    * <p>
+    * If the input is date-only (for example {@code yyyy-MM-dd} or {@code today}), the returned value is adjusted
+    * according to {@code dateOnlyInterpretation}.
+    * </p>
+    *
     * @param raw user supplied date/time expression
+    * @param dateOnlyInterpretation how to interpret date-only values
     * @return parsed {@link LocalDateTime} instance
     * @throws IllegalArgumentException if the input is blank
     * @throws DateTimeParseException if the input cannot be parsed as any supported format
     */
-   public static LocalDateTime parseDateTime(final String raw) {
+   public static LocalDateTime parseDateTime(final String raw, final DateOnlyInterpretation dateOnlyInterpretation) {
       String str = raw.strip();
       if (str.isEmpty())
          throw new IllegalArgumentException("input is blank");
@@ -91,11 +115,11 @@ public final class DateTimeParser {
       // Handle special keywords
       final String lowerStr = str.toLowerCase(Locale.ROOT);
       if ("today".equals(lowerStr))
-         return LocalDate.now().atStartOfDay();
+         return applyDateOnlyInterpretation(LocalDate.now().atStartOfDay(), raw, dateOnlyInterpretation);
       if ("yesterday".equals(lowerStr))
-         return LocalDate.now().minusDays(1).atStartOfDay();
+         return applyDateOnlyInterpretation(LocalDate.now().minusDays(1).atStartOfDay(), raw, dateOnlyInterpretation);
       if ("tomorrow".equals(lowerStr))
-         return LocalDate.now().plusDays(1).atStartOfDay();
+         return applyDateOnlyInterpretation(LocalDate.now().plusDays(1).atStartOfDay(), raw, dateOnlyInterpretation);
 
       // Handle "yesterday HH:mm" or "today HH:mm" format
       if (lowerStr.startsWith("yesterday ") || lowerStr.startsWith("today ") || lowerStr.startsWith("tomorrow ")) {
@@ -123,7 +147,7 @@ public final class DateTimeParser {
                   final int second = timeParts.length > 2 ? Integer.parseInt(timeParts[2]) : 0;
 
                   if (hour >= 0 && hour < 24 && minute >= 0 && minute < 60 && second >= 0 && second < 60)
-                     return date.atTime(hour, minute, second);
+                     return applyDateOnlyInterpretation(date.atTime(hour, minute, second), raw, dateOnlyInterpretation);
                }
             } catch (final NumberFormatException ignored) { /* fall through */ }
          }
@@ -131,17 +155,17 @@ public final class DateTimeParser {
 
       // absolute formats without timezone
       try {
-         return LocalDateTime.from(ABSOLUTE.parse(str));
+         return applyDateOnlyInterpretation(LocalDateTime.from(ABSOLUTE.parse(str)), raw, dateOnlyInterpretation);
       } catch (final DateTimeParseException ignored) { /* fall through */ }
 
       // absolute formats with timezone/offset, e.g. 2024-12-25T14:30:45Z or 2024-12-25T14:30:45+01:00
       try {
          final OffsetDateTime odt = OffsetDateTime.parse(str);
-         return odt.atZoneSameInstant(ZoneId.systemDefault()).toLocalDateTime();
+         return applyDateOnlyInterpretation(odt.atZoneSameInstant(ZoneId.systemDefault()).toLocalDateTime(), raw, dateOnlyInterpretation);
       } catch (final DateTimeParseException ignored) { /* fall through */ }
       try {
          final Instant instant = Instant.parse(str);
-         return LocalDateTime.ofInstant(instant, ZoneId.systemDefault());
+         return applyDateOnlyInterpretation(LocalDateTime.ofInstant(instant, ZoneId.systemDefault()), raw, dateOnlyInterpretation);
       } catch (final DateTimeParseException ignored) { /* fall through */ }
 
       // use a single base time for ISO durations and relative expressions
@@ -152,18 +176,18 @@ public final class DateTimeParser {
       if (lowerForIso.startsWith("in ")) {
          final String durPart = str.substring(3).trim();
          try {
-            return base.plus(Duration.parse(durPart));
+            return applyDateOnlyInterpretation(base.plus(Duration.parse(durPart)), raw, dateOnlyInterpretation);
          } catch (final DateTimeParseException ignored) { /* fall through */ }
       } else if (lowerForIso.endsWith(" ago")) {
          final String durPart = str.substring(0, str.length() - 4).trim();
          try {
-            return base.minus(Duration.parse(durPart));
+            return applyDateOnlyInterpretation(base.minus(Duration.parse(durPart)), raw, dateOnlyInterpretation);
          } catch (final DateTimeParseException ignored) { /* fall through */ }
       }
 
       // bare ISO-8601 durations default to past relative to now
       try {
-         return base.minus(Duration.parse(str));
+         return applyDateOnlyInterpretation(base.minus(Duration.parse(str)), raw, dateOnlyInterpretation);
       } catch (final DateTimeParseException ignored) { /* fall through */ }
 
       // Check for mixed formats (date components with relative time keywords)
@@ -227,7 +251,17 @@ public final class DateTimeParser {
       if (lastEnd < str.length() && !str.substring(lastEnd).trim().isEmpty())
          throw fail(raw);
 
-      return t;
+      return applyDateOnlyInterpretation(t, raw, dateOnlyInterpretation);
+   }
+
+   private static LocalDateTime applyDateOnlyInterpretation(final LocalDateTime t, final String raw,
+         final DateOnlyInterpretation dateOnlyInterpretation) {
+      if (!isDateOnlyExpression(raw))
+         return t;
+      return switch (dateOnlyInterpretation) {
+         case START_OF_DAY -> t.toLocalDate().atStartOfDay();
+         case END_OF_DAY -> t.toLocalDate().atTime(LocalTime.MAX);
+      };
    }
 
    private static DateTimeParseException fail(final String in) {

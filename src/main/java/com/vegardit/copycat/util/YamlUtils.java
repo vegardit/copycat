@@ -4,11 +4,18 @@
  */
 package com.vegardit.copycat.util;
 
+import static net.sf.jstuff.core.validation.NullAnalysisHelper.asNonNull;
+
 import java.io.BufferedReader;
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
+import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
+import java.time.LocalTime;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
@@ -109,8 +116,8 @@ public final class YamlUtils {
       options.setDefaultFlowStyle(DumperOptions.FlowStyle.BLOCK);
       final var representer = new Representer(options) {
          {
-            multiRepresenters.put(java.nio.file.Path.class, obj -> representScalar(Tag.STR, obj.toString()));
-            multiRepresenters.put(java.nio.file.attribute.FileTime.class, obj -> representScalar(Tag.STR, obj.toString()));
+            multiRepresenters.put(Path.class, obj -> representScalar(Tag.STR, obj.toString()));
+            multiRepresenters.put(FileTime.class, obj -> representScalar(Tag.STR, formatFileTimeForYaml((FileTime) asNonNull(obj))));
          }
 
          @Override
@@ -143,6 +150,18 @@ public final class YamlUtils {
       };
 
       return new Yaml(representer, options).dump(obj);
+   }
+
+   private static String formatFileTimeForYaml(final FileTime ft) {
+      final var local = ft.toInstant().atZone(ZoneId.systemDefault()).toLocalDateTime();
+
+      if (local.getNano() == 0 && local.toLocalTime().equals(LocalTime.MIDNIGHT))
+         return local.toLocalDate().toString();
+
+      if (local.toLocalTime().equals(LocalTime.MAX))
+         return local.toLocalDate().toString();
+
+      return DateTimeFormatter.ISO_LOCAL_DATE_TIME.format(local);
    }
 
    private YamlUtils() {

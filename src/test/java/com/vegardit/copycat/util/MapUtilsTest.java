@@ -8,10 +8,14 @@ import static org.assertj.core.api.Assertions.*;
 
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Map;
+import java.util.TimeZone;
 
 import org.junit.jupiter.api.Test;
 
@@ -35,17 +39,73 @@ class MapUtilsTest {
    }
 
    @Test
-   void getFileTimeUsesSystemDefaultZone() {
-      final var map = new HashMap<String, Object>();
-      final var ldt = LocalDateTime.of(2024, 1, 2, 3, 4, 5);
-      map.put("t", ldt);
+   void getFileTimeSinceDateOnlyUsesLocalStartOfDay() {
+      final TimeZone originalTz = TimeZone.getDefault();
+      try {
+         TimeZone.setDefault(TimeZone.getTimeZone("Europe/Berlin"));
 
-      final FileTime ft = MapUtils.getFileTime(map, "t", true);
-      assert ft != null;
-      assertThat(map).doesNotContainKey("t");
+         final Map<String, Object> map = new HashMap<>();
+         map.put("since", "2024-01-01");
 
-      final var expected = FileTime.from(ldt.atZone(ZoneId.systemDefault()).toInstant());
-      assertThat(ft.toInstant()).isEqualTo(expected.toInstant());
+         final FileTime ft = MapUtils.getFileTime(map, "since", false, DateTimeParser.DateOnlyInterpretation.START_OF_DAY);
+         assertThat(ft).isNotNull();
+         assert ft != null;
+
+         final LocalDateTime t = LocalDateTime.ofInstant(ft.toInstant(), ZoneId.systemDefault());
+         assertThat(t.toLocalDate()).isEqualTo(LocalDate.of(2024, 1, 1));
+         assertThat(t.toLocalTime()).isEqualTo(LocalTime.MIDNIGHT);
+      } finally {
+         TimeZone.setDefault(originalTz);
+      }
+   }
+
+   @Test
+   void getFileTimeSinceUntilDateTimeKeepsProvidedTime() {
+      final TimeZone originalTz = TimeZone.getDefault();
+      try {
+         TimeZone.setDefault(TimeZone.getTimeZone("Europe/Berlin"));
+
+         final Map<String, Object> mapSince = new HashMap<>();
+         mapSince.put("since", "2024-01-01T14:30");
+         final FileTime sinceFt = MapUtils.getFileTime(mapSince, "since", false, DateTimeParser.DateOnlyInterpretation.START_OF_DAY);
+         assertThat(sinceFt).isNotNull();
+         assert sinceFt != null;
+         final LocalDateTime since = LocalDateTime.ofInstant(sinceFt.toInstant(), ZoneId.systemDefault());
+         assertThat(since.toLocalDate()).isEqualTo(LocalDate.of(2024, 1, 1));
+         assertThat(since.toLocalTime()).isEqualTo(LocalTime.of(14, 30));
+
+         final Map<String, Object> mapUntil = new HashMap<>();
+         mapUntil.put("until", "2024-12-31 08:15");
+         final FileTime untilFt = MapUtils.getFileTime(mapUntil, "until", false, DateTimeParser.DateOnlyInterpretation.END_OF_DAY);
+         assertThat(untilFt).isNotNull();
+         assert untilFt != null;
+         final LocalDateTime until = LocalDateTime.ofInstant(untilFt.toInstant(), ZoneId.systemDefault());
+         assertThat(until.toLocalDate()).isEqualTo(LocalDate.of(2024, 12, 31));
+         assertThat(until.toLocalTime()).isEqualTo(LocalTime.of(8, 15));
+      } finally {
+         TimeZone.setDefault(originalTz);
+      }
+   }
+
+   @Test
+   void getFileTimeUntilDateOnlyUsesLocalEndOfDay() {
+      final TimeZone originalTz = TimeZone.getDefault();
+      try {
+         TimeZone.setDefault(TimeZone.getTimeZone("Europe/Berlin"));
+
+         final Map<String, Object> map = new HashMap<>();
+         map.put("until", "2024-12-31");
+
+         final FileTime ft = MapUtils.getFileTime(map, "until", false, DateTimeParser.DateOnlyInterpretation.END_OF_DAY);
+         assertThat(ft).isNotNull();
+         assert ft != null;
+
+         final LocalDateTime t = LocalDateTime.ofInstant(ft.toInstant(), ZoneId.systemDefault());
+         assertThat(t.toLocalDate()).isEqualTo(LocalDate.of(2024, 12, 31));
+         assertThat(t.toLocalTime()).isEqualTo(LocalTime.MAX);
+      } finally {
+         TimeZone.setDefault(originalTz);
+      }
    }
 
    @Test
@@ -68,17 +128,6 @@ class MapUtilsTest {
          .isInstanceOf(IllegalArgumentException.class) //
          .hasMessageContaining("Cannot parse attribute [threads]") //
          .hasMessageContaining("as integer");
-   }
-
-   @Test
-   void getLocalDateTimeParsesStringOrReturnsInstance() {
-      final var map = new HashMap<String, Object>();
-      final var ldt = LocalDateTime.of(2024, 12, 25, 14, 30, 45);
-      map.put("a", ldt);
-      map.put("b", "2024-12-25T14:30:45");
-
-      assertThat(MapUtils.getLocalDateTime(map, "a", false)).isSameAs(ldt);
-      assertThat(MapUtils.getLocalDateTime(map, "b", false)).isEqualTo(ldt);
    }
 
    @Test

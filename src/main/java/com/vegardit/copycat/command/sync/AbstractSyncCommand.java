@@ -194,7 +194,7 @@ public abstract class AbstractSyncCommand<C extends AbstractSyncCommandConfig<C>
          Accepts ISO-8601 (2024-12-25, 2024-12-25T14:30, 2024-12-25T14:30Z), \
          durations (P3D, PT2H), or relative expressions (3 days ago, yesterday 14:00).""")
    private void setSince(final String when) {
-      final var dateTime = DateTimeParser.parseDateTime(when);
+      final var dateTime = DateTimeParser.parseDateTime(when, DateTimeParser.DateOnlyInterpretation.START_OF_DAY);
       cfgCLI.modifiedFrom = FileTime.from(dateTime.atZone(java.time.ZoneId.systemDefault()).toInstant());
       validateSinceUntil();
    }
@@ -203,7 +203,7 @@ public abstract class AbstractSyncCommand<C extends AbstractSyncCommandConfig<C>
       description = "Sync only items modified before this date/time. "
             + "Format same as --since. Combined with --since to define a date range.")
    private void setUntil(final String when) {
-      final var dateTime = DateTimeParser.parseDateTime(when);
+      final var dateTime = DateTimeParser.parseDateTime(when, DateTimeParser.DateOnlyInterpretation.END_OF_DAY);
       cfgCLI.modifiedTo = FileTime.from(dateTime.atZone(java.time.ZoneId.systemDefault()).toInstant());
       validateSinceUntil();
    }

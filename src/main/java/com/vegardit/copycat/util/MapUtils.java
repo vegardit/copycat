@@ -20,7 +20,7 @@ import org.eclipse.jdt.annotation.Nullable;
 public final class MapUtils {
 
    public static @Nullable <T> Boolean getBoolean(final Map<T, ?> map, final T key, final boolean remove) {
-      final var value = remove ? map.remove(key) : map.get(key);
+      final Object value = remove ? map.remove(key) : map.get(key);
       if (value == null)
          return null; // CHECKSTYLE:IGNORE .*
       if (value instanceof final Boolean b)
@@ -28,8 +28,26 @@ public final class MapUtils {
       return Boolean.parseBoolean(value.toString());
    }
 
+   public static @Nullable <T> FileTime getFileTime(final Map<T, ?> map, final T key, final boolean remove,
+         final DateTimeParser.DateOnlyInterpretation dateOnlyInterpretation) {
+      final LocalDateTime value = getLocalDateTime(map, key, remove, dateOnlyInterpretation);
+      if (value == null)
+         return null;
+      return FileTime.from(value.atZone(ZoneId.systemDefault()).toInstant());
+   }
+
+   public static <T> @Nullable LocalDateTime getLocalDateTime(final Map<T, ?> map, final T key, final boolean remove,
+         final DateTimeParser.DateOnlyInterpretation dateOnlyInterpretation) {
+      final Object value = remove ? map.remove(key) : map.get(key);
+      if (value == null)
+         return null; // CHECKSTYLE:IGNORE .*
+      if (value instanceof final LocalDateTime ldt)
+         return ldt;
+      return DateTimeParser.parseDateTime(value.toString(), dateOnlyInterpretation);
+   }
+
    public static @Nullable <T> Integer getInteger(final Map<T, ?> map, final T key, final boolean remove) {
-      final var value = remove ? map.remove(key) : map.get(key);
+      final Object value = remove ? map.remove(key) : map.get(key);
       if (value == null)
          return null;
       if (value instanceof final Number n)
@@ -42,24 +60,8 @@ public final class MapUtils {
       }
    }
 
-   public static @Nullable <T> LocalDateTime getLocalDateTime(final Map<T, ?> map, final T key, final boolean remove) {
-      final var value = remove ? map.remove(key) : map.get(key);
-      if (value == null)
-         return null; // CHECKSTYLE:IGNORE .*
-      if (value instanceof final LocalDateTime ldt)
-         return ldt;
-      return DateTimeParser.parseDateTime(value.toString());
-   }
-
-   public static @Nullable <T> FileTime getFileTime(final Map<T, ?> map, final T key, final boolean remove) {
-      final var value = getLocalDateTime(map, key, remove);
-      if (value == null)
-         return null;
-      return FileTime.from(value.atZone(ZoneId.systemDefault()).toInstant());
-   }
-
    public static @Nullable <T> Path getPath(final Map<T, ?> map, final T key, final boolean remove) {
-      final var value = remove ? map.remove(key) : map.get(key);
+      final Object value = remove ? map.remove(key) : map.get(key);
       if (value == null)
          return null;
       try {
@@ -72,7 +74,7 @@ public final class MapUtils {
 
    @SuppressWarnings("unchecked")
    public static @Nullable <T> List<String> getStringList(final Map<T, ?> map, final T key, final boolean remove) {
-      final var value = remove ? map.remove(key) : map.get(key);
+      final Object value = remove ? map.remove(key) : map.get(key);
       if (value == null)
          return null;
       if (value instanceof List) {

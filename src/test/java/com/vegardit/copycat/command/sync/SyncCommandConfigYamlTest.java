@@ -12,6 +12,7 @@ import java.io.StringReader;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
@@ -86,7 +87,9 @@ class SyncCommandConfigYamlTest {
          final LocalDateTime until = LocalDateTime.ofInstant(modifiedTo.toInstant(), ZoneId.systemDefault());
 
          assertThat(since.toLocalDate()).isEqualTo(LocalDate.of(2024, 1, 1));
+         assertThat(since.toLocalTime()).isEqualTo(LocalTime.MIDNIGHT);
          assertThat(until.toLocalDate()).isEqualTo(LocalDate.of(2024, 12, 31));
+         assertThat(until.toLocalTime()).isEqualTo(LocalTime.MAX);
       }
    }
 

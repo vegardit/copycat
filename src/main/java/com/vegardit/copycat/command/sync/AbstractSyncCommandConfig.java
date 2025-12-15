@@ -21,6 +21,7 @@ import java.util.Objects;
 import org.eclipse.jdt.annotation.NonNull;
 import org.eclipse.jdt.annotation.Nullable;
 
+import com.vegardit.copycat.util.DateTimeParser;
 import com.vegardit.copycat.util.FileUtils;
 import com.vegardit.copycat.util.YamlUtils.ToYamlString;
 
@@ -173,8 +174,8 @@ public abstract class AbstractSyncCommandConfig<THIS extends AbstractSyncCommand
       defaults.excludeSystemFiles = getBoolean(cfg, "exclude-system-files", true);
       defaults.excludeOtherLinks = getBoolean(cfg, "exclude-other-links", true);
       defaults.maxDepth = getInteger(cfg, "max-depth", true);
-      defaults.modifiedFrom = getFileTime(cfg, "since", true);
-      defaults.modifiedTo = getFileTime(cfg, "until", true);
+      defaults.modifiedFrom = getFileTime(cfg, "since", true, DateTimeParser.DateOnlyInterpretation.START_OF_DAY);
+      defaults.modifiedTo = getFileTime(cfg, "until", true, DateTimeParser.DateOnlyInterpretation.END_OF_DAY);
       defaults.source = getPath(cfg, "source", true);
       defaults.target = getPath(cfg, "target", true);
 
