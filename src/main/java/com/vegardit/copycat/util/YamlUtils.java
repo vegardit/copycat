@@ -13,6 +13,7 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
+import java.time.Duration;
 import java.time.LocalTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
@@ -116,6 +117,7 @@ public final class YamlUtils {
       options.setDefaultFlowStyle(DumperOptions.FlowStyle.BLOCK);
       final var representer = new Representer(options) {
          {
+            multiRepresenters.put(Duration.class, obj -> representScalar(Tag.STR, formatDurationForYaml((Duration) asNonNull(obj))));
             multiRepresenters.put(Path.class, obj -> representScalar(Tag.STR, obj.toString()));
             multiRepresenters.put(FileTime.class, obj -> representScalar(Tag.STR, formatFileTimeForYaml((FileTime) asNonNull(obj))));
          }
@@ -150,6 +152,23 @@ public final class YamlUtils {
       };
 
       return new Yaml(representer, options).dump(obj);
+   }
+
+   private static String formatDurationForYaml(final Duration d) {
+      if (d.isZero())
+         return "0";
+
+      if (d.isNegative() || d.getNano() != 0)
+         return d.toString();
+
+      final long seconds = d.getSeconds();
+      if (seconds % 86_400 == 0)
+         return seconds / 86_400 + "d";
+      if (seconds % 3_600 == 0)
+         return seconds / 3_600 + "h";
+      if (seconds % 60 == 0)
+         return seconds / 60 + "m";
+      return seconds + "s";
    }
 
    private static String formatFileTimeForYaml(final FileTime ft) {

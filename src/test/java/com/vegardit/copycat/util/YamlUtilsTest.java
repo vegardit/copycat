@@ -7,6 +7,7 @@ package com.vegardit.copycat.util;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.file.attribute.FileTime;
+import java.time.Duration;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.TimeZone;
@@ -35,5 +36,15 @@ class YamlUtilsTest {
       } finally {
          TimeZone.setDefault(originalTz);
       }
+   }
+
+   @Test
+   void testDurationRendersAsScalar() {
+      final var cfg = new SyncCommandConfig();
+      cfg.stallTimeout = Duration.ofMinutes(10);
+
+      final String yaml = YamlUtils.toYamlString(cfg);
+      assertThat(yaml).containsPattern("(?m)^stall-timeout: ['\\\"]?10m['\\\"]?$");
+      assertThat(yaml).doesNotContain("stall-timeout: {");
    }
 }
