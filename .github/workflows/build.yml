@@ -327,7 +327,7 @@ jobs:
 
 
     - name: "Get: maven-build-artifacts"
-      uses: actions/download-artifact@v6
+      uses: actions/download-artifact@v7
       with:
         name: maven-build-artifacts
 
@@ -462,7 +462,7 @@ jobs:
 
 
     - name: "Get: all build artifacts"
-      uses: actions/download-artifact@v6
+      uses: actions/download-artifact@v7
       with:
         path: artifacts
         merge-multiple: true
