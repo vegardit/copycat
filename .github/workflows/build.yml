@@ -157,8 +157,9 @@ jobs:
 
     - name: Test minimized fat jar
       run: |
-        set -ex
+        set -eux
 
+        mv target/copycat-*-fat.jar target/copycat-fat-orig.jar
         mv target/copycat-*-fat-minimized.jar target/copycat-fat.jar
 
         java -jar target/copycat-fat.jar --help
@@ -171,6 +172,7 @@ jobs:
       with:
         name: maven-build-artifacts
         path: |
+           target/copycat-fat-orig.jar
            target/copycat-fat.jar
            target/picocli-reflections.json
            target/bash/bashcompletion.sh
@@ -189,43 +191,34 @@ jobs:
         include:
           - arch: "linux-amd64"
             os: "ubuntu-24.04"
-            # GraalVM > 24 doesn't compile at all, see https://github.com/oracle/graal/issues/12694
-            # GraalVM > 17 creates larger binaries (14.2 MB 12.7 MB; Liberica 14.3 MB vs 13.2 MB)
-            graal_version: 17
-            graal_distribution: liberica  # https://github.com/graalvm/setup-graalvm#supported-distributions
+            graal_version: 25
+            graal_distribution: graalvm-community
 
           - arch: "linux-arm64"
             os: "ubuntu-24.04-arm"  # https://github.com/actions/partner-runner-images#available-images
-            # GraalVM > 24 doesn't compile at all, see https://github.com/oracle/graal/issues/12694
-            # GraalVM > 17 creates larger binaries (GraalVM 13 MB vs 11.6 MB; Liberica 13.2 MB vs 12.1 MB)
-            graal_version: 17
-            graal_distribution: liberica  # https://github.com/graalvm/setup-graalvm#supported-distributions
+            graal_version: 25
+            graal_distribution: graalvm-community
 
           - arch: "darwin-amd64"
             os: "macos-15-intel"
-            # GraalVM > 24 doesn't compile at all, see https://github.com/oracle/graal/issues/12694
-            # GraalVM < 21 always fails during build step "Collect metadata"
-            graal_version: 21
-            graal_distribution: liberica  # https://github.com/graalvm/setup-graalvm#supported-distributions
+            graal_version: 25
+            graal_distribution: graalvm-community
 
           - arch: "darwin-arm64"
             os: "macos-latest"
-            # GraalVM > 24 doesn't compile at all, see https://github.com/oracle/graal/issues/12694
-            # GraalVM < 21 doesn't support MacOS ARM
-            graal_version: 21
-            graal_distribution: liberica  # https://github.com/graalvm/setup-graalvm#supported-distributions
+            graal_version: 25
+            graal_distribution: graalvm-community
 
           - arch: "windows-amd64"
             os: "windows-latest"
-            # GraalVM > 24 doesn't compile at all, see https://github.com/oracle/graal/issues/12694
-            # GraalVM > 17 creates larger binaries (GraalVM 34.9 MB vs 33.7 MB; Liberica 35.4 MB vs 34 MB)
-            graal_version: 17
-            graal_distribution: liberica  # https://github.com/graalvm/setup-graalvm#supported-distributions
+            graal_version: 25
+            graal_distribution: graalvm-community
 
 
     env:
       # https://www.graalvm.org/latest/reference-manual/native-image/overview/Options/
       # -H:NativeLinkerOption=-no-pie -> do not to generate Position Independent Executables (PIE)
+      # not using copycat-fat.jar but copycat-fat-orig.jar to avoid https://github.com/oracle/graal/issues/12694
       NATIVE_IMAGE_ARGS:
         -H:NativeLinkerOption=-no-pie
         -H:ReflectionConfigurationFiles=picocli-reflections.json
@@ -240,7 +233,7 @@ jobs:
         --verbose
         -Dfile.encoding=UTF-8
         --class-path native-image-metadata
-        --class-path copycat-fat.jar
+        --class-path copycat-fat-orig.jar
         com.vegardit.copycat.CopyCatMain
         copycat-${{ matrix.arch }}
 
@@ -342,11 +335,11 @@ jobs:
         command: |
           set -eu
 
-          # https://www.graalvm.org/jdk21/reference-manual/native-image/metadata/AutomaticMetadataCollection/#tracing-agent
+          # https://www.graalvm.org/jdk25/reference-manual/native-image/metadata/AutomaticMetadataCollection/#tracing-agent
           rm -rf native-image-metadata
           function traceCall() {
             echo "Tracing copycat ${@}..."
-            java -agentlib:native-image-agent=config-merge-dir=native-image-metadata/META-INF/native-image/ -jar copycat-fat.jar ${@} >/dev/null
+            java -agentlib:native-image-agent=config-merge-dir=native-image-metadata/META-INF/native-image/ -jar copycat-fat-orig.jar ${@} >/dev/null
           }
 
           traceCall --help
@@ -370,7 +363,7 @@ jobs:
             /usr/bin/gcc -v
 
             native-image \
-              -H:+StaticExecutableWithDynamicLibC `# https://www.graalvm.org/jdk21/reference-manual/native-image/guides/build-static-executables/#build-a-mostly-static-native-executable` \
+              --static-nolibc `# https://www.graalvm.org/jdk25/reference-manual/native-image/guides/build-static-executables/#build-a-mostly-static-native-executable` \
               --report-unsupported-elements-at-runtime `# avoid: Unsupported type sun.awt.X11.XBaseWindow is reachable` \
               ${{ env.NATIVE_IMAGE_ARGS }}
           ;;
