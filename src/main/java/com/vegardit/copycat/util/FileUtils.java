@@ -34,17 +34,22 @@ import net.sf.jstuff.core.Strings;
 import net.sf.jstuff.core.SystemUtils;
 import net.sf.jstuff.core.functional.BiLongConsumer;
 import net.sf.jstuff.core.io.MoreFiles;
+import net.sf.jstuff.core.logging.Logger;
 
 /**
  * @author Sebastian Thomschke, Vegard IT GmbH
  */
 public final class FileUtils {
+   private static final Logger LOG = Logger.create();
+
    private static final @NonNull CopyOption[] COPY_WITH_ATTRS_OPTIONS = {StandardCopyOption.COPY_ATTRIBUTES, LinkOption.NOFOLLOW_LINKS};
    static final @NonNull LinkOption[] NOFOLLOW_LINKS = {LinkOption.NOFOLLOW_LINKS};
 
-   private static final OpenOption[] FILE_READ_OPTIONS = SystemUtils.IS_OS_WINDOWS //
+   private static final OpenOption[] FILE_READ_OPTIONS_STRICT = SystemUtils.IS_OS_WINDOWS //
          ? new OpenOption[] {ExtendedOpenOption.NOSHARE_WRITE, StandardOpenOption.READ}
          : new OpenOption[] {StandardOpenOption.READ};
+
+   private static final OpenOption[] FILE_READ_OPTIONS_SHARED = new OpenOption[] {StandardOpenOption.READ};
 
    private static final OpenOption[] FILE_WRITE_OPTIONS = SystemUtils.IS_OS_WINDOWS //
          ? new OpenOption[] { //
@@ -54,8 +59,8 @@ public final class FileUtils {
             StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE};
 
    @SuppressWarnings("resource")
-   public static void copyAttributes(final Path source, final BasicFileAttributes sourceAttrs, final Path target, final boolean copyACL)
-         throws IOException {
+   public static void copyAttributes(final Path source, final BasicFileAttributes sourceAttrs, final Path target, final boolean copyACL,
+         final boolean bestEffortMetadata) throws IOException {
       final var sourceFS = source.getFileSystem();
       final var targetFS = target.getFileSystem();
 
@@ -77,10 +82,17 @@ public final class FileUtils {
       final var targetPosixAttrs = targetFSP.getFileAttributeView(target, PosixFileAttributeView.class, NOFOLLOW_LINKS);
 
       if (sourceDosAttrs != null && targetDosAttrs != null) {
-         targetDosAttrs.setArchive(sourceDosAttrs.isArchive());
-         targetDosAttrs.setHidden(sourceDosAttrs.isHidden());
-         targetDosAttrs.setReadOnly(sourceDosAttrs.isReadOnly());
-         targetDosAttrs.setSystem(sourceDosAttrs.isSystem());
+         try {
+            targetDosAttrs.setArchive(sourceDosAttrs.isArchive());
+            targetDosAttrs.setHidden(sourceDosAttrs.isHidden());
+            targetDosAttrs.setReadOnly(sourceDosAttrs.isReadOnly());
+            targetDosAttrs.setSystem(sourceDosAttrs.isSystem());
+         } catch (final IOException ex) {
+            if (!bestEffortMetadata)
+               throw ex;
+            LOG.debug("Failed to copy DOS attributes for [%s] (best-effort)...", target);
+            LOG.debug(ex);
+         }
       }
 
       if (copyACL && SystemUtils.IS_OS_WINDOWS && sourceSupportedAttrs.contains("acl") && targetSupportedAttrs.contains("acl")) {
@@ -88,9 +100,16 @@ public final class FileUtils {
          final var sourceAclAttrs = sourceFSP.getFileAttributeView(source, AclFileAttributeView.class, NOFOLLOW_LINKS);
          final var targetAclAttrs = targetFSP.getFileAttributeView(target, AclFileAttributeView.class, NOFOLLOW_LINKS);
          if (sourceAclAttrs != null && targetAclAttrs != null) {
-            targetAclAttrs.setAcl(sourceAclAttrs.getAcl());
-            if (SystemUtils.isRunningAsAdmin()) {
-               targetAclAttrs.setOwner(sourceAclAttrs.getOwner());
+            try {
+               targetAclAttrs.setAcl(sourceAclAttrs.getAcl());
+               if (SystemUtils.isRunningAsAdmin()) {
+                  targetAclAttrs.setOwner(sourceAclAttrs.getOwner());
+               }
+            } catch (final IOException ex) {
+               if (!bestEffortMetadata)
+                  throw ex;
+               LOG.debug("Failed to copy ACL attributes for [%s] (best-effort)...", target);
+               LOG.debug(ex);
             }
          }
       }
@@ -110,25 +129,67 @@ public final class FileUtils {
       }
 
       if (copyACL && sourcePosixAttrs != null && targetPosixAttrs != null) {
-         targetPosixAttrs.setOwner(sourcePosixAttrs.owner());
-         targetPosixAttrs.setGroup(sourcePosixAttrs.group());
-         targetPosixAttrs.setPermissions(sourcePosixAttrs.permissions());
-         ownerCopied = true;
+         try {
+            targetPosixAttrs.setOwner(sourcePosixAttrs.owner());
+            targetPosixAttrs.setGroup(sourcePosixAttrs.group());
+            targetPosixAttrs.setPermissions(sourcePosixAttrs.permissions());
+            ownerCopied = true;
+         } catch (final IOException ex) {
+            if (!bestEffortMetadata)
+               throw ex;
+            LOG.debug("Failed to copy POSIX attributes for [%s] (best-effort)...", target);
+            LOG.debug(ex);
+         }
       }
 
       if (copyACL && !ownerCopied && !SystemUtils.IS_OS_WINDOWS //
             && sourceSupportedAttrs.contains("owner") && targetSupportedAttrs.contains("owner")) {
-         Files.setOwner(target, Files.getOwner(source, NOFOLLOW_LINKS));
+         try {
+            Files.setOwner(target, Files.getOwner(source, NOFOLLOW_LINKS));
+         } catch (final IOException ex) {
+            if (!bestEffortMetadata)
+               throw ex;
+            LOG.debug("Failed to copy owner for [%s] (best-effort)...", target);
+            LOG.debug(ex);
+         }
       }
 
-      copyUserAttrs(source, target);
+      try {
+         copyUserAttrs(source, target);
+      } catch (final IOException | RuntimeException ex) {
+         if (!bestEffortMetadata)
+            throw ex;
+         LOG.debug("Failed to copy user-defined attributes for [%s] (best-effort)...", target);
+         LOG.debug(ex);
+      }
 
       if (targetBasicAttrs != null) {
-         copyTimeAttrs(sourceAttrs, targetBasicAttrs);
+         try {
+            copyTimeAttrs(sourceAttrs, targetBasicAttrs);
+         } catch (final IOException ex) {
+            if (!bestEffortMetadata)
+               throw ex;
+            LOG.debug("Failed to copy time attributes for [%s] (best-effort)...", target);
+            LOG.debug(ex);
+         }
       } else if (targetPosixAttrs != null) {
-         copyTimeAttrs(sourceAttrs, targetPosixAttrs);
+         try {
+            copyTimeAttrs(sourceAttrs, targetPosixAttrs);
+         } catch (final IOException ex) {
+            if (!bestEffortMetadata)
+               throw ex;
+            LOG.debug("Failed to copy time attributes for [%s] (best-effort)...", target);
+            LOG.debug(ex);
+         }
       } else if (targetDosAttrs != null) {
-         copyTimeAttrs(sourceAttrs, targetDosAttrs);
+         try {
+            copyTimeAttrs(sourceAttrs, targetDosAttrs);
+         } catch (final IOException ex) {
+            if (!bestEffortMetadata)
+               throw ex;
+            LOG.debug("Failed to copy time attributes for [%s] (best-effort)...", target);
+            LOG.debug(ex);
+         }
       }
    }
 
@@ -146,27 +207,40 @@ public final class FileUtils {
             if (!Files.isDirectory(target, NOFOLLOW_LINKS))
                throw ex;
          }
-         copyAttributes(source, sourceAttrs, target, true);
+         copyAttributes(source, sourceAttrs, target, true, false);
       } else {
          try {
             Files.copy(source, target, COPY_WITH_ATTRS_OPTIONS);
          } catch (final FileAlreadyExistsException ex) {
             if (!Files.isDirectory(target, NOFOLLOW_LINKS))
                throw ex;
-            copyAttributes(source, sourceAttrs, target, false);
+            copyAttributes(source, sourceAttrs, target, false, false);
          }
       }
    }
 
    public static void copyFile(final Path source, final BasicFileAttributes sourceAttrs, final Path target, final boolean copyACL,
          final BiLongConsumer onBytesWritten) throws IOException {
+      copyFile(source, sourceAttrs, target, copyACL, false, onBytesWritten);
+   }
 
-      try (var sourceCh = FileChannel.open(source, FILE_READ_OPTIONS);
+   public static void copyFile(final Path source, final BasicFileAttributes sourceAttrs, final Path target, final boolean copyACL,
+         final boolean allowReadingOpenFiles, final BiLongConsumer onBytesWritten) throws IOException {
+
+      final OpenOption[] sourceReadOptions = allowReadingOpenFiles && SystemUtils.IS_OS_WINDOWS //
+            ? FILE_READ_OPTIONS_SHARED
+            : FILE_READ_OPTIONS_STRICT;
+
+      copyFileContent(source, target, sourceReadOptions, onBytesWritten);
+      copyAttributes(source, sourceAttrs, target, copyACL, allowReadingOpenFiles);
+   }
+
+   private static void copyFileContent(final Path source, final Path target, final OpenOption[] sourceReadOptions,
+         final BiLongConsumer onBytesWritten) throws IOException {
+      try (var sourceCh = FileChannel.open(source, sourceReadOptions);
            var targetCh = FileChannel.open(target, FILE_WRITE_OPTIONS)) {
          MoreFiles.copyContent(sourceCh, targetCh, onBytesWritten);
       }
-
-      copyAttributes(source, sourceAttrs, target, copyACL);
    }
 
    private static void copyTimeAttrs(final BasicFileAttributes sourceAttrs, final BasicFileAttributeView targetAttrs) throws IOException {

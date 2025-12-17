@@ -560,9 +560,10 @@ public class WatchCommand extends AbstractSyncCommand<WatchCommandConfig> {
       }
 
       if (contentChanged || !targetExists) {
-         FileUtils.copyFile(sourcePath, sourceAttrs, targetPath, isTrue(cfg.copyACL), (bytesWritten, totalBytesWritten) -> { /**/ });
+         FileUtils.copyFile(sourcePath, sourceAttrs, targetPath, isTrue(cfg.copyACL), isTrue(cfg.allowReadingOpenFiles), (bytesWritten,
+               totalBytesWritten) -> { /**/ });
       } else {
-         FileUtils.copyAttributes(sourcePath, sourceAttrs, targetPath, isTrue(cfg.copyACL));
+         FileUtils.copyAttributes(sourcePath, sourceAttrs, targetPath, isTrue(cfg.copyACL), isTrue(cfg.allowReadingOpenFiles));
       }
    }
 }

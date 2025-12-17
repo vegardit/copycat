@@ -78,8 +78,8 @@ Copycat understands two commands:
 ```
 $ copycat sync --help
 
-Usage: copycat sync [-hqVv] [--copy-acl] [--delete] [--delete-excluded] [--dry-run] [--exclude-hidden-files]
-                    [--exclude-hidden-system-files] [--exclude-older-files] [--exclude-other-links]
+Usage: copycat sync [-hqVv] [--allow-reading-open-files] [--copy-acl] [--delete] [--delete-excluded] [--dry-run]
+                    [--exclude-hidden-files] [--exclude-hidden-system-files] [--exclude-older-files] [--exclude-other-links]
                     [--exclude-system-files] [--ignore-errors] [--ignore-symlink-errors] [--log-errors-to-stdout]
                     [--before <when>] [--config <path>] [--log-file <path>] [--max-depth <depth>] [--since <when>]
                     [--stall-timeout <duration>] [--threads <count>] [--until <when>] [--filter (in|ex):<pattern>]...
@@ -92,6 +92,9 @@ Positional parameters:
       [TARGET]              Directory to copy files to.
 
 Options:
+      --allow-reading-open-files
+                            On Windows, open source files with shared read access (best-effort).
+                              May copy an inconsistent snapshot for actively written files and may skip copying some metadata.
       --before <when>       Sync only files modified before this date/time (exclusive). Format same as --since.
                               Mutually exclusive with --until.
       --config <path>       Path to a YAML config file.
@@ -166,6 +169,8 @@ Default values and/or multiple sync tasks can be configured using a YAML config 
 # default values for sync tasks
 defaults:
   copy-acl: false
+  # Optional (Windows): allow copying files that are currently open for writing by other processes (best-effort)
+  # allow-reading-open-files: false
   delete: true
   delete-excluded: true
   dry-run: false
@@ -220,7 +225,7 @@ If you use the YAML Language Server (e.g. via VS Code), you can reference it by 
 ```
 $ copycat watch --help
 
-Usage: copycat watch [-hqVv] [--copy-acl] [--delete-excluded] [--exclude-hidden-files]
+Usage: copycat watch [-hqVv] [--allow-reading-open-files] [--copy-acl] [--delete-excluded] [--exclude-hidden-files]
                      [--exclude-hidden-system-files] [--exclude-system-files] [--log-errors-to-stdout]
                      [--config <path>] [--log-file <path>] [--max-depth <depth>] [--since <when>] [--until
                      <when>] [--before <when>] [--filter (in|ex):<pattern>]... [--no-log <op>[,<op>...]]...
@@ -233,6 +238,9 @@ Positional parameters:
       [TARGET]              Directory to copy files to.
 
 Options:
+      --allow-reading-open-files
+                            On Windows, open source files with shared read access (best-effort).
+                              May copy an inconsistent snapshot for actively written files and may skip copying some metadata.
       --before <when>       Sync only files modified before this date/time (exclusive). Format same as --since.
                               Mutually exclusive with --until.
       --config <path>       Path to a YAML config file.

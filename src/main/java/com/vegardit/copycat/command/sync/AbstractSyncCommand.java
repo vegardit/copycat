@@ -101,6 +101,12 @@ public abstract class AbstractSyncCommand<C extends AbstractSyncCommandConfig<C>
       doExecute(taskCfgs);
    }
 
+   @Option(names = "--allow-reading-open-files", description = {"On Windows, open source files with shared read access (best-effort).",
+      "May copy an inconsistent snapshot for actively written files and may skip copying some metadata."})
+   private void setAllowReadingOpenFiles(final boolean allowReadingOpenFiles) {
+      cfgCLI.allowReadingOpenFiles = allowReadingOpenFiles;
+   }
+
    @SuppressWarnings("unchecked")
    @Option(names = "--config", paramLabel = "<path>", description = "Path to a YAML config file.")
    private void setConfig(final String configPath) throws IOException {

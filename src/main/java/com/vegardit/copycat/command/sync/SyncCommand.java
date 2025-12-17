@@ -767,7 +767,8 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
          }
          final long startNanos = System.nanoTime();
          if (not(task.dryRun)) {
-            FileUtils.copyFile(sourcePath, sourceAttrs, targetPath, isTrue(task.copyACL), (bytesWritten, totalBytesWritten) -> {
+            FileUtils.copyFile(sourcePath, sourceAttrs, targetPath, isTrue(task.copyACL), isTrue(task.allowReadingOpenFiles), (bytesWritten,
+                  totalBytesWritten) -> {
                progressTracker.markProgress();
             });
          }

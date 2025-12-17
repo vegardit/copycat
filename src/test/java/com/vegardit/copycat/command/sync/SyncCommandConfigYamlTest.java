@@ -208,6 +208,28 @@ class SyncCommandConfigYamlTest {
    }
 
    @Test
+   @DisplayName("Parse allow-reading-open-files from YAML")
+   void testAllowReadingOpenFilesFromYaml() {
+      final String yaml = """
+         sync:
+         - source: C:\\\\src
+           target: C:\\\\dst
+           allow-reading-open-files: true
+         """;
+
+      final Map<String, Object> root = YamlUtils.parseYaml(new BufferedReader(new StringReader(yaml)));
+
+      @SuppressWarnings("unchecked")
+      final var syncList = asNonNull((List<Map<String, Object>>) root.get("sync"));
+      final Map<String, Object> taskMap = syncList.get(0);
+      final var taskCfg = new SyncCommandConfig();
+      taskCfg.applyFrom(taskMap, true);
+      taskCfg.applyDefaults();
+
+      assertThat(taskCfg.allowReadingOpenFiles).isTrue();
+   }
+
+   @Test
    @DisplayName("Parse stall-timeout from YAML")
    void testStallTimeoutFromYaml() {
       final String yaml = """

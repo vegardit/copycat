@@ -60,6 +60,12 @@ public abstract class AbstractSyncCommandConfig<THIS extends AbstractSyncCommand
    public @Nullable @ToYamlString(ignore = true) Path target;
    public @ToYamlString(name = "target") Path targetRootAbsolute = lateNonNull(); // computed value
 
+   /**
+    * On Windows, open source files with shared read access (best-effort).
+    * <p>
+    * May copy an inconsistent snapshot for actively written files and may skip copying some metadata.
+    */
+   public @Nullable Boolean allowReadingOpenFiles;
    public @Nullable Boolean copyACL;
    public @Nullable Boolean deleteExcluded;
    public @Nullable @ToYamlString(name = "filters") List<String> fileFilters;
@@ -103,6 +109,7 @@ public abstract class AbstractSyncCommandConfig<THIS extends AbstractSyncCommand
     */
    public void applyDefaults() {
       final THIS defaults = newInstance();
+      defaults.allowReadingOpenFiles = false;
       defaults.copyACL = false;
       defaults.deleteExcluded = false;
       defaults.fileFilters = Collections.emptyList();
@@ -121,6 +128,9 @@ public abstract class AbstractSyncCommandConfig<THIS extends AbstractSyncCommand
       if (other == null)
          return;
 
+      if (override && other.allowReadingOpenFiles != null || allowReadingOpenFiles == null) {
+         allowReadingOpenFiles = other.allowReadingOpenFiles;
+      }
       if (override && other.copyACL != null || copyACL == null) {
          copyACL = other.copyACL;
       }
@@ -171,6 +181,7 @@ public abstract class AbstractSyncCommandConfig<THIS extends AbstractSyncCommand
          return Collections.emptyMap();
       final var cfg = new HashMap<>(config);
       final THIS defaults = newInstance();
+      defaults.allowReadingOpenFiles = getBoolean(cfg, "allow-reading-open-files", true);
       defaults.copyACL = getBoolean(cfg, "copy-acl", true);
       defaults.deleteExcluded = getBoolean(cfg, "delete-excluded", true);
       defaults.excludeHiddenFiles = getBoolean(cfg, "exclude-hidden-files", true);

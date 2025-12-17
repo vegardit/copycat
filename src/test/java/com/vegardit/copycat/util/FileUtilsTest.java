@@ -179,7 +179,7 @@ class FileUtilsTest {
       }
 
       final var basic = Files.readAttributes(source, BasicFileAttributes.class, FileUtils.NOFOLLOW_LINKS);
-      FileUtils.copyAttributes(source, new FakeDosFileAttributes(basic), target, true);
+      FileUtils.copyAttributes(source, new FakeDosFileAttributes(basic), target, true, false);
 
       assertThat(Files.getPosixFilePermissions(target)).isEqualTo(sourcePerms);
    }
