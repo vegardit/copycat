@@ -239,7 +239,9 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
                if (loggableEvents.contains(LogEvent.CREATE)) {
                   LOG.info("NEW [@|magenta %s%s|@]...", task.targetRootAbsolute, File.separator);
                }
-               FileUtils.copyDirShallow(task.sourceRootAbsolute, task.targetRootAbsolute, isTrue(task.copyACL));
+               if (not(task.dryRun)) {
+                  FileUtils.copyDirShallow(task.sourceRootAbsolute, task.targetRootAbsolute, isTrue(task.copyACL));
+               }
             }
 
             dirJobs.add(new DirJob(task.sourceRootAbsolute, Paths.get(".")));
