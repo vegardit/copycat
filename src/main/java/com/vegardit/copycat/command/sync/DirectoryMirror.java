@@ -122,7 +122,13 @@ public final class DirectoryMirror {
       final long start = System.currentTimeMillis();
       if (sourceAttrs.isSymbolicLink()) {
          if (logCreate) {
-            log.info("NEW [@|magenta %s -> %s%s|@]...", relativePath, Files.readSymbolicLink(sourcePath), File.separator);
+            try {
+               log.info("NEW [@|magenta %s -> %s%s|@]...", relativePath, Files.readSymbolicLink(sourcePath), File.separator);
+            } catch (final IOException ex) {
+               if (!ignoreSymlinkErrors)
+                  throw ex;
+               log.info("NEW [@|magenta %s%s|@]...", relativePath, File.separator);
+            }
          }
          try {
             if (!dryRun) {
