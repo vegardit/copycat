@@ -36,7 +36,7 @@ public final class FileAttrs {
       try {
          final var sourceAttrs = Files.readAttributes(path, BasicFileAttributes.class, FileUtils.NOFOLLOW_LINKS);
          return new FileAttrs(path, sourceAttrs);
-      } catch (final FileNotFoundException ex) {
+      } catch (final NoSuchFileException | FileNotFoundException ex) {
          return null;
       }
    }
