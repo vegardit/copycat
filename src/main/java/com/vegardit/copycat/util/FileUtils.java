@@ -276,9 +276,29 @@ public final class FileUtils {
                } else {
                   buf.clear();
                }
-               sourceUserAttrs.read(entry, buf);
+
+               // Some providers may not fill the destination buffer in a single call.
+               // Loop until the full attribute value is transferred.
+               buf.limit(entrySize);
+               while (buf.hasRemaining()) {
+                  final int bytesRead = sourceUserAttrs.read(entry, buf);
+                  if (bytesRead <= 0)
+                     break;
+               }
+               if (buf.position() != entrySize)
+                  throw new IOException("Failed to read full user attribute [" + entry + "] from [" + source + "]");
+
                buf.flip();
-               targetUserAttrs.write(entry, buf);
+
+               final int bytesToWrite = buf.remaining();
+               while (buf.hasRemaining()) {
+                  final int bytesWritten = targetUserAttrs.write(entry, buf);
+                  if (bytesWritten <= 0)
+                     break;
+               }
+               if (buf.hasRemaining())
+                  throw new IOException("Failed to write full user attribute [" + entry + "] to [" + target + "] (expected " + bytesToWrite
+                        + " bytes)");
             }
          }
       }
