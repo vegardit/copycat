@@ -14,6 +14,7 @@ import java.awt.TrayIcon;
 import java.awt.TrayIcon.MessageType;
 import java.io.IOException;
 import java.io.InputStream;
+import java.time.Duration;
 import java.util.Base64;
 
 import org.eclipse.jdt.annotation.Nullable;
@@ -139,8 +140,7 @@ public final class DesktopNotifications {
                   + "  try{$msg.Dispose();}catch{};" //
                   + "  if($appIcon){try{$appIcon.Dispose();}catch{}};" //
                   + "  if($appIconStream){try{$appIconStream.Dispose();}catch{}};" //
-                  + "}" //
-            );
+                  + "}", Duration.ofSeconds(15));
             return true;
          } catch (final Exception ex) {
             LOG.warn(ex);
@@ -187,8 +187,7 @@ public final class DesktopNotifications {
                   + "  try{$msg.Dispose();}catch{};" //
                   + "  if($appIcon){try{$appIcon.Dispose();}catch{}};" //
                   + "  if($appIconStream){try{$appIconStream.Dispose();}catch{}};" //
-                  + "}" //
-            );
+                  + "}", Duration.ofSeconds(10));
             return true;
          } catch (final Exception ex) {
             LOG.warn(ex);

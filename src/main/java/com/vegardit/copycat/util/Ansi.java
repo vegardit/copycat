@@ -6,9 +6,9 @@ package com.vegardit.copycat.util;
 
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Locale;
-import java.util.concurrent.TimeUnit;
 
 import org.eclipse.jdt.annotation.Nullable;
 
@@ -38,7 +38,7 @@ public final class Ansi {
             try (InputStream is = Ansi.class.getResourceAsStream("/enable-ansi-colors.ps1")) {
                if (is != null) {
                   final var script = new String(is.readAllBytes(), StandardCharsets.UTF_8);
-                  WindowsPowerShell.executeOnConsoleAsync(script).get(2, TimeUnit.SECONDS);
+                  WindowsPowerShell.executeOnConsoleAsync(script, Duration.ofSeconds(2)).join();
                }
             }
          } catch (final Throwable ex) { // CHECKSTYLE:IGNORE .*
