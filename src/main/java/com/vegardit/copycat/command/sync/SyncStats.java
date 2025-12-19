@@ -33,6 +33,14 @@ public class SyncStats {
 
    private boolean statsLogged = false;
 
+   private static String formatRate(final long bytes, final long durationMillis) {
+      if (bytes == 0)
+         return "0 bytes";
+      if (durationMillis <= 0)
+         return "n/a";
+      return FileUtils.byteCountToDisplaySize((long) (bytes / (durationMillis / 1000.0)));
+   }
+
    public synchronized void logStats() {
       if (statsLogged)
          return;
@@ -51,13 +59,11 @@ public class SyncStats {
       LOG.info("Source files scanned: %s", filesScanned);
       LOG.info("Source files copied: %s (%s) @ %s/s", filesCopied, //
          FileUtils.byteCountToDisplaySize(filesCopiedSize.longValue()), //
-         filesCopiedSize.longValue() == 0 ? "0 bytes"
-               : FileUtils.byteCountToDisplaySize((long) (filesCopiedSize.longValue() / (filesCopiedDurationMillis.longValue() / 1000.0))) //
+         formatRate(filesCopiedSize.longValue(), filesCopiedDurationMillis.longValue()) //
       );
       LOG.info("Target files deleted: %s (%s) @ %s/s", filesDeleted, //
          FileUtils.byteCountToDisplaySize(filesDeletedSize.longValue()), //
-         filesDeletedSize.longValue() == 0 ? "0 bytes"
-               : FileUtils.byteCountToDisplaySize((long) (filesDeletedSize.longValue() / (filesDeletedDurationMillis.longValue() / 1000.0))) //
+         formatRate(filesDeletedSize.longValue(), filesDeletedDurationMillis.longValue()) //
       );
       LOG.info("Errors: %s", errors.size());
       LOG.info("Duration: %s", DurationFormatUtils.formatDurationWords(System.currentTimeMillis() - startAt, true, true));
