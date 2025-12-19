@@ -10,14 +10,10 @@ import static net.sf.jstuff.core.validation.NullAnalysisHelper.asNonNull;
 import java.awt.TrayIcon.MessageType;
 import java.io.File;
 import java.io.IOException;
-import java.nio.file.FileSystemException;
-import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.nio.file.SimpleFileVisitor;
-import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayDeque;
 import java.util.HashMap;
 import java.util.List;
@@ -32,7 +28,6 @@ import java.util.function.BooleanSupplier;
 import java.util.logging.Level;
 
 import org.apache.commons.lang3.concurrent.BasicThreadFactory;
-import org.apache.commons.lang3.mutable.MutableLong;
 import org.eclipse.jdt.annotation.Nullable;
 
 import com.vegardit.copycat.util.DesktopNotifications;
@@ -166,48 +161,18 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
       super(SyncCommandConfig::new);
    }
 
-   private void delDir(final SyncCommandConfig task, final Path dir) throws IOException {
-      final long startNanos = System.nanoTime();
-      final var filesDeleted = new MutableLong();
-      final var filesDeletedSize = new MutableLong();
-
-      Files.walkFileTree(dir, new SimpleFileVisitor<>() {
-         @Override
-         public FileVisitResult postVisitDirectory(final Path subdir, final @Nullable IOException exc) throws IOException {
-            progressTracker.markProgress();
-            LOG.info("Deleting [@|magenta %s%s|@]...", dir.relativize(subdir), File.separator);
-            if (not(task.dryRun)) {
-               Files.delete(subdir);
-            }
-            filesDeleted.increment();
-            return FileVisitResult.CONTINUE;
-         }
-
-         @Override
-         public FileVisitResult visitFile(final Path file, final BasicFileAttributes attrs) throws IOException {
-            progressTracker.markProgress();
-            LOG.info("Deleting [@|magenta %s|@]...", dir.relativize(file));
-            if (not(task.dryRun)) {
-               Files.delete(file);
-            }
-            filesDeleted.increment();
-            filesDeletedSize.add(attrs.size());
-            return FileVisitResult.CONTINUE;
-         }
-      });
-      stats.onDirDeleted(TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startNanos), filesDeleted.longValue(), filesDeletedSize
-         .longValue());
-   }
-
-   private void delFile(final SyncCommandConfig task, final Path file, final FileAttrs fileAttrs, final boolean count) throws IOException {
-      final long startNanos = System.nanoTime(); // CHECKSTYLE:IGNORE MoveVariableInsideIfCheck
-      progressTracker.markProgress();
-      if (not(task.dryRun)) {
-         Files.delete(file);
-      }
-      if (count) {
-         stats.onFileDeleted(TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startNanos), fileAttrs.size());
-      }
+   private SyncHelpers.Context syncContext(final SyncCommandConfig task) {
+      return new SyncHelpers.Context( // CHECKSTYLE:IGNORE .*
+         loggableEvents.contains(LogEvent.CREATE), // logCreate
+         loggableEvents.contains(LogEvent.MODIFY), // logModify
+         true, // logDelete
+         isTrue(task.dryRun), // dryRun
+         isTrue(task.ignoreSymlinkErrors), // ignoreSymlinkErrors
+         isTrue(task.copyACL), // copyACL
+         isTrue(task.allowReadingOpenFiles), // allowReadingOpenFiles
+         stats, // stats
+         progressTracker // progress
+      );
    }
 
    @Override
@@ -223,6 +188,7 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
             final var targetFilterCtx = task.toTargetFilterContext();
             preparedTargetDirs.clear();
             preparedParentDirsRelative.clear();
+            final var ctx = syncContext(task);
 
             JdkLoggingUtils.withRootLogLevel(Level.INFO, () -> {
                LOG.info("Executing sync task with effective config:\n%s", YamlUtils.toYamlString(task));
@@ -258,7 +224,7 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
             for (var i = 0; i < taskThreads; i++) {
                completion.submit(() -> {
                   try {
-                     syncWorker(task, sourceFilterCtx, targetFilterCtx, dirJobs);
+                     syncWorker(task, sourceFilterCtx, targetFilterCtx, dirJobs, ctx);
                      return null;
                   } catch (final Exception ex) {
                      state = State.ABORT_BY_EXCEPTION;
@@ -385,7 +351,7 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
    }
 
    private void syncWorker(final SyncCommandConfig task, final FilterEngine.FilterContext sourceFilterCtx,
-         final FilterEngine.FilterContext targetFilterCtx, final DirJobQueue dirJobs) throws IOException {
+         final FilterEngine.FilterContext targetFilterCtx, final DirJobQueue dirJobs, final SyncHelpers.Context ctx) throws IOException {
       final var sourceChildren = new HashMap<Path, Path>(256); // Map<SourcePathRelativeToRoot, SourcePathAbsolute>
       final var targetChildren = new HashMap<Path, Path>(256); // Map<TargetPathRelativeToRoot, TargetPathAbsolute>
       final int sourceRootNameCount = task.sourceRootAbsolute.getNameCount();
@@ -419,7 +385,7 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
             final var taskFileFilters = task.fileFilters;
             if (taskFileFilters == null || taskFileFilters.isEmpty()) {
                final Path existingTarget = Files.exists(target, NOFOLLOW_LINKS) ? target : null;
-               syncDirShallow(task, source, existingTarget, sourceRelative);
+               syncDirShallow(task, ctx, source, existingTarget, sourceRelative);
             }
 
             if (loggableEvents.contains(LogEvent.SCAN)) {
@@ -502,9 +468,9 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
                      LOG.info("DELETE [@|magenta %s|@]...", targetChildRelative);
                   }
                   if (targetAttrs.isDir()) {
-                     delDir(task, targetChildAbsolute);
+                     SyncHelpers.deleteDir(ctx, targetChildAbsolute);
                   } else {
-                     delFile(task, targetChildAbsolute, targetAttrs, true);
+                     SyncHelpers.deleteFile(ctx, targetChildAbsolute, targetAttrs, true);
                   }
 
                   it.remove();
@@ -533,20 +499,20 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
 
                switch (sourceAttrs.type()) {
                   case FILE, FILE_SYMLINK -> {
-                     prepareParentDirsForIncludedFile(task, sourceChildRelative);
-                     syncFile(task, sourceChildAbsolute, targetChildAbsolute, sourceChildRelative);
+                     prepareParentDirsForIncludedFile(task, ctx, sourceChildRelative);
+                     syncFile(task, ctx, sourceChildAbsolute, targetChildAbsolute, sourceChildRelative);
                      stats.onFileScanned();
                   }
                   case BROKEN_SYMLINK, OTHER_SYMLINK -> {
-                     prepareParentDirsForIncludedFile(task, sourceChildRelative);
-                     syncSymlinkLeaf(task, sourceChildAbsolute, targetChildAbsolute, sourceChildRelative, sourceAttrs);
+                     prepareParentDirsForIncludedFile(task, ctx, sourceChildRelative);
+                     syncSymlinkLeaf(task, ctx, sourceChildAbsolute, targetChildAbsolute, sourceChildRelative, sourceAttrs);
                      stats.onFileScanned();
                   }
                   case DIRECTORY_SYMLINK -> {
                      // handle directory symlink entries immediately (do not descend into them)
                      // and ensure their parent directory chain exists on the target, just like for files.
-                     prepareParentDirsForIncludedFile(task, sourceChildRelative);
-                     syncDirShallow(task, sourceChildAbsolute, targetChildAbsolute, sourceChildRelative);
+                     prepareParentDirsForIncludedFile(task, ctx, sourceChildRelative);
+                     syncDirShallow(task, ctx, sourceChildAbsolute, targetChildAbsolute, sourceChildRelative);
                      stats.onFileScanned();
                   }
                   case DIRECTORY -> {
@@ -594,8 +560,8 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
                         && FilterEngine.isDirExplicitlyIncluded(sourceFilterCtx, job.relativeDir)) {
                      final var dirAttrs = FileAttrs.get(job.sourceDir);
                      if (FilterEngine.includesSource(sourceFilterCtx, job.sourceDir, job.relativeDir, dirAttrs)) {
-                        prepareParentDirsForExplicitlyIncludedDir(task, job.relativeDir);
-                        ensureTargetDirPrepared(task, job.sourceDir, job.relativeDir);
+                        prepareParentDirsForExplicitlyIncludedDir(task, ctx, job.relativeDir);
+                        ensureTargetDirPrepared(task, ctx, job.sourceDir, job.relativeDir);
                      }
                   }
                }
@@ -606,7 +572,8 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
       }
    }
 
-   private void prepareParentDirsForIncludedFile(final SyncCommandConfig task, final Path fileRelative) throws IOException {
+   private void prepareParentDirsForIncludedFile(final SyncCommandConfig task, final SyncHelpers.Context ctx, final Path fileRelative)
+         throws IOException {
       final var fileFilters = task.fileFilters;
       if (fileFilters == null || fileFilters.isEmpty())
          // In unfiltered syncs, directories are mirrored eagerly via syncDirShallow.
@@ -629,11 +596,12 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
       while (!parents.isEmpty()) {
          final var dirRelative = parents.pop();
          final var sourceDir = task.sourceRootAbsolute.resolve(dirRelative);
-         ensureTargetDirPrepared(task, sourceDir, dirRelative);
+         ensureTargetDirPrepared(task, ctx, sourceDir, dirRelative);
       }
    }
 
-   private void prepareParentDirsForExplicitlyIncludedDir(final SyncCommandConfig task, final Path dirRelative) throws IOException {
+   private void prepareParentDirsForExplicitlyIncludedDir(final SyncCommandConfig task, final SyncHelpers.Context ctx,
+         final Path dirRelative) throws IOException {
       final var fileFilters = task.fileFilters;
       if (fileFilters == null || fileFilters.isEmpty())
          // In unfiltered syncs, directories are mirrored eagerly via syncDirShallow.
@@ -654,11 +622,12 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
       while (!parents.isEmpty()) {
          final var rel = parents.pop();
          final var sourceDir = task.sourceRootAbsolute.resolve(rel);
-         ensureTargetDirPrepared(task, sourceDir, rel);
+         ensureTargetDirPrepared(task, ctx, sourceDir, rel);
       }
    }
 
-   private void ensureTargetDirPrepared(final SyncCommandConfig task, final Path sourceDir, final Path dirRelative) throws IOException {
+   private void ensureTargetDirPrepared(final SyncCommandConfig task, final SyncHelpers.Context ctx, final Path sourceDir,
+         final Path dirRelative) throws IOException {
       final Path targetDir = task.targetRootAbsolute.resolve(dirRelative);
       if (!preparedTargetDirs.add(targetDir))
          return;
@@ -666,39 +635,27 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
       preparedParentDirsRelative.add(dirRelative);
 
       final Path existingTarget = Files.exists(targetDir, NOFOLLOW_LINKS) ? targetDir : null;
-      syncDirShallow(task, sourceDir, existingTarget, dirRelative);
+      syncDirShallow(task, ctx, sourceDir, existingTarget, dirRelative);
    }
 
    /**
     * @param targetPath null, if target path does not exist yet
     */
-   private void syncDirShallow(final SyncCommandConfig task, final Path sourcePath, final @Nullable Path targetPath,
-         final Path relativePath) throws IOException {
+   private void syncDirShallow(final SyncCommandConfig task, final SyncHelpers.Context ctx, final Path sourcePath,
+         final @Nullable Path targetPath, final Path relativePath) throws IOException {
       final Path resolvedTargetPath = targetPath == null ? task.targetRootAbsolute.resolve(relativePath) : targetPath;
-
-      DirectoryMirror.ensureDir(task, //
-         isTrue(task.dryRun), //
-         sourcePath, //
-         targetPath, //
-         resolvedTargetPath, //
-         relativePath, //
-         loggableEvents.contains(LogEvent.CREATE), //
-         LOG, //
-         stats, //
-         (file, fileAttrs, countStats) -> delFile(task, file, fileAttrs, countStats), //
-         dir -> delDir(task, dir), //
-         Boolean.TRUE.equals(task.ignoreSymlinkErrors));
+      SyncHelpers.ensureDir(ctx, sourcePath, targetPath, resolvedTargetPath, relativePath);
    }
 
    /**
     * @param targetPath null, if target path does not exist yet
     */
-   private void syncFile(final SyncCommandConfig task, final Path sourcePath, @Nullable Path targetPath, final Path relativePath)
-         throws IOException {
+   private void syncFile(final SyncCommandConfig task, final SyncHelpers.Context ctx, final Path sourcePath, @Nullable Path targetPath,
+         final Path relativePath) throws IOException {
       final String copyCause;
 
       if (Files.isSymbolicLink(sourcePath)) {
-         syncSymlinkLeaf(task, sourcePath, targetPath, relativePath, FileAttrs.get(sourcePath));
+         syncSymlinkLeaf(task, ctx, sourcePath, targetPath, relativePath, FileAttrs.get(sourcePath));
          return;
       }
 
@@ -717,7 +674,7 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
             case FILE, FILE_SYMLINK, BROKEN_SYMLINK, OTHER_SYMLINK -> {
                if (targetAttrs.isSymlink()) {
                   LOG.debug("Deleting target [@|magenta %s|@] because target is symlink and source is not...", targetPath);
-                  delFile(task, targetPath, targetAttrs, true);
+                  SyncHelpers.deleteFile(ctx, targetPath, targetAttrs, true);
                   copyCause = "REPLACE";
                } else {
                   final var timeCompare = sourceAttrs.lastModifiedTime().compareTo(targetAttrs.lastModifiedTime());
@@ -745,15 +702,15 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
             }
             case OTHER -> {
                LOG.info("Deleting target entry [@|magenta %s|@] because source is file...", targetPath);
-               delFile(task, targetPath, targetAttrs, true);
+               SyncHelpers.deleteFile(ctx, targetPath, targetAttrs, true);
                copyCause = "REPLACE";
             }
             case DIRECTORY, DIRECTORY_SYMLINK -> {
                LOG.info("Deleting target directory [@|magenta %s|@] because source is file...", targetPath);
                if (targetAttrs.isSymlink()) {
-                  delFile(task, targetPath, targetAttrs, true);
+                  SyncHelpers.deleteFile(ctx, targetPath, targetAttrs, true);
                } else {
-                  delDir(task, targetPath);
+                  SyncHelpers.deleteDir(ctx, targetPath);
                }
                copyCause = "REPLACE";
             }
@@ -765,67 +722,13 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
          if ("NEW".equals(copyCause) ? loggableEvents.contains(LogEvent.CREATE) : loggableEvents.contains(LogEvent.MODIFY)) {
             LOG.info("%s [@|magenta %s|@] %s...", copyCause, relativePath, Size.ofBytes(sourceAttrs.size()));
          }
-         final long startNanos = System.nanoTime();
-         if (not(task.dryRun)) {
-            FileUtils.copyFile(sourcePath, sourceAttrs, targetPath, isTrue(task.copyACL), isTrue(task.allowReadingOpenFiles), (bytesWritten,
-                  totalBytesWritten) -> {
-               progressTracker.markProgress();
-            });
-         }
-         stats.onFileCopied(TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startNanos), sourceAttrs.size());
+         SyncHelpers.copyFile(ctx, sourcePath, sourceAttrs, targetPath);
       }
    }
 
-   private void syncSymlinkLeaf(final SyncCommandConfig task, final Path sourcePath, @Nullable Path targetPath, final Path relativePath,
-         final FileAttrs sourceAttrs) throws IOException {
-
-      final String copyCause;
-      if (targetPath == null) {
-         targetPath = task.targetRootAbsolute.resolve(relativePath);
-         copyCause = "NEW";
-      } else {
-         final var targetAttrs = FileAttrs.get(targetPath);
-         if (targetAttrs.isSymlink()) {
-            try {
-               final var sourceLink = Files.readSymbolicLink(sourcePath);
-               final var targetLink = Files.readSymbolicLink(targetPath);
-               if (sourceLink.equals(targetLink))
-                  return;
-            } catch (final IOException ex) {
-               // treat as changed and recreate
-            }
-            copyCause = "UPDATE";
-         } else {
-            if (targetAttrs.isDir()) {
-               LOG.debug("Deleting target directory [@|magenta %s|@] because source is symlink and target is not...", targetPath);
-               delDir(task, targetPath);
-            } else {
-               LOG.debug("Deleting target [@|magenta %s|@] because source is symlink and target is not...", targetPath);
-               delFile(task, targetPath, targetAttrs, true);
-            }
-            copyCause = "REPLACE";
-         }
-      }
-
-      if ("NEW".equals(copyCause) ? loggableEvents.contains(LogEvent.CREATE) : loggableEvents.contains(LogEvent.MODIFY)) {
-         try {
-            LOG.info("%s [@|magenta %s -> %s|@]...", copyCause, relativePath, Files.readSymbolicLink(sourcePath));
-         } catch (final IOException ex) {
-            LOG.info("%s [@|magenta %s|@]...", copyCause, relativePath);
-         }
-      }
-
-      final long startNanos = System.nanoTime();
-      if (not(task.dryRun)) {
-         try {
-            Files.copy(sourcePath, targetPath, SYMLINK_COPY_OPTIONS);
-         } catch (final FileSystemException ex) {
-            if (!Boolean.TRUE.equals(task.ignoreSymlinkErrors))
-               throw ex;
-            LOG.error("Symlink creation failed:" + ex.getMessage(), ex);
-            return;
-         }
-      }
-      stats.onFileCopied(TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startNanos), sourceAttrs.size());
+   private void syncSymlinkLeaf(final SyncCommandConfig task, final SyncHelpers.Context ctx, final Path sourcePath,
+         final @Nullable Path targetPath, final Path relativePath, final FileAttrs sourceAttrs) throws IOException {
+      final Path resolvedTargetPath = targetPath == null ? task.targetRootAbsolute.resolve(relativePath) : targetPath;
+      SyncHelpers.syncSymlinkLeaf(ctx, sourcePath, targetPath, resolvedTargetPath, relativePath, sourceAttrs);
    }
 }

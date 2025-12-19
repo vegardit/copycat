@@ -4,6 +4,7 @@
  */
 package com.vegardit.copycat.command.sync;
 
+import static net.sf.jstuff.core.validation.NullAnalysisHelper.asNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.lang.reflect.Constructor;
@@ -170,8 +171,12 @@ class SyncCommandMultiThreadingRegressionTest {
       final var targetFilterCtx = task.toTargetFilterContext();
 
       final Class<?> dirJobQueueClass = Class.forName("com.vegardit.copycat.command.sync.SyncCommand$DirJobQueue");
+      final Method syncContext = SyncCommand.class.getDeclaredMethod("syncContext", SyncCommandConfig.class);
+      syncContext.setAccessible(true);
+      final var ctx = asNonNull((SyncHelpers.Context) syncContext.invoke(cmd, task));
+
       final Method syncWorker = SyncCommand.class.getDeclaredMethod("syncWorker", SyncCommandConfig.class, FilterEngine.FilterContext.class,
-         FilterEngine.FilterContext.class, dirJobQueueClass);
+         FilterEngine.FilterContext.class, dirJobQueueClass, SyncHelpers.Context.class);
       syncWorker.setAccessible(true);
 
       final Class<?> dirJobClass = Class.forName("com.vegardit.copycat.command.sync.SyncCommand$DirJob");
@@ -203,11 +208,11 @@ class SyncCommandMultiThreadingRegressionTest {
       try {
          final Future<?> f1 = exec.submit(() -> {
             await(start);
-            invoke(syncWorker, cmd, task, sourceFilterCtx, targetFilterCtx, dirJobs);
+            invoke(syncWorker, cmd, task, sourceFilterCtx, targetFilterCtx, dirJobs, ctx);
          });
          final Future<?> f2 = exec.submit(() -> {
             await(start);
-            invoke(syncWorker, cmd, task, sourceFilterCtx, targetFilterCtx, dirJobs);
+            invoke(syncWorker, cmd, task, sourceFilterCtx, targetFilterCtx, dirJobs, ctx);
          });
 
          start.countDown();
@@ -232,9 +237,10 @@ class SyncCommandMultiThreadingRegressionTest {
    }
 
    private static void invoke(final Method syncWorker, final SyncCommand cmd, final SyncCommandConfig task,
-         final FilterEngine.FilterContext sourceFilterCtx, final FilterEngine.FilterContext targetFilterCtx, final Object dirJobs) {
+         final FilterEngine.FilterContext sourceFilterCtx, final FilterEngine.FilterContext targetFilterCtx, final Object dirJobs,
+         final SyncHelpers.Context ctx) {
       try {
-         syncWorker.invoke(cmd, task, sourceFilterCtx, targetFilterCtx, dirJobs);
+         syncWorker.invoke(cmd, task, sourceFilterCtx, targetFilterCtx, dirJobs, ctx);
       } catch (final ReflectiveOperationException ex) {
          throw new RuntimeException(ex);
       }
