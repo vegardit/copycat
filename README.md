@@ -347,7 +347,7 @@ Copycat checks the relative path of each file to be synced against the configure
 
 2. CLI example:
    ```batch
-   copycat --filter ex:**/node_modules --filter in:logs/latest.log --filter ex:logs/*.log C:\mydata \\myserver\mydata
+    copycat sync --filter ex:**/node_modules --filter in:logs/latest.log --filter ex:logs/*.log C:\mydata \\myserver\mydata
    ```
 
 #### Directories and traversal
