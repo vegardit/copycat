@@ -190,6 +190,8 @@ public abstract class AbstractSyncCommandConfig<THIS extends AbstractSyncCommand
       defaults.excludeSystemFiles = getBoolean(cfg, "exclude-system-files", true);
       defaults.excludeOtherLinks = getBoolean(cfg, "exclude-other-links", true);
       defaults.maxDepth = getInteger(cfg, "max-depth", true);
+      if (defaults.maxDepth != null && defaults.maxDepth < 0)
+         throw new IllegalArgumentException("max-depth must be >= 0");
       defaults.modifiedFrom = getFileTime(cfg, "since", true, DateTimeParser.DateOnlyInterpretation.START_OF_DAY);
       defaults.modifiedTo = getFileTime(cfg, "until", true, DateTimeParser.DateOnlyInterpretation.END_OF_DAY);
       defaults.modifiedBefore = getFileTime(cfg, "before", true, DateTimeParser.DateOnlyInterpretation.START_OF_DAY);
