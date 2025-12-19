@@ -154,6 +154,7 @@ public class WatchCommand extends AbstractSyncCommand<WatchCommandConfig> {
    private final ConcurrentMap<WatchCommandConfig, FilterContext> targetFilterContexts = new ConcurrentHashMap<>();
    private final ConcurrentMap<WatchCommandConfig, Set<Path>> preparedTargetDirsByTask = new ConcurrentHashMap<>();
    private final ConcurrentMap<WatchCommandConfig, Set<Path>> preparedParentDirsRelativeByTask = new ConcurrentHashMap<>();
+   private final ConcurrentMap<WatchCommandConfig, ConcurrentMap<Path, FileHash>> sourceFileHashesByTask = new ConcurrentHashMap<>();
 
    private Set<Path> preparedTargetDirs(final WatchCommandConfig task) {
       return preparedTargetDirsByTask.computeIfAbsent(task, t -> ConcurrentHashMap.newKeySet());
@@ -161,6 +162,10 @@ public class WatchCommand extends AbstractSyncCommand<WatchCommandConfig> {
 
    private Set<Path> preparedParentDirsRelative(final WatchCommandConfig task) {
       return preparedParentDirsRelativeByTask.computeIfAbsent(task, t -> ConcurrentHashMap.newKeySet());
+   }
+
+   private ConcurrentMap<Path, FileHash> sourceFileHashes(final WatchCommandConfig task) {
+      return sourceFileHashesByTask.computeIfAbsent(task, t -> new ConcurrentHashMap<>());
    }
 
    private void invalidatePreparedDirs(final WatchCommandConfig task, final Path relativeDir) {
@@ -218,6 +223,7 @@ public class WatchCommand extends AbstractSyncCommand<WatchCommandConfig> {
             targetFilterContexts.put(task, targetFilterCtx);
             preparedTargetDirsByTask.put(task, ConcurrentHashMap.newKeySet());
             preparedParentDirsRelativeByTask.put(task, ConcurrentHashMap.newKeySet());
+            sourceFileHashesByTask.put(task, new ConcurrentHashMap<>());
 
             JdkLoggingUtils.withRootLogLevel(Level.INFO, () -> {
                LOG.info("Effective Config:\n%s", YamlUtils.toYamlString(task));
@@ -298,8 +304,6 @@ public class WatchCommand extends AbstractSyncCommand<WatchCommandConfig> {
          }
       }
    }
-
-   private ConcurrentMap<Path, FileHash> sourceFileHashes = new ConcurrentHashMap<>();
 
    private void onFileChanged(final WatchCommandConfig task, final DirectoryChangeEvent event) {
       try {
@@ -418,7 +422,7 @@ public class WatchCommand extends AbstractSyncCommand<WatchCommandConfig> {
 
                      // compare file hashes to avoid unnecessary file copying
                      final var sourceFileHashNew = FileHasher.DEFAULT_FILE_HASHER.hash(sourceAbsolute);
-                     final var sourceFileHashOld = sourceFileHashes.put(sourceAbsolute, sourceFileHashNew);
+                     final var sourceFileHashOld = sourceFileHashes(task).put(sourceAbsolute, sourceFileHashNew);
                      final boolean contentChanged = !sourceFileHashNew.equals(sourceFileHashOld);
                      if (contentChanged) {
                         prepareParentDirsForIncludedFile(task, sourceRelative);
@@ -452,7 +456,7 @@ public class WatchCommand extends AbstractSyncCommand<WatchCommandConfig> {
                      if (loggableEvents.contains(LogEvent.DELETE)) {
                         LOG.info("DELETE [@|magenta %s|@]...", sourceRelative);
                      }
-                     sourceFileHashes.remove(sourceAbsolute);
+                     sourceFileHashes(task).remove(sourceAbsolute);
                      SyncHelpers.deleteFile(deleteCtx, targetAbsolute, targetAttrs, true);
                   }
                   if (targetDirLike) {
