@@ -764,7 +764,7 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
       }
 
       if (copyCause != null) {
-         if ("NEW".equals(copyCause) && loggableEvents.contains(LogEvent.CREATE) || loggableEvents.contains(LogEvent.MODIFY)) {
+         if ("NEW".equals(copyCause) ? loggableEvents.contains(LogEvent.CREATE) : loggableEvents.contains(LogEvent.MODIFY)) {
             LOG.info("%s [@|magenta %s|@] %s...", copyCause, relativePath, Size.ofBytes(sourceAttrs.size()));
          }
          final long startNanos = System.nanoTime();
@@ -807,7 +807,7 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
          }
       }
 
-      if ("NEW".equals(copyCause) && loggableEvents.contains(LogEvent.CREATE) || loggableEvents.contains(LogEvent.MODIFY)) {
+      if ("NEW".equals(copyCause) ? loggableEvents.contains(LogEvent.CREATE) : loggableEvents.contains(LogEvent.MODIFY)) {
          try {
             LOG.info("%s [@|magenta %s -> %s|@]...", copyCause, relativePath, Files.readSymbolicLink(sourcePath));
          } catch (final IOException ex) {
