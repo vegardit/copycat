@@ -628,9 +628,12 @@ public class WatchCommand extends AbstractSyncCommand<WatchCommandConfig> {
             } catch (final IOException ex) {
                // treat as changed and recreate
             }
+            LOG.debug("Replacing target symlink [@|magenta %s|@] because symlink target changed...", targetPath);
          } else if (targetAttrs.isDir()) {
+            LOG.debug("Deleting target directory [@|magenta %s|@] because source is symlink and target is not...", targetPath);
             delDir(targetPath);
          } else {
+            LOG.debug("Deleting target [@|magenta %s|@] because source is symlink and target is not...", targetPath);
             delFile(targetPath);
          }
       }

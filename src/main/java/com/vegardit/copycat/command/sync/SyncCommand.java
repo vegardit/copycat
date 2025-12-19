@@ -697,6 +697,11 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
          throws IOException {
       final String copyCause;
 
+      if (Files.isSymbolicLink(sourcePath)) {
+         syncSymlinkLeaf(task, sourcePath, targetPath, relativePath, FileAttrs.get(sourcePath));
+         return;
+      }
+
       final var sourceAttrs = MoreFiles.readAttributes(sourcePath);
 
       if (targetPath == null) {
@@ -710,10 +715,11 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
          final var targetAttrs = FileAttrs.get(targetPath);
          switch (targetAttrs.type()) {
             case FILE, FILE_SYMLINK, BROKEN_SYMLINK, OTHER_SYMLINK -> {
-               if (sourceAttrs.isSymbolicLink() && targetAttrs.isSymlink()) { // both are symlinks
-                  syncSymlinkLeaf(task, sourcePath, targetPath, relativePath, FileAttrs.get(sourcePath));
-                  return;
-               } else if (sourceAttrs.isSymbolicLink() == targetAttrs.isSymlink()) { // neither is a symlink
+               if (targetAttrs.isSymlink()) {
+                  LOG.debug("Deleting target [@|magenta %s|@] because target is symlink and source is not...", targetPath);
+                  delFile(task, targetPath, targetAttrs, true);
+                  copyCause = "REPLACE";
+               } else {
                   final var timeCompare = sourceAttrs.lastModifiedTime().compareTo(targetAttrs.lastModifiedTime());
                   if (timeCompare > 0) {
                      copyCause = "NEWER";
@@ -735,14 +741,6 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
                         copyCause = null;
                      }
                   }
-               } else { // one is symlink
-                  if (sourceAttrs.isSymbolicLink()) {
-                     LOG.debug("Deleting target [@|magenta %s|@] because source is symlink and target is not...", targetPath);
-                  } else {
-                     LOG.debug("Deleting target [@|magenta %s|@] because target is symlink and source is not...", targetPath);
-                  }
-                  delFile(task, targetPath, targetAttrs, true);
-                  copyCause = "REPLACE";
                }
             }
             case OTHER -> {
@@ -799,8 +797,10 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
             copyCause = "UPDATE";
          } else {
             if (targetAttrs.isDir()) {
+               LOG.debug("Deleting target directory [@|magenta %s|@] because source is symlink and target is not...", targetPath);
                delDir(task, targetPath);
             } else {
+               LOG.debug("Deleting target [@|magenta %s|@] because source is symlink and target is not...", targetPath);
                delFile(task, targetPath, targetAttrs, true);
             }
             copyCause = "REPLACE";

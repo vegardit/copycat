@@ -566,6 +566,42 @@ class SyncCommandFilterBehaviorITest {
       }
    }
 
+   @Test
+   @DisplayName("file symlink is preserved when target is missing")
+   void testFileSymlinkPreservedOnInitialSync() throws Exception {
+      final Path sourceRoot = Files.createTempDirectory("copycat-sync-src");
+      final Path targetRoot = Files.createTempDirectory("copycat-sync-dst-file-symlink");
+
+      try {
+         final Path realFile = sourceRoot.resolve("real.txt");
+         Files.writeString(realFile, "real");
+
+         final Path linkFile = sourceRoot.resolve("link.txt");
+         try { // CHECKSTYLE:IGNORE .*
+            Files.createSymbolicLink(linkFile, realFile);
+         } catch (final UnsupportedOperationException | IOException ex) {
+            // environment does not support or allow creating symlinks; skip this test
+            Assumptions.assumeTrue(false, "Symlinks not supported in this environment: " + ex.getMessage());
+         }
+
+         final var cfg = new SyncCommandConfig();
+         cfg.source = sourceRoot;
+         cfg.target = targetRoot;
+         cfg.applyDefaults();
+         cfg.compute();
+
+         final var cmd = new SyncCommand();
+         cmd.doExecute(List.of(cfg));
+
+         final Path targetLink = targetRoot.resolve("link.txt");
+         assertThat(Files.exists(targetLink)).as("link.txt should be copied").isTrue();
+         assertThat(Files.isSymbolicLink(targetLink)).as("link.txt should remain a symlink").isTrue();
+      } finally {
+         deleteRecursive(targetRoot);
+         deleteRecursive(sourceRoot);
+      }
+   }
+
    private static void deleteRecursive(final Path root) throws IOException {
       if (!Files.exists(root))
          return;

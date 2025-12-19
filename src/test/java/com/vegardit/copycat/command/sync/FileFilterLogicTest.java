@@ -435,10 +435,7 @@ class FileFilterLogicTest {
          final var cfg = new SyncCommandConfig();
          cfg.source = sourceRoot;
          cfg.target = targetRoot;
-         cfg.fileFilters = List.of(
-            "in:Logs/*.log",
-            "ex:**/*"
-         );
+         cfg.fileFilters = List.of("in:Logs/*.log", "ex:**/*");
          cfg.applyDefaults();
          cfg.compute();
 
