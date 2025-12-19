@@ -271,6 +271,10 @@ public final class FileUtils {
 
             for (final var entry : entries) {
                final var entrySize = sourceUserAttrs.size(entry);
+               if (entrySize == 0) {
+                  targetUserAttrs.write(entry, ByteBuffer.allocate(0));
+                  continue;
+               }
                if (buf == null || entrySize > buf.capacity()) {
                   buf = ByteBuffer.allocate(entrySize);
                } else {
