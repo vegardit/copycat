@@ -626,6 +626,44 @@ class FileFilterLogicTest {
    }
 
    @Test
+   @DisplayName("Subtree exclude matches only the intended prefix path")
+   void testSubtreeExcludeDoesNotMatchUnrelatedPaths() throws IOException {
+      final Path sourceRoot = Files.createTempDirectory("copycat-filters-src");
+      final Path targetRoot = Files.createTempDirectory("copycat-filters-dst");
+
+      try {
+         final Path unrelatedFile = sourceRoot.resolve("baz/bar/file.txt");
+         Files.createDirectories(asNonNull(unrelatedFile.getParent()));
+         Files.createFile(unrelatedFile);
+
+         final Path excludedFile = sourceRoot.resolve("foo/bar/blocked.txt");
+         Files.createDirectories(asNonNull(excludedFile.getParent()));
+         Files.createFile(excludedFile);
+
+         final var cfg = new SyncCommandConfig();
+         cfg.source = sourceRoot;
+         cfg.target = targetRoot;
+         cfg.fileFilters = List.of("ex:foo/bar/**");
+         cfg.applyDefaults();
+         cfg.compute();
+
+         final Path unrelatedRelative = unrelatedFile.subpath(sourceRoot.getNameCount(), unrelatedFile.getNameCount());
+         final Path excludedRelative = excludedFile.subpath(sourceRoot.getNameCount(), excludedFile.getNameCount());
+
+         final var filters = FilterEngine.buildSourceFilterContext(cfg);
+
+         // Unrelated paths that merely contain the same last segment must remain included.
+         assertThat(FilterEngine.includesSource(filters, unrelatedFile, unrelatedRelative, FileAttrs.get(unrelatedFile))).isTrue();
+
+         // Paths under the excluded prefix are still excluded as expected.
+         assertThat(FilterEngine.includesSource(filters, excludedFile, excludedRelative, FileAttrs.get(excludedFile))).isFalse();
+      } finally {
+         deleteRecursive(targetRoot);
+         deleteRecursive(sourceRoot);
+      }
+   }
+
+   @Test
    @DisplayName("Subtree exclude patterns mark directory prefixes to skip")
    void testSubtreeExcludePrefixes() throws IOException {
       final Path sourceRoot = Files.createTempDirectory("copycat-filters-src");

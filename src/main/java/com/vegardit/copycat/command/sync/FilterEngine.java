@@ -417,11 +417,25 @@ public final class FilterEngine {
       if (!pattern.endsWith("/**"))
          return false;
 
-      final String base = Strings.removeEnd(pattern, "/**");
-      final int lastSlash = base.lastIndexOf('/');
-      final String dirName = lastSlash >= 0 ? base.substring(lastSlash + 1) : base;
-      if (dirName.isEmpty() || hasGlobMeta(dirName))
+      String base = Strings.removeEnd(pattern, "/**");
+      base = Strings.removeEnd(base, "/");
+      if (base.isEmpty())
          return false;
+
+      // Support patterns starting with "**/": allow the prefix to match at any depth.
+      final boolean hasLeadingGlobStar = base.startsWith("**/");
+      if (hasLeadingGlobStar) {
+         base = base.substring(3);
+      }
+      if (base.isEmpty())
+         return false;
+
+      // Only accept literal path segments (no glob meta) for this fallback check.
+      final String[] baseSegments = base.split("/");
+      for (final String segment : baseSegments) {
+         if (segment.isEmpty() || hasGlobMeta(segment))
+            return false;
+      }
 
       String pathStr = relativePath.toString();
       if (SystemUtils.IS_OS_WINDOWS) {
@@ -432,12 +446,33 @@ public final class FilterEngine {
          return false;
 
       final String[] parts = pathStr.split("/");
-      for (int i = 0; i < parts.length; i++) {
-         if (i < parts.length - 1 && dirName.equals(parts[i]))
-            // directory name appears with at least one descendant segment
-            return true;
+      // Need at least one descendant segment below the matched directory.
+      if (parts.length <= baseSegments.length)
+         return false; // must be a descendant, not the directory itself
+
+      if (hasLeadingGlobStar) {
+         // Sliding-window match for "**/prefix/**": look for prefix at any depth.
+         final int maxStart = parts.length - baseSegments.length - 1;
+         for (int start = 0; start <= maxStart; start++) {
+            boolean matches = true;
+            for (int i = 0; i < baseSegments.length; i++) {
+               if (!baseSegments[i].equals(parts[start + i])) {
+                  matches = false;
+                  break;
+               }
+            }
+            if (matches)
+               return true;
+         }
+         return false;
       }
-      return false;
+
+      // Exact prefix match for "prefix/**" (no leading "**/").
+      for (int i = 0; i < baseSegments.length; i++) {
+         if (!baseSegments[i].equals(parts[i]))
+            return false;
+      }
+      return true;
    }
 
    private static boolean isGlobalExcludeAllPattern(final String pattern) {
