@@ -9,6 +9,7 @@ import static net.sf.jstuff.core.validation.NullAnalysisHelper.asNonNull;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.FileSystemException;
 import java.nio.file.FileVisitResult;
 import java.nio.file.FileVisitor;
 import java.nio.file.Files;
@@ -162,6 +163,18 @@ public class WatchCommand extends AbstractSyncCommand<WatchCommandConfig> {
 
    private Set<Path> preparedParentDirsRelative(final WatchCommandConfig task) {
       return preparedParentDirsRelativeByTask.computeIfAbsent(task, t -> ConcurrentHashMap.newKeySet());
+   }
+
+   private void invalidatePreparedDirs(final WatchCommandConfig task, final Path relativeDir) {
+      if (relativeDir.getNameCount() == 0) {
+         preparedTargetDirs(task).clear();
+         preparedParentDirsRelative(task).clear();
+         return;
+      }
+
+      final Path targetDir = task.targetRootAbsolute.resolve(relativeDir);
+      preparedTargetDirs(task).removeIf(path -> path.startsWith(targetDir));
+      preparedParentDirsRelative(task).removeIf(path -> path.startsWith(relativeDir));
    }
 
    public WatchCommand() {
@@ -362,7 +375,8 @@ public class WatchCommand extends AbstractSyncCommand<WatchCommandConfig> {
                         (file, fileAttrs, countStats) -> delFile(file), //
                         this::delDir, //
                         true);
-                  } else if (filterCtx != null && FilterEngine.isDirExplicitlyIncluded(filterCtx, sourceRelative)) {
+                  } else if (task.fileFilters == null || asNonNull(task.fileFilters).isEmpty() //
+                        || filterCtx != null && FilterEngine.isDirExplicitlyIncluded(filterCtx, sourceRelative)) {
                      ensureTargetDirPrepared(task, sourceAbsolute, sourceRelative);
                   }
                } else {
@@ -370,12 +384,20 @@ public class WatchCommand extends AbstractSyncCommand<WatchCommandConfig> {
                      LOG.debug("Ignoring CREATE of %s", sourceAbsolute);
                      return;
                   }
-                  if (loggableEvents.contains(LogEvent.CREATE)) {
-                     LOG.info("CREATE [@|magenta %s|@] %s...", sourceRelative, Size.ofBytes(Files.size(sourceAbsolute)));
-                  }
+                  if (isSymlinkLeaf(sourceAttrs.type())) {
+                     if (loggableEvents.contains(LogEvent.CREATE)) {
+                        logSymlinkEvent("CREATE", sourceAbsolute, sourceRelative);
+                     }
+                     prepareParentDirsForIncludedFile(task, sourceRelative);
+                     syncSymlinkLeaf(sourceAbsolute, targetAbsolute);
+                  } else {
+                     if (loggableEvents.contains(LogEvent.CREATE)) {
+                        LOG.info("CREATE [@|magenta %s|@] %s...", sourceRelative, Size.ofBytes(Files.size(sourceAbsolute)));
+                     }
 
-                  prepareParentDirsForIncludedFile(task, sourceRelative);
-                  syncFile(task, sourceAbsolute, targetAbsolute, true);
+                     prepareParentDirsForIncludedFile(task, sourceRelative);
+                     syncFile(task, sourceAbsolute, targetAbsolute, true);
+                  }
                }
                break;
 
@@ -404,24 +426,35 @@ public class WatchCommand extends AbstractSyncCommand<WatchCommandConfig> {
                         (file, fileAttrs, countStats) -> delFile(file), //
                         this::delDir, //
                         true);
+                  } else if (task.fileFilters == null || asNonNull(task.fileFilters).isEmpty() //
+                        || filterCtx != null && FilterEngine.isDirExplicitlyIncluded(filterCtx, sourceRelative)) {
+                     ensureTargetDirPrepared(task, sourceAbsolute, sourceRelative);
                   }
                } else {
                   if (filterCtx != null && !FilterEngine.includesSource(filterCtx, sourceAbsolute, sourceRelative, sourceAttrs)) {
                      LOG.debug("Ignoring MODIFY of %s", sourceAbsolute);
                      return;
                   }
-                  if (loggableEvents.contains(LogEvent.MODIFY)) {
-                     LOG.info("MODIFY [@|magenta %s|@] %s...", sourceRelative, Size.ofBytes(Files.size(sourceAbsolute)));
-                  }
-
-                  // compare file hashes to avoid unnecessary file copying
-                  final var sourceFileHashNew = FileHasher.DEFAULT_FILE_HASHER.hash(sourceAbsolute);
-                  final var sourceFileHashOld = sourceFileHashes.put(sourceAbsolute, sourceFileHashNew);
-                  final boolean contentChanged = !sourceFileHashNew.equals(sourceFileHashOld);
-                  if (contentChanged) {
+                  if (isSymlinkLeaf(sourceAttrs.type())) {
+                     if (loggableEvents.contains(LogEvent.MODIFY)) {
+                        logSymlinkEvent("MODIFY", sourceAbsolute, sourceRelative);
+                     }
                      prepareParentDirsForIncludedFile(task, sourceRelative);
+                     syncSymlinkLeaf(sourceAbsolute, targetAbsolute);
+                  } else {
+                     if (loggableEvents.contains(LogEvent.MODIFY)) {
+                        LOG.info("MODIFY [@|magenta %s|@] %s...", sourceRelative, Size.ofBytes(Files.size(sourceAbsolute)));
+                     }
+
+                     // compare file hashes to avoid unnecessary file copying
+                     final var sourceFileHashNew = FileHasher.DEFAULT_FILE_HASHER.hash(sourceAbsolute);
+                     final var sourceFileHashOld = sourceFileHashes.put(sourceAbsolute, sourceFileHashNew);
+                     final boolean contentChanged = !sourceFileHashNew.equals(sourceFileHashOld);
+                     if (contentChanged) {
+                        prepareParentDirsForIncludedFile(task, sourceRelative);
+                     }
+                     syncFile(task, sourceAbsolute, targetAbsolute, contentChanged);
                   }
-                  syncFile(task, sourceAbsolute, targetAbsolute, contentChanged);
                }
                break;
 
@@ -438,6 +471,7 @@ public class WatchCommand extends AbstractSyncCommand<WatchCommandConfig> {
                         }
                      }
                   }
+                  final boolean targetDirLike = targetAttrs.isDir() || targetAttrs.isDirSymlink();
                   if (targetAttrs.type() == FileAttrs.Type.DIRECTORY) {
                      if (loggableEvents.contains(LogEvent.DELETE)) {
                         LOG.info("DELETE [@|magenta %s%s|@]...", sourceRelative, File.separator);
@@ -449,6 +483,9 @@ public class WatchCommand extends AbstractSyncCommand<WatchCommandConfig> {
                      }
                      sourceFileHashes.remove(sourceAbsolute);
                      delFile(targetAbsolute);
+                  }
+                  if (targetDirLike) {
+                     invalidatePreparedDirs(task, sourceRelative);
                   }
                }
                break;
@@ -477,8 +514,14 @@ public class WatchCommand extends AbstractSyncCommand<WatchCommandConfig> {
 
       // If the immediate parent is already known to be prepared (and thus its ancestors as well),
       // we can skip rebuilding and walking the full parent chain.
-      if (preparedParentDirsRelative(task).contains(parentRelative))
-         return;
+      final var preparedParents = preparedParentDirsRelative(task);
+      if (preparedParents.contains(parentRelative)) {
+         final Path targetParent = task.targetRootAbsolute.resolve(parentRelative);
+         final var targetAttrs = FileAttrs.find(targetParent);
+         if (targetAttrs != null && (targetAttrs.isDir() || targetAttrs.isDirSymlink()))
+            return;
+         preparedParents.remove(parentRelative);
+      }
 
       final var parents = new java.util.ArrayDeque<Path>();
       Path current = parentRelative;
@@ -496,8 +539,14 @@ public class WatchCommand extends AbstractSyncCommand<WatchCommandConfig> {
 
    private void ensureTargetDirPrepared(final WatchCommandConfig task, final Path sourceDir, final Path dirRelative) throws IOException {
       final Path targetDir = task.targetRootAbsolute.resolve(dirRelative);
-      if (!preparedTargetDirs(task).add(targetDir))
-         return;
+      final var preparedDirs = preparedTargetDirs(task);
+      if (preparedDirs.contains(targetDir)) {
+         final var targetAttrs = FileAttrs.find(targetDir);
+         if (targetAttrs != null && (targetAttrs.isDir() || targetAttrs.isDirSymlink()))
+            return;
+         preparedDirs.remove(targetDir);
+      }
+      preparedDirs.add(targetDir);
 
       preparedParentDirsRelative(task).add(dirRelative);
 
@@ -564,6 +613,47 @@ public class WatchCommand extends AbstractSyncCommand<WatchCommandConfig> {
                totalBytesWritten) -> { /**/ });
       } else {
          FileUtils.copyAttributes(sourcePath, sourceAttrs, targetPath, isTrue(cfg.copyACL), isTrue(cfg.allowReadingOpenFiles));
+      }
+   }
+
+   private void syncSymlinkLeaf(final Path sourcePath, final Path targetPath) throws IOException {
+      if (Files.exists(targetPath, NOFOLLOW_LINKS)) {
+         final var targetAttrs = FileAttrs.get(targetPath);
+         if (targetAttrs.isSymlink()) {
+            try {
+               final var sourceLink = Files.readSymbolicLink(sourcePath);
+               final var targetLink = Files.readSymbolicLink(targetPath);
+               if (sourceLink.equals(targetLink))
+                  return;
+            } catch (final IOException ex) {
+               // treat as changed and recreate
+            }
+         } else if (targetAttrs.isDir()) {
+            delDir(targetPath);
+         } else {
+            delFile(targetPath);
+         }
+      }
+
+      try {
+         Files.copy(sourcePath, targetPath, SYMLINK_COPY_OPTIONS);
+      } catch (final FileSystemException ex) {
+         LOG.error("Symlink creation failed:" + ex.getMessage(), ex);
+      }
+   }
+
+   private static boolean isSymlinkLeaf(final FileAttrs.Type type) {
+      return switch (type) {
+         case FILE_SYMLINK, BROKEN_SYMLINK, OTHER_SYMLINK -> true;
+         default -> false;
+      };
+   }
+
+   private void logSymlinkEvent(final String action, final Path sourceAbsolute, final Path sourceRelative) {
+      try {
+         LOG.info("%s [@|magenta %s -> %s|@]...", action, sourceRelative, Files.readSymbolicLink(sourceAbsolute));
+      } catch (final IOException ex) {
+         LOG.info("%s [@|magenta %s|@]...", action, sourceRelative);
       }
    }
 }
