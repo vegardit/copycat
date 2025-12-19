@@ -635,7 +635,13 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
       preparedParentDirsRelative.add(dirRelative);
 
       final Path existingTarget = Files.exists(targetDir, NOFOLLOW_LINKS) ? targetDir : null;
-      syncDirShallow(task, ctx, sourceDir, existingTarget, dirRelative);
+      try {
+         syncDirShallow(task, ctx, sourceDir, existingTarget, dirRelative);
+      } catch (final IOException | RuntimeException ex) {
+         preparedTargetDirs.remove(targetDir);
+         preparedParentDirsRelative.remove(dirRelative);
+         throw ex;
+      }
    }
 
    /**
