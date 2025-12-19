@@ -438,7 +438,8 @@ public final class FilterEngine {
       }
 
       String pathStr = relativePath.toString();
-      if (SystemUtils.IS_OS_WINDOWS) {
+      final boolean isWindows = SystemUtils.IS_OS_WINDOWS;
+      if (isWindows) {
          pathStr = pathStr.replace('\\', '/');
       }
 
@@ -456,7 +457,7 @@ public final class FilterEngine {
          for (int start = 0; start <= maxStart; start++) {
             boolean matches = true;
             for (int i = 0; i < baseSegments.length; i++) {
-               if (!baseSegments[i].equals(parts[start + i])) {
+               if (!(isWindows ? baseSegments[i].equalsIgnoreCase(parts[start + i]) : baseSegments[i].equals(parts[start + i]))) {
                   matches = false;
                   break;
                }
@@ -469,7 +470,7 @@ public final class FilterEngine {
 
       // Exact prefix match for "prefix/**" (no leading "**/").
       for (int i = 0; i < baseSegments.length; i++) {
-         if (!baseSegments[i].equals(parts[i]))
+         if (!(isWindows ? baseSegments[i].equalsIgnoreCase(parts[i]) : baseSegments[i].equals(parts[i])))
             return false;
       }
       return true;

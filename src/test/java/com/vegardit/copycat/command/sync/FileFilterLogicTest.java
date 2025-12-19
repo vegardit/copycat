@@ -421,6 +421,36 @@ class FileFilterLogicTest {
    }
 
    @Test
+   @DisplayName("Windows pruning respects case-insensitive include prefixes")
+   void testPruningCaseInsensitiveOnWindows() throws IOException {
+      Assumptions.assumeTrue(SystemUtils.IS_OS_WINDOWS);
+      final Path sourceRoot = Files.createTempDirectory("copycat-filters-src");
+      final Path targetRoot = Files.createTempDirectory("copycat-filters-dst");
+
+      try {
+         final Path logDir = sourceRoot.resolve("logs");
+         Files.createDirectories(logDir);
+         Files.createFile(logDir.resolve("app.log"));
+
+         final var cfg = new SyncCommandConfig();
+         cfg.source = sourceRoot;
+         cfg.target = targetRoot;
+         cfg.fileFilters = List.of(
+            "in:Logs/*.log",
+            "ex:**/*"
+         );
+         cfg.applyDefaults();
+         cfg.compute();
+
+         final Path logsRelative = logDir.subpath(sourceRoot.getNameCount(), logDir.getNameCount());
+         assertThat(cfg.isExcludedSourceSubtreeDir(logsRelative)).isFalse();
+      } finally {
+         deleteRecursive(targetRoot);
+         deleteRecursive(sourceRoot);
+      }
+   }
+
+   @Test
    @DisplayName("Hidden files are excluded when excludeHiddenFiles=true")
    void testHiddenFilesExcluded() throws IOException {
       final Path sourceRoot = Files.createTempDirectory("copycat-filters-src");

@@ -15,6 +15,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 
@@ -458,24 +459,33 @@ public abstract class AbstractSyncCommandConfig<THIS extends AbstractSyncCommand
     * containing path separators must not be passed here.
     */
    private static boolean globSegmentMatches(final String pattern, final String value) {
+      final String pat;
+      final String val;
+      if (SystemUtils.IS_OS_WINDOWS) {
+         pat = pattern.toLowerCase(Locale.ROOT);
+         val = value.toLowerCase(Locale.ROOT);
+      } else {
+         pat = pattern;
+         val = value;
+      }
       if ("*".equals(pattern))
          return true;
 
       // Fast path: no wildcards
-      if (pattern.indexOf('*') == -1 && pattern.indexOf('?') == -1)
-         return pattern.equals(value);
+      if (pat.indexOf('*') == -1 && pat.indexOf('?') == -1)
+         return pat.equals(val);
 
       int p = 0;
       int v = 0;
       int starIndex = -1;
       int valueIndexAtStar = -1;
 
-      while (v < value.length()) {
-         if (p < pattern.length() && (pattern.charAt(p) == '?' || pattern.charAt(p) == value.charAt(v))) {
+      while (v < val.length()) {
+         if (p < pat.length() && (pat.charAt(p) == '?' || pat.charAt(p) == val.charAt(v))) {
             // Single-character match: advance both
             p++;
             v++;
-         } else if (p < pattern.length() && pattern.charAt(p) == '*') {
+         } else if (p < pat.length() && pat.charAt(p) == '*') {
             // Remember position of '*' and the value position where it started matching
             starIndex = p++;
             valueIndexAtStar = v;
@@ -489,9 +499,9 @@ public abstract class AbstractSyncCommandConfig<THIS extends AbstractSyncCommand
       }
 
       // Consume trailing '*' in the pattern
-      while (p < pattern.length() && pattern.charAt(p) == '*') {
+      while (p < pat.length() && pat.charAt(p) == '*') {
          p++;
       }
-      return p == pattern.length();
+      return p == pat.length();
    }
 }
