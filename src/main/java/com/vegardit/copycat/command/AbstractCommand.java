@@ -85,22 +85,26 @@ public abstract class AbstractCommand implements Callable<Void> {
        */
       // Runtime.getRuntime().addShutdownHook() is not working reliable
       try {
-         sun.misc.Signal.handle(new sun.misc.Signal("INT"), signal -> {
-            LOG.warn("Canceling operation due to SIGINT(2) signal (CTRL+C) received...");
-            onSigInt();
-            System.exit(128 + 2);
-         });
-      } catch (final IllegalArgumentException ex) {
-         // ignore java.lang.IllegalArgumentException: Unknown signal: INT
-      }
-      try {
-         sun.misc.Signal.handle(new sun.misc.Signal("TERM"), signal -> {
-            LOG.warn("Canceling operation due to SIGTERM(15) signal received...");
-            onSigTerm();
-            System.exit(128 + 15);
-         });
-      } catch (final IllegalArgumentException ex) {
-         // ignore java.lang.IllegalArgumentException: Unknown signal: TERM
+         try {
+            sun.misc.Signal.handle(new sun.misc.Signal("INT"), signal -> {
+               LOG.warn("Canceling operation due to SIGINT(2) signal (CTRL+C) received...");
+               onSigInt();
+               System.exit(128 + 2);
+            });
+         } catch (final IllegalArgumentException ex) {
+            // ignore java.lang.IllegalArgumentException: Unknown signal: INT
+         }
+         try {
+            sun.misc.Signal.handle(new sun.misc.Signal("TERM"), signal -> {
+               LOG.warn("Canceling operation due to SIGTERM(15) signal received...");
+               onSigTerm();
+               System.exit(128 + 15);
+            });
+         } catch (final IllegalArgumentException ex) {
+            // ignore java.lang.IllegalArgumentException: Unknown signal: TERM
+         }
+      } catch (final LinkageError ex) {
+         // ignore if sun.misc.Signal is unavailable (can be missing/unsupported on some runtimes, e.g. stripped builds or native-image)
       }
 
       try {
