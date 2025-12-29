@@ -664,8 +664,16 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
    void ensureTargetDirPrepared(final SyncCommandConfig task, final SyncHelpers.Context ctx, final Path sourceDir, final Path dirRelative)
          throws IOException {
       final Path targetDir = task.targetRootAbsolute.resolve(dirRelative);
-      if (preparedParentDirsRelative.contains(dirRelative))
-         return;
+      if (preparedParentDirsRelative.contains(dirRelative)) {
+         if (not(task.dryRun)) {
+            final var targetAttrs = FileAttrs.find(targetDir);
+            if (targetAttrs != null && (targetAttrs.isDir() || targetAttrs.isDirSymlink()))
+               return;
+            preparedParentDirsRelative.remove(dirRelative);
+            preparedTargetDirs.remove(targetDir);
+         } else
+            return;
+      }
 
       final var myFuture = new CompletableFuture<@Nullable Void>();
       final var existingFuture = preparedTargetDirs.putIfAbsent(targetDir, myFuture);
