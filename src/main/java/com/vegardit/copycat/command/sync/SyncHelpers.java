@@ -184,7 +184,7 @@ public final class SyncHelpers {
             FileUtils.copyDirShallow(sourcePath, sourceAttrs, resolvedTargetPath, ctx.copyACL);
          }
          if (ctx.stats != null) {
-            ctx.stats.onFileCopied(System.currentTimeMillis() - start, sourceAttrs.size());
+            ctx.stats.onDirCreated(System.currentTimeMillis() - start);
          }
       }
    }

@@ -26,6 +26,8 @@ public class SyncStats {
    private final LongAdder filesCopied = new LongAdder();
    private final LongAdder filesCopiedDurationMillis = new LongAdder();
    private final LongAdder filesCopiedSize = new LongAdder();
+   private final LongAdder dirsCreated = new LongAdder();
+   private final LongAdder dirsCreatedDurationMillis = new LongAdder();
    private final LongAdder filesDeleted = new LongAdder();
    private final LongAdder filesDeletedDurationMillis = new LongAdder();
    private final LongAdder filesDeletedSize = new LongAdder();
@@ -68,6 +70,7 @@ public class SyncStats {
          FileUtils.byteCountToDisplaySize(filesCopiedSize.longValue()), //
          formatRate(filesCopiedSize.longValue(), filesCopiedDurationMillis.longValue()) //
       );
+      LOG.info(isDryRun ? "Target dirs that would be created: %s" : "Target dirs created: %s", dirsCreated);
       LOG.info(isDryRun ? "Target files that would be deleted: %s (%s) @ %s/s" : "Target files deleted: %s (%s) @ %s/s", //
          filesDeleted, //
          FileUtils.byteCountToDisplaySize(filesDeletedSize.longValue()), //
@@ -85,6 +88,11 @@ public class SyncStats {
       filesDeletedDurationMillis.add(durationMillis);
       filesDeleted.add(deletedFiles);
       filesDeletedSize.add(deletedFileSize);
+   }
+
+   public void onDirCreated(final long durationMillis) {
+      dirsCreatedDurationMillis.add(durationMillis);
+      dirsCreated.increment();
    }
 
    public void onDirScanned() {
@@ -118,6 +126,8 @@ public class SyncStats {
       filesCopied.reset();
       filesCopiedDurationMillis.reset();
       filesCopiedSize.reset();
+      dirsCreated.reset();
+      dirsCreatedDurationMillis.reset();
       filesDeleted.reset();
       filesDeletedDurationMillis.reset();
       filesDeletedSize.reset();

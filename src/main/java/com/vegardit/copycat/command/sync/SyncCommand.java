@@ -220,9 +220,12 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
                if (loggableEvents.contains(LogEvent.CREATE)) {
                   LOG.info("NEW [@|magenta %s%s|@]...", task.targetRootAbsolute, File.separator);
                }
+
+               final long startMillis = System.currentTimeMillis();
                if (not(task.dryRun)) {
                   FileUtils.copyDirShallow(task.sourceRootAbsolute, task.targetRootAbsolute, isTrue(task.copyACL));
                }
+               stats.onDirCreated(System.currentTimeMillis() - startMillis);
             }
 
             dirJobs.add(new DirJob(task.sourceRootAbsolute, Paths.get(".")));
