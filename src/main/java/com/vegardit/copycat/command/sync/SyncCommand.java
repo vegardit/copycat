@@ -203,9 +203,8 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
             preparedParentDirsRelative.clear();
             final var ctx = syncContext(task);
 
-            JdkLoggingUtils.withRootLogLevel(Level.INFO, () -> {
-               LOG.info("Executing sync task with effective config:\n%s", YamlUtils.toYamlString(task));
-            });
+            JdkLoggingUtils.withRootLogLevel(Level.INFO, //
+               () -> LOG.info("Executing sync task with effective config:\n%s", YamlUtils.toYamlString(task)));
 
             final long stallTimeoutMillis = Math.max(asNonNull(task.stallTimeout).toMillis(), 0);
             progressTracker.reset();
@@ -294,6 +293,12 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
                if (workerError instanceof final Error ex)
                   throw ex;
                throw new RuntimeException(workerError);
+            }
+
+            if (state == State.ABORT_BY_SIGNAL) {
+               DesktopNotifications.showSticky(MessageType.WARNING, "Syncing aborted.", //
+                  "FROM: " + task.sourceRootAbsolute + "\nTO: " + task.targetRootAbsolute);
+               throw new InterruptedException("Sync aborted by signal.");
             }
 
             DesktopNotifications.showSticky(MessageType.INFO, "Syncing done.", //
