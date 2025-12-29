@@ -74,8 +74,9 @@ public final class SyncHelpers {
 
    public static void deleteDir(final Context ctx, final Path dir) throws IOException {
       final long startNanos = System.nanoTime(); // CHECKSTYLE:IGNORE MoveVariableInsideIfCheck
-      final long[] deletedCount = {0};
-      final long[] deletedSize = {0};
+      final long[] deletedFiles = {0};
+      final long[] deletedDirs = {0};
+      final long[] deletedFileSize = {0};
 
       Files.walkFileTree(dir, new SimpleFileVisitor<>() {
          @Override
@@ -89,7 +90,7 @@ public final class SyncHelpers {
             if (!ctx.dryRun) {
                Files.delete(subdir);
             }
-            deletedCount[0]++;
+            deletedDirs[0]++;
             return FileVisitResult.CONTINUE;
          }
 
@@ -104,14 +105,15 @@ public final class SyncHelpers {
             if (!ctx.dryRun) {
                Files.delete(file);
             }
-            deletedCount[0]++;
-            deletedSize[0] += attrs.size();
+            deletedFiles[0]++;
+            deletedFileSize[0] += attrs.size();
             return FileVisitResult.CONTINUE;
          }
       });
 
       if (ctx.stats != null) {
-         ctx.stats.onDirDeleted(TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startNanos), deletedCount[0], deletedSize[0]);
+         ctx.stats.onDirDeleted(TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startNanos), deletedDirs[0], deletedFiles[0],
+            deletedFileSize[0]);
       }
    }
 

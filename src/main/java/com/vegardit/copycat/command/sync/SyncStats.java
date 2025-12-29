@@ -29,6 +29,8 @@ public class SyncStats {
    private final LongAdder filesDeleted = new LongAdder();
    private final LongAdder filesDeletedDurationMillis = new LongAdder();
    private final LongAdder filesDeletedSize = new LongAdder();
+   private final LongAdder dirsDeleted = new LongAdder();
+   private final LongAdder dirsDeletedDurationMillis = new LongAdder();
    private long startAt;
 
    private boolean statsLogged = false;
@@ -65,15 +67,18 @@ public class SyncStats {
          FileUtils.byteCountToDisplaySize(filesDeletedSize.longValue()), //
          formatRate(filesDeletedSize.longValue(), filesDeletedDurationMillis.longValue()) //
       );
+      LOG.info("Target dirs deleted: %s", dirsDeleted);
       LOG.info("Errors: %s", errors.size());
       LOG.info("Duration: %s", DurationFormatUtils.formatDurationWords(System.currentTimeMillis() - startAt, true, true));
       LOG.info("***************************************");
    }
 
-   public void onDirDeleted(final long duration, final long fileCount, final long fileSize) {
-      filesDeletedDurationMillis.add(duration);
-      filesDeleted.add(fileCount);
-      filesDeletedSize.add(fileSize);
+   public void onDirDeleted(final long durationMillis, final long deletedDirs, final long deletedFiles, final long deletedFileSize) {
+      dirsDeletedDurationMillis.add(durationMillis);
+      dirsDeleted.add(deletedDirs);
+      filesDeletedDurationMillis.add(durationMillis);
+      filesDeleted.add(deletedFiles);
+      filesDeletedSize.add(deletedFileSize);
    }
 
    public void onDirScanned() {
@@ -110,6 +115,8 @@ public class SyncStats {
       filesDeleted.reset();
       filesDeletedDurationMillis.reset();
       filesDeletedSize.reset();
+      dirsDeleted.reset();
+      dirsDeletedDurationMillis.reset();
       startAt = 0;
       statsLogged = false;
    }
