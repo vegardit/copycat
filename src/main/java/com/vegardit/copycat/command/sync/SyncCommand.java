@@ -166,7 +166,7 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
       return new SyncHelpers.Context( // CHECKSTYLE:IGNORE .*
          loggableEvents.contains(LogEvent.CREATE), // logCreate
          loggableEvents.contains(LogEvent.MODIFY), // logModify
-         true, // logDelete
+         loggableEvents.contains(LogEvent.DELETE), // logDelete
          isTrue(task.dryRun), // dryRun
          isTrue(task.ignoreSymlinkErrors), // ignoreSymlinkErrors
          isTrue(task.copyACL), // copyACL
