@@ -168,6 +168,12 @@ public class WatchCommand extends AbstractSyncCommand<WatchCommandConfig> {
       return sourceFileHashesByTask.computeIfAbsent(task, t -> new ConcurrentHashMap<>());
    }
 
+   private void pruneSourceFileHashes(final WatchCommandConfig task, final Path sourceAbsolute) {
+      final var hashes = sourceFileHashes(task);
+      hashes.remove(sourceAbsolute);
+      hashes.keySet().removeIf(path -> path.startsWith(sourceAbsolute));
+   }
+
    private void invalidatePreparedDirs(final WatchCommandConfig task, final Path relativeDir) {
       if (relativeDir.getNameCount() == 0) {
          preparedTargetDirs(task).clear();
@@ -456,11 +462,12 @@ public class WatchCommand extends AbstractSyncCommand<WatchCommandConfig> {
                      if (loggableEvents.contains(LogEvent.DELETE)) {
                         LOG.info("DELETE [@|magenta %s|@]...", sourceRelative);
                      }
-                     sourceFileHashes(task).remove(sourceAbsolute);
+                     pruneSourceFileHashes(task, sourceAbsolute);
                      SyncHelpers.deleteFile(deleteCtx, targetAbsolute, targetAttrs, true);
                   }
                   if (targetDirLike) {
                      invalidatePreparedDirs(task, sourceRelative);
+                     pruneSourceFileHashes(task, sourceAbsolute);
                   }
                }
                break;
