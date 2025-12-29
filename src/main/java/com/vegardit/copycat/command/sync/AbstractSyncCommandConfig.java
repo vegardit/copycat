@@ -81,7 +81,8 @@ public abstract class AbstractSyncCommandConfig<THIS extends AbstractSyncCommand
    /**
     * Simple INCLUDE pattern hints derived from {@link #fileFilters} that are safe to use for conservative subtree
     * skipping in combination with a global EXCLUDE filter that matches all descendants (for example a pattern like \"**\").
-    * Only patterns without \"**\" or character classes are considered.
+    * Only prefix segments up to the first \"**\" segment are considered, and only if those prefix segments do not use
+    * character classes / groupings.
     */
    private @ToYamlString(ignore = true) IncludePatternHint @Nullable [] includePatternHints; // computed value
 
@@ -322,16 +323,13 @@ public abstract class AbstractSyncCommandConfig<THIS extends AbstractSyncCommand
                 * For INCLUDE patterns, derive a simple prefix representation that can be used to conservatively decide
                 * whether a given directory subtree can still contain any included files.
                 *
-                * We intentionally restrict hints to patterns without "**" or character classes / groupings so that we
-                * can implement cheap and safe prefix checks without attempting to fully reimplement glob semantics.
+                * We intentionally restrict hints to simple prefix segments and avoid character classes / groupings so
+                * that we can implement cheap and safe prefix checks without attempting to fully reimplement glob
+                * semantics.
                 */
-               if (!rawPattern.contains("**") //
-                     && rawPattern.indexOf('[') == -1 && rawPattern.indexOf(']') == -1 //
-                     && rawPattern.indexOf('{') == -1 && rawPattern.indexOf('}') == -1) {
-                  final var segments = rawPattern.split("/");
-                  if (segments.length > 0) {
-                     includeHints.add(new IncludePatternHint(segments));
-                  }
+               final var hintSegments = toIncludePatternHintSegments(rawPattern);
+               if (hintSegments != null) {
+                  includeHints.add(new IncludePatternHint(hintSegments));
                }
             }
 
@@ -401,8 +399,7 @@ public abstract class AbstractSyncCommandConfig<THIS extends AbstractSyncCommand
     * The check is intentionally narrow:
     * <ul>
     * <li>It is only active when {@link #hasGlobalExcludeForSubtrees} is true.</li>
-    * <li>It only uses {@link #includePatternHints}, i.e. simple INCLUDE patterns without \"**\" or complex glob
-    * constructs.</li>
+    * <li>It only uses {@link #includePatternHints}, i.e. conservative INCLUDE prefix hints.</li>
     * <li>If we are unsure, we return {@code false} and let normal traversal handle the directory.</li>
     * </ul>
     */
@@ -505,5 +502,57 @@ public abstract class AbstractSyncCommandConfig<THIS extends AbstractSyncCommand
          p++;
       }
       return p == pat.length();
+   }
+
+   /**
+    * Builds a conservative prefix hint for INCLUDE patterns.
+    * <p>
+    * The returned segments represent a required path prefix (relative to the source root). If a directory does not
+    * match the prefix of any INCLUDE hint while a global EXCLUDE-all-descendants filter is active, the subtree can be
+    * safely pruned because no descendant can match any INCLUDE.
+    * <p>
+    * The returned hint is intentionally incomplete and must never be used for actual include/exclude semantics.
+    */
+   private static String @Nullable [] toIncludePatternHintSegments(final String rawPattern) {
+      final String trimmed = rawPattern.strip();
+      if (trimmed.isEmpty())
+         return null;
+
+      final String[] segments = trimmed.split("/");
+      if (segments.length == 0)
+         return null;
+
+      int hardStop = segments.length;
+      for (int i = 0; i < segments.length; i++) {
+         final String seg = segments[i];
+         if ("**".equals(seg)) {
+            hardStop = i;
+            break;
+         }
+         // patterns like "**abc" are too complex for safe prefix reasoning
+         if (seg.contains("**"))
+            return null;
+      }
+
+      if (hardStop == 0)
+         return null;
+
+      final var hint = new ArrayList<String>(hardStop);
+      for (int i = 0; i < hardStop; i++) {
+         final String seg = segments[i];
+         if (seg.isEmpty())
+            return null;
+
+         // Stop at first segment we cannot safely match with globSegmentMatches.
+         if (seg.indexOf('[') != -1 || seg.indexOf(']') != -1 //
+               || seg.indexOf('{') != -1 || seg.indexOf('}') != -1) {
+            break;
+         }
+         hint.add(seg);
+      }
+
+      if (hint.isEmpty())
+         return null;
+      return hint.toArray(new String[hint.size()]);
    }
 }

@@ -421,6 +421,43 @@ class FileFilterLogicTest {
    }
 
    @Test
+   @DisplayName("Global ex:**/* with '**' include patterns still prunes unrelated subtrees based on prefix")
+   void testGlobalExcludeWithDoubleStarIncludesPrunesByPrefix() throws IOException {
+      final Path sourceRoot = Files.createTempDirectory("copycat-filters-src");
+      final Path targetRoot = Files.createTempDirectory("copycat-filters-dst");
+
+      try {
+         final var cfg = new SyncCommandConfig();
+         cfg.source = sourceRoot;
+         cfg.target = targetRoot;
+         cfg.fileFilters = List.of( //
+            "in:logs/**/latest.log", //
+            "ex:**/*", //
+            "ex:*.*" //
+         );
+         cfg.applyDefaults();
+         cfg.compute();
+
+         final Path logsDir = sourceRoot.resolve("logs");
+         final Path otherDir = sourceRoot.resolve("other");
+         Files.createDirectories(logsDir);
+         Files.createDirectories(otherDir);
+
+         final Path logsRelative = logsDir.subpath(sourceRoot.getNameCount(), logsDir.getNameCount());
+         final Path otherRelative = otherDir.subpath(sourceRoot.getNameCount(), otherDir.getNameCount());
+
+         // logs subtree may contain matching descendants, so must not be pruned
+         assertThat(cfg.isExcludedSourceSubtreeDir(logsRelative)).isFalse();
+
+         // unrelated top-level subtrees can be pruned when global ex:**/* is present
+         assertThat(cfg.isExcludedSourceSubtreeDir(otherRelative)).isTrue();
+      } finally {
+         deleteRecursive(targetRoot);
+         deleteRecursive(sourceRoot);
+      }
+   }
+
+   @Test
    @DisplayName("Windows pruning respects case-insensitive include prefixes")
    void testPruningCaseInsensitiveOnWindows() throws IOException {
       Assumptions.assumeTrue(SystemUtils.IS_OS_WINDOWS);
