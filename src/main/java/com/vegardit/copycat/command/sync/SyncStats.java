@@ -33,6 +33,7 @@ public class SyncStats {
    private final LongAdder dirsDeletedDurationMillis = new LongAdder();
    private long startAt;
 
+   private volatile boolean isDryRun = false;
    private boolean statsLogged = false;
 
    private static String formatRate(final long bytes, final long durationMillis) {
@@ -57,17 +58,22 @@ public class SyncStats {
          }
       }
       LOG.info("***************************************");
+      if (isDryRun) {
+         LOG.info("DRY RUN: no changes were made. Counts below are planned operations.");
+      }
       LOG.info("Source dirs scanned: %s", dirsScanned);
       LOG.info("Source files scanned: %s", filesScanned);
-      LOG.info("Source files copied: %s (%s) @ %s/s", filesCopied, //
+      LOG.info(isDryRun ? "Source files that would be copied: %s (%s) @ %s/s" : "Source files copied: %s (%s) @ %s/s", //
+         filesCopied, //
          FileUtils.byteCountToDisplaySize(filesCopiedSize.longValue()), //
          formatRate(filesCopiedSize.longValue(), filesCopiedDurationMillis.longValue()) //
       );
-      LOG.info("Target files deleted: %s (%s) @ %s/s", filesDeleted, //
+      LOG.info(isDryRun ? "Target files that would be deleted: %s (%s) @ %s/s" : "Target files deleted: %s (%s) @ %s/s", //
+         filesDeleted, //
          FileUtils.byteCountToDisplaySize(filesDeletedSize.longValue()), //
          formatRate(filesDeletedSize.longValue(), filesDeletedDurationMillis.longValue()) //
       );
-      LOG.info("Target dirs deleted: %s", dirsDeleted);
+      LOG.info(isDryRun ? "Target dirs that would be deleted: %s" : "Target dirs deleted: %s", dirsDeleted);
       LOG.info("Errors: %s", errors.size());
       LOG.info("Duration: %s", DurationFormatUtils.formatDurationWords(System.currentTimeMillis() - startAt, true, true));
       LOG.info("***************************************");
@@ -117,8 +123,13 @@ public class SyncStats {
       filesDeletedSize.reset();
       dirsDeleted.reset();
       dirsDeletedDurationMillis.reset();
+      isDryRun = false;
       startAt = 0;
       statsLogged = false;
+   }
+
+   public void setDryRun(final boolean isDryRun) {
+      this.isDryRun = isDryRun;
    }
 
    public void start() {

@@ -177,8 +177,22 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
 
    @Override
    protected void doExecute(final List<SyncCommandConfig> tasks) throws Exception {
+      boolean hasDryRunTasks = false;
+      boolean hasRealTasks = false;
+      for (final var task : tasks) {
+         if (isTrue(task.dryRun)) {
+            hasDryRunTasks = true;
+         } else {
+            hasRealTasks = true;
+         }
+      }
+      if (hasDryRunTasks && hasRealTasks)
+         throw new picocli.CommandLine.ParameterException(commandSpec.commandLine(),
+            "Mixing dry-run and non-dry-run sync tasks is not supported. Set dry-run globally via --dry-run or YAML defaults.");
+
       DesktopNotifications.setTrayIconToolTip("copycat is syncing...");
 
+      stats.setDryRun(hasDryRunTasks);
       stats.start();
 
       try {
