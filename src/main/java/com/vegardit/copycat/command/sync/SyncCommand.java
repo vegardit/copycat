@@ -183,7 +183,6 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
 
       try {
          for (final SyncCommandConfig task : tasks) {
-            progressTracker.reset();
             final var sourceFilterCtx = task.toSourceFilterContext();
             final var targetFilterCtx = task.toTargetFilterContext();
             preparedTargetDirs.clear();
@@ -195,6 +194,8 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
             });
 
             final long stallTimeoutMillis = Math.max(asNonNull(task.stallTimeout).toMillis(), 0);
+            progressTracker.reset();
+            progressTracker.configureForStallTimeoutMillis(stallTimeoutMillis);
             final long awaitPollMillis = stallTimeoutMillis > 0 ? Math.min(AWAIT_POLL_MILLIS, stallTimeoutMillis) : AWAIT_POLL_MILLIS;
 
             final int taskThreads = Math.max(asNonNull(task.threads), 1);
