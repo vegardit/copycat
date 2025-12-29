@@ -19,6 +19,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Queue;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorCompletionService;
 import java.util.concurrent.Executors;
@@ -151,8 +152,8 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
    private final ProgressTracker progressTracker = new ProgressTracker();
 
    private final Set<LogEvent> loggableEvents = Sets.newHashSet(LogEvent.values());
-   private final Set<Path> preparedTargetDirs = ConcurrentHashMap.newKeySet();
    private final Set<Path> preparedParentDirsRelative = ConcurrentHashMap.newKeySet();
+   private final ConcurrentHashMap<Path, CompletableFuture<@Nullable Void>> preparedTargetDirs = new ConcurrentHashMap<>();
 
    private final SyncStats stats = new SyncStats();
    private volatile State state = State.NORMAL;
@@ -657,29 +658,53 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
       }
    }
 
-   private void ensureTargetDirPrepared(final SyncCommandConfig task, final SyncHelpers.Context ctx, final Path sourceDir,
-         final Path dirRelative) throws IOException {
+   void ensureTargetDirPrepared(final SyncCommandConfig task, final SyncHelpers.Context ctx, final Path sourceDir, final Path dirRelative)
+         throws IOException {
       final Path targetDir = task.targetRootAbsolute.resolve(dirRelative);
-      if (!preparedTargetDirs.add(targetDir))
+      if (preparedParentDirsRelative.contains(dirRelative))
          return;
 
-      preparedParentDirsRelative.add(dirRelative);
+      final var myFuture = new CompletableFuture<@Nullable Void>();
+      final var existingFuture = preparedTargetDirs.putIfAbsent(targetDir, myFuture);
+      final var future = existingFuture != null ? existingFuture : myFuture;
 
-      final Path existingTarget = Files.exists(targetDir, NOFOLLOW_LINKS) ? targetDir : null;
+      if (existingFuture == null) {
+         final Path existingTarget = Files.exists(targetDir, NOFOLLOW_LINKS) ? targetDir : null;
+         try {
+            syncDirShallow(task, ctx, sourceDir, existingTarget, dirRelative);
+            preparedParentDirsRelative.add(dirRelative);
+            future.complete(null);
+         } catch (final IOException | RuntimeException ex) {
+            preparedTargetDirs.remove(targetDir, future);
+            future.completeExceptionally(ex);
+            throw ex;
+         }
+         return;
+      }
+
       try {
-         syncDirShallow(task, ctx, sourceDir, existingTarget, dirRelative);
-      } catch (final IOException | RuntimeException ex) {
-         preparedTargetDirs.remove(targetDir);
-         preparedParentDirsRelative.remove(dirRelative);
-         throw ex;
+         future.get();
+         preparedParentDirsRelative.add(dirRelative);
+      } catch (final InterruptedException ex) {
+         Thread.currentThread().interrupt();
+         throw new IOException("Interrupted while preparing target directory [" + dirRelative + "].", ex);
+      } catch (final java.util.concurrent.ExecutionException ex) {
+         final var cause = ex.getCause();
+         if (cause instanceof final IOException io)
+            throw io;
+         if (cause instanceof final RuntimeException re)
+            throw re;
+         if (cause instanceof final Error err)
+            throw err;
+         throw new RuntimeException(cause);
       }
    }
 
    /**
     * @param targetPath null, if target path does not exist yet
     */
-   private void syncDirShallow(final SyncCommandConfig task, final SyncHelpers.Context ctx, final Path sourcePath,
-         final @Nullable Path targetPath, final Path relativePath) throws IOException {
+   void syncDirShallow(final SyncCommandConfig task, final SyncHelpers.Context ctx, final Path sourcePath, final @Nullable Path targetPath,
+         final Path relativePath) throws IOException {
       final Path resolvedTargetPath = targetPath == null ? task.targetRootAbsolute.resolve(relativePath) : targetPath;
       SyncHelpers.ensureDir(ctx, sourcePath, targetPath, resolvedTargetPath, relativePath);
    }
