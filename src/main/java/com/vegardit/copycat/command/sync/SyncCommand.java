@@ -66,7 +66,7 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
       ABORT_BY_SIGNAL
    }
 
-   private static final class DirJob {
+   static final class DirJob {
       final Path sourceDir;
       final Path relativeDir;
 
@@ -89,7 +89,7 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
     * Important invariant: only active workers can enqueue new directory jobs. Therefore, if all workers are
     * simultaneously waiting for work and the queue is empty, no new work will appear and workers can exit.
     */
-   private static final class DirJobQueue {
+   static final class DirJobQueue {
       private final int workerCount;
       private final Queue<DirJob> jobs;
 
@@ -161,7 +161,7 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
       super(SyncCommandConfig::new);
    }
 
-   private SyncHelpers.Context syncContext(final SyncCommandConfig task) {
+   SyncHelpers.Context syncContext(final SyncCommandConfig task) {
       return new SyncHelpers.Context( // CHECKSTYLE:IGNORE .*
          loggableEvents.contains(LogEvent.CREATE), // logCreate
          loggableEvents.contains(LogEvent.MODIFY), // logModify
@@ -370,7 +370,7 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
       cfgCLI.stallTimeout = SyncCommandConfig.parseDuration(v, "--stall-timeout");
    }
 
-   private void syncWorker(final SyncCommandConfig task, final FilterEngine.FilterContext sourceFilterCtx,
+   void syncWorker(final SyncCommandConfig task, final FilterEngine.FilterContext sourceFilterCtx,
          final FilterEngine.FilterContext targetFilterCtx, final DirJobQueue dirJobs, final SyncHelpers.Context ctx) throws IOException {
       final var sourceChildren = new HashMap<Path, Path>(256); // Map<SourcePathRelativeToRoot, SourcePathAbsolute>
       final var targetChildren = new HashMap<Path, Path>(256); // Map<TargetPathRelativeToRoot, TargetPathAbsolute>
@@ -574,7 +574,7 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
          } finally {
             try {
                // explicitly included empty directories
-               if (!job.sourceDir.equals(task.sourceRootAbsolute)) {
+               if (state == State.NORMAL && !job.sourceDir.equals(task.sourceRootAbsolute)) {
                   final var fileFilters = task.fileFilters;
                   if (fileFilters != null && !fileFilters.isEmpty() //
                         && FilterEngine.isDirExplicitlyIncluded(sourceFilterCtx, job.relativeDir)) {
@@ -584,6 +584,17 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
                         ensureTargetDirPrepared(task, ctx, job.sourceDir, job.relativeDir);
                      }
                   }
+               }
+            } catch (final IOException | RuntimeException ex) {
+               stats.onError(ex);
+               if (not(task.ignoreErrors)) {
+                  state = State.ABORT_BY_EXCEPTION;
+                  throw ex;
+               }
+               if (getVerbosity() > 0) {
+                  LOG.error(ex);
+               } else {
+                  LOG.error(ex.getClass().getSimpleName() + ": " + ex.getMessage());
                }
             } finally {
                stats.onDirScanned();
