@@ -44,7 +44,7 @@ SPDX-ArtifactOfProjectHomePage: https://github.com/vegardit/copycat
       <java.version>17</java.version>
 
       <!-- https://central.sonatype.com/artifact/org.graalvm.sdk/graal-sdk -->
-      <graalvm-sdk.version>25.0.1</graalvm-sdk.version>
+      <graalvm-sdk.version>25.0.2</graalvm-sdk.version>
       <!-- https://central.sonatype.com/artifact/info.picocli/picocli -->
       <picocli.version>4.7.7</picocli.version>
       <!-- https://central.sonatype.com/artifact/com.guardsquare/proguard-core -->
