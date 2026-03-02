@@ -168,7 +168,7 @@ jobs:
 
 
     - name: "Share: maven-build-artifacts"
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@v7
       with:
         name: maven-build-artifacts
         path: |
@@ -421,7 +421,7 @@ jobs:
 
 
     - name: "Share: native binary"
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@v7
       with:
         name: binaries-${{ matrix.arch }}
         path: copycat-${{ matrix.arch }}*
