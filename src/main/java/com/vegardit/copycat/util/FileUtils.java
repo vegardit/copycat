@@ -7,6 +7,7 @@ package com.vegardit.copycat.util;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
+import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.CopyOption;
 import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
@@ -231,8 +232,35 @@ public final class FileUtils {
             ? FILE_READ_OPTIONS_SHARED
             : FILE_READ_OPTIONS_STRICT;
 
-      copyFileContent(source, target, sourceReadOptions, onBytesWritten);
-      copyAttributes(source, sourceAttrs, target, copyACL, allowReadingOpenFiles);
+      // Copy into a sibling temp file first so a read/write failure cannot truncate an existing target in place.
+      final Path targetFileName = target.getFileName();
+      final String targetName = targetFileName == null ? "copycat-target" : targetFileName.toString();
+      final Path targetParent = target.getParent() == null ? Path.of(".") : target.getParent();
+      final Path tempTarget = Files.createTempFile(targetParent, targetName + ".", ".copycat.tmp");
+
+      boolean completed = false;
+      try {
+         copyFileContent(source, tempTarget, sourceReadOptions, onBytesWritten);
+         copyAttributes(source, sourceAttrs, tempTarget, copyACL, allowReadingOpenFiles);
+
+         // replace target with temp copy
+         try {
+            Files.move(tempTarget, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+         } catch (final AtomicMoveNotSupportedException ex) {
+            Files.move(tempTarget, target, StandardCopyOption.REPLACE_EXISTING);
+         }
+
+         completed = true;
+      } finally {
+         if (!completed) {
+            try {
+               Files.deleteIfExists(tempTarget);
+            } catch (final IOException ex) {
+               LOG.debug("Failed to delete temporary copy target [%s] after copy failure.", tempTarget);
+               LOG.debug(ex);
+            }
+         }
+      }
    }
 
    private static void copyFileContent(final Path source, final Path target, final OpenOption[] sourceReadOptions,
