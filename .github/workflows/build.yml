@@ -516,7 +516,7 @@ jobs:
 
 
     - name: "Delete intermediate build artifacts"
-      uses: geekyeggo/delete-artifact@v5  # https://github.com/GeekyEggo/delete-artifact/
+      uses: geekyeggo/delete-artifact@v6  # https://github.com/GeekyEggo/delete-artifact/
       with:
         name: "*"
         failOnError: false
