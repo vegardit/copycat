@@ -7,6 +7,7 @@ package com.vegardit.copycat.command.watch;
 import static com.vegardit.copycat.util.Booleans.*;
 import static net.sf.jstuff.core.validation.NullAnalysisHelper.asNonNull;
 
+import java.awt.TrayIcon.MessageType;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.FileVisitResult;
@@ -25,6 +26,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.logging.Level;
 
 import org.apache.commons.lang3.concurrent.BasicThreadFactory;
@@ -66,6 +68,7 @@ public class WatchCommand extends AbstractSyncCommand<WatchCommandConfig> {
    private static final int MAX_EVENT_RETRY_ATTEMPTS = 5;
    private static final long EVENT_RETRY_DELAY_MILLIS = 250;
    private static final long FORCE_SHUTDOWN_TIMEOUT_MILLIS = 30_000;
+   private static final long WATCH_FAILURE_POLL_MILLIS = 250;
 
    /**
     * custom visitor that WatchCommandConfig excludes into account
@@ -162,6 +165,7 @@ public class WatchCommand extends AbstractSyncCommand<WatchCommandConfig> {
    private final ConcurrentMap<WatchCommandConfig, Set<Path>> preparedParentDirsRelativeByTask = new ConcurrentHashMap<>();
    private final ConcurrentMap<PendingEventRetry, Integer> pendingEventRetries = new ConcurrentHashMap<>();
    private final ConcurrentMap<WatchCommandConfig, ConcurrentMap<Path, FileHash>> sourceFileHashesByTask = new ConcurrentHashMap<>();
+   private final AtomicReference<@Nullable IllegalStateException> overflowFailure = new AtomicReference<>();
    private final ScheduledExecutorService retryExecutor = Executors.newSingleThreadScheduledExecutor( //
       BasicThreadFactory.builder().daemon(true).namingPattern("watch-retry-%d").build() //
    );
@@ -220,6 +224,7 @@ public class WatchCommand extends AbstractSyncCommand<WatchCommandConfig> {
       if (tasks.isEmpty())
          throw new CommandLine.ParameterException(commandSpec.commandLine(), "No watch tasks configured.");
 
+      overflowFailure.set(null);
       DesktopNotifications.setTrayIconToolTip("copycat is watching...");
 
       final var threadPool = Executors.newFixedThreadPool(tasks.size(), //
@@ -273,11 +278,17 @@ public class WatchCommand extends AbstractSyncCommand<WatchCommandConfig> {
 
          threadPool.shutdown();
 
-         // Block until any watcher thread ends (normally or exceptionally). Exceptions from watcher threads
-         // are otherwise captured by the Future and would never be surfaced.
-         final Future<@Nullable Void> firstCompleted = completion.take();
-         firstCompleted.get();
-         throw new IllegalStateException("Watcher stopped unexpectedly.");
+         // Poll instead of blocking forever so fatal listener-side failures such as OVERFLOW can stop watch mode.
+         while (true) {
+            throwIfOverflowFailure();
+            final Future<@Nullable Void> firstCompleted = completion.poll(WATCH_FAILURE_POLL_MILLIS, TimeUnit.MILLISECONDS);
+            if (firstCompleted == null) {
+               continue;
+            }
+            firstCompleted.get();
+            throwIfOverflowFailure();
+            throw new IllegalStateException("Watcher stopped unexpectedly.");
+         }
       } catch (final Throwable t) { // CHECKSTYLE:IGNORE .*
          final Throwable primary;
          if (t instanceof final ExecutionException ex) {
@@ -297,6 +308,7 @@ public class WatchCommand extends AbstractSyncCommand<WatchCommandConfig> {
          throw new RuntimeException(primary);
       } finally {
          pendingEventRetries.clear();
+         overflowFailure.set(null);
          for (final var watcher : watchers) {
             try {
                watcher.close();
@@ -335,7 +347,9 @@ public class WatchCommand extends AbstractSyncCommand<WatchCommandConfig> {
             pendingEventRetries.remove(retryKey);
          }
       } catch (final Exception ex) {
-         if (retryKey == null || event.eventType() == DirectoryChangeEvent.EventType.OVERFLOW) {
+         if (event.eventType() == DirectoryChangeEvent.EventType.OVERFLOW)
+            return;
+         if (retryKey == null) {
             LOG.error(ex);
             return;
          }
@@ -345,6 +359,12 @@ public class WatchCommand extends AbstractSyncCommand<WatchCommandConfig> {
 
    private void applyFileChanged(final WatchCommandConfig task, final DirectoryChangeEvent event) throws IOException {
       final var filterCtx = filterContexts.get(task);
+      final var eventType = event.eventType();
+
+      if (eventType == DirectoryChangeEvent.EventType.OVERFLOW)
+         throw signalOverflowFailure(task, event.path());
+      if (overflowFailure.get() != null)
+         return;
 
       final Path sourceAbsolute = asNonNull(event.path());
       final Path sourceRelative;
@@ -355,7 +375,6 @@ public class WatchCommand extends AbstractSyncCommand<WatchCommandConfig> {
          return;
       }
 
-      final var eventType = event.eventType();
       final @Nullable FileAttrs sourceAttrs;
       final boolean isDirEvent;
       if (eventType == DirectoryChangeEvent.EventType.CREATE || eventType == DirectoryChangeEvent.EventType.MODIFY) {
@@ -504,10 +523,24 @@ public class WatchCommand extends AbstractSyncCommand<WatchCommandConfig> {
                }
             }
             break;
-
-         case OVERFLOW:
-            LOG.warn("Filesystem event overflow encountered!");
       }
+   }
+
+   private IllegalStateException signalOverflowFailure(final WatchCommandConfig task, final @Nullable Path sourcePath) {
+      final StringBuilder message = new StringBuilder().append("Filesystem event overflow encountered while watching [").append(
+         task.sourceRootAbsolute).append("]. Watch mode is no longer reliable and a full resync is required before continuing.");
+      if (sourcePath != null) {
+         message.append(" Reported path: [").append(sourcePath).append("].");
+      }
+
+      final var failure = new IllegalStateException(message.toString());
+      if (overflowFailure.compareAndSet(null, failure)) {
+         LOG.error(failure.getMessage());
+         DesktopNotifications.showSticky(MessageType.ERROR, "Watching failed.", //
+            "ERROR: " + failure.getMessage() + "\nFROM: " + task.sourceRootAbsolute + "\nTO: " + task.targetRootAbsolute);
+         return failure;
+      }
+      return asNonNull(overflowFailure.get());
    }
 
    private void scheduleFailedEventRetry(final WatchCommandConfig task, final DirectoryChangeEvent event, final PendingEventRetry retryKey,
@@ -549,6 +582,12 @@ public class WatchCommand extends AbstractSyncCommand<WatchCommandConfig> {
 
    void shutdownRetryExecutor() {
       retryExecutor.shutdownNow();
+   }
+
+   void throwIfOverflowFailure() throws Exception {
+      final var failure = overflowFailure.get();
+      if (failure != null)
+         throw failure;
    }
 
    @Option(names = "--no-log", paramLabel = "<op>", split = ",", //
