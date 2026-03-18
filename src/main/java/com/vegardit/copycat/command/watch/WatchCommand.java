@@ -23,6 +23,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorCompletionService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 
@@ -59,6 +60,11 @@ import picocli.CommandLine.Option;
 )
 public class WatchCommand extends AbstractSyncCommand<WatchCommandConfig> {
 
+   private record PendingEventRetry(WatchCommandConfig task, DirectoryChangeEvent.EventType eventType, Path path) {
+   }
+
+   private static final int MAX_EVENT_RETRY_ATTEMPTS = 5;
+   private static final long EVENT_RETRY_DELAY_MILLIS = 250;
    private static final long FORCE_SHUTDOWN_TIMEOUT_MILLIS = 30_000;
 
    /**
@@ -154,7 +160,11 @@ public class WatchCommand extends AbstractSyncCommand<WatchCommandConfig> {
    private final ConcurrentMap<WatchCommandConfig, FilterContext> targetFilterContexts = new ConcurrentHashMap<>();
    private final ConcurrentMap<WatchCommandConfig, Set<Path>> preparedTargetDirsByTask = new ConcurrentHashMap<>();
    private final ConcurrentMap<WatchCommandConfig, Set<Path>> preparedParentDirsRelativeByTask = new ConcurrentHashMap<>();
+   private final ConcurrentMap<PendingEventRetry, Integer> pendingEventRetries = new ConcurrentHashMap<>();
    private final ConcurrentMap<WatchCommandConfig, ConcurrentMap<Path, FileHash>> sourceFileHashesByTask = new ConcurrentHashMap<>();
+   private final ScheduledExecutorService retryExecutor = Executors.newSingleThreadScheduledExecutor( //
+      BasicThreadFactory.builder().daemon(true).namingPattern("watch-retry-%d").build() //
+   );
 
    private Set<Path> preparedTargetDirs(final WatchCommandConfig task) {
       return preparedTargetDirsByTask.computeIfAbsent(task, t -> ConcurrentHashMap.newKeySet());
@@ -286,6 +296,7 @@ public class WatchCommand extends AbstractSyncCommand<WatchCommandConfig> {
             throw ex;
          throw new RuntimeException(primary);
       } finally {
+         pendingEventRetries.clear();
          for (final var watcher : watchers) {
             try {
                watcher.close();
@@ -298,9 +309,13 @@ public class WatchCommand extends AbstractSyncCommand<WatchCommandConfig> {
             }
          }
          threadPool.shutdownNow();
+         retryExecutor.shutdownNow();
          try {
             if (!threadPool.awaitTermination(FORCE_SHUTDOWN_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS)) {
                LOG.warn("Watcher thread pool did not terminate within %sms.", FORCE_SHUTDOWN_TIMEOUT_MILLIS);
+            }
+            if (!retryExecutor.awaitTermination(FORCE_SHUTDOWN_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS)) {
+               LOG.warn("Watcher retry executor did not terminate within %sms.", FORCE_SHUTDOWN_TIMEOUT_MILLIS);
             }
          } catch (final InterruptedException ex) {
             if (failure != null) {
@@ -311,173 +326,229 @@ public class WatchCommand extends AbstractSyncCommand<WatchCommandConfig> {
       }
    }
 
-   private void onFileChanged(final WatchCommandConfig task, final DirectoryChangeEvent event) {
+   void onFileChanged(final WatchCommandConfig task, final DirectoryChangeEvent event) {
+      final Path sourcePath = event.path();
+      final PendingEventRetry retryKey = sourcePath == null ? null : new PendingEventRetry(task, event.eventType(), sourcePath);
       try {
-         final var filterCtx = filterContexts.get(task);
-
-         final Path sourceAbsolute = asNonNull(event.path());
-         final Path sourceRelative;
-         try {
-            sourceRelative = task.sourceRootAbsolute.relativize(sourceAbsolute);
-         } catch (final IllegalArgumentException ex) {
-            LOG.warn("Ignoring event outside watched root [%s]: %s", task.sourceRootAbsolute, sourceAbsolute);
-            return;
-         }
-
-         final var eventType = event.eventType();
-         final @Nullable FileAttrs sourceAttrs;
-         final boolean isDirEvent;
-         if (eventType == DirectoryChangeEvent.EventType.CREATE || eventType == DirectoryChangeEvent.EventType.MODIFY) {
-            sourceAttrs = FileAttrs.get(sourceAbsolute);
-            isDirEvent = switch (sourceAttrs.type()) {
-               case DIRECTORY, DIRECTORY_SYMLINK -> true;
-               default -> false;
-            };
-         } else {
-            sourceAttrs = null;
-            isDirEvent = false;
-         }
-
-         // enforce optional max-depth on incoming events as a safety net
-         final Integer maxDepth = task.maxDepth;
-         if (maxDepth != null) {
-            final int depth = sourceRelative.getNameCount();
-            final int allowedDepth = isDirEvent ? maxDepth : maxDepth + 1;
-            if (depth > allowedDepth) {
-               LOG.trace("Ignoring event outside max-depth [%s]: %s", maxDepth, sourceRelative);
-               return;
-            }
-         }
-
-         final var targetAbsolute = task.targetRootAbsolute.resolve(sourceRelative);
-
-         switch (eventType) {
-            case CREATE:
-               assert sourceAttrs != null;
-               if (isDirEvent) {
-                  if (filterCtx != null && !FilterEngine.includesSource(filterCtx, sourceAbsolute, sourceRelative, sourceAttrs)) {
-                     LOG.debug("Ignoring CREATE of %s", sourceAbsolute);
-                     return;
-                  }
-                  if (loggableEvents.contains(LogEvent.CREATE)) {
-                     LOG.info("CREATE [@|magenta %s%s|@]...", sourceRelative, File.separator);
-                  }
-                  if (sourceAttrs.type() == FileAttrs.Type.DIRECTORY_SYMLINK) {
-                     prepareParentDirsForIncludedFile(task, sourceRelative);
-                     final Path existingTarget = Files.exists(targetAbsolute, NOFOLLOW_LINKS) ? targetAbsolute : null;
-                     SyncHelpers.ensureDir(syncContext(task, false, false), sourceAbsolute, existingTarget, targetAbsolute, sourceRelative);
-                  } else if (task.fileFilters == null || asNonNull(task.fileFilters).isEmpty() //
-                        || filterCtx != null && FilterEngine.isDirExplicitlyIncluded(filterCtx, sourceRelative)) {
-                     ensureTargetDirPrepared(task, sourceAbsolute, sourceRelative);
-                  }
-               } else {
-                  if (filterCtx != null && !FilterEngine.includesSource(filterCtx, sourceAbsolute, sourceRelative, sourceAttrs)) {
-                     LOG.debug("Ignoring CREATE of %s", sourceAbsolute);
-                     return;
-                  }
-                  if (isSymlinkLeaf(sourceAttrs.type())) {
-                     if (loggableEvents.contains(LogEvent.CREATE)) {
-                        logSymlinkEvent("CREATE", sourceAbsolute, sourceRelative);
-                     }
-                     prepareParentDirsForIncludedFile(task, sourceRelative);
-                     syncSymlinkLeaf(task, sourceAbsolute, targetAbsolute, sourceRelative);
-                  } else {
-                     if (loggableEvents.contains(LogEvent.CREATE)) {
-                        LOG.info("CREATE [@|magenta %s|@] %s...", sourceRelative, Size.ofBytes(Files.size(sourceAbsolute)));
-                     }
-
-                     prepareParentDirsForIncludedFile(task, sourceRelative);
-                     syncFile(task, sourceAbsolute, targetAbsolute, true);
-                  }
-               }
-               break;
-
-            case MODIFY:
-               assert sourceAttrs != null;
-               if (isDirEvent) {
-                  if (filterCtx != null && !FilterEngine.includesSource(filterCtx, sourceAbsolute, sourceRelative, sourceAttrs)) {
-                     LOG.debug("Ignoring MODIFY of %s", sourceAbsolute);
-                     return;
-                  }
-                  if (loggableEvents.contains(LogEvent.MODIFY)) {
-                     LOG.info("MODIFY [@|magenta %s%s|@]...", sourceRelative, File.separator);
-                  }
-                  if (sourceAttrs.type() == FileAttrs.Type.DIRECTORY_SYMLINK) {
-                     prepareParentDirsForIncludedFile(task, sourceRelative);
-                     final Path existingTarget = Files.exists(targetAbsolute, NOFOLLOW_LINKS) ? targetAbsolute : null;
-                     SyncHelpers.ensureDir(syncContext(task, false, false), sourceAbsolute, existingTarget, targetAbsolute, sourceRelative);
-                  } else if (task.fileFilters == null || asNonNull(task.fileFilters).isEmpty() //
-                        || filterCtx != null && FilterEngine.isDirExplicitlyIncluded(filterCtx, sourceRelative)) {
-                     ensureTargetDirPrepared(task, sourceAbsolute, sourceRelative);
-                  }
-               } else {
-                  if (filterCtx != null && !FilterEngine.includesSource(filterCtx, sourceAbsolute, sourceRelative, sourceAttrs)) {
-                     LOG.debug("Ignoring MODIFY of %s", sourceAbsolute);
-                     return;
-                  }
-                  if (isSymlinkLeaf(sourceAttrs.type())) {
-                     if (loggableEvents.contains(LogEvent.MODIFY)) {
-                        logSymlinkEvent("MODIFY", sourceAbsolute, sourceRelative);
-                     }
-                     prepareParentDirsForIncludedFile(task, sourceRelative);
-                     syncSymlinkLeaf(task, sourceAbsolute, targetAbsolute, sourceRelative);
-                  } else {
-                     if (loggableEvents.contains(LogEvent.MODIFY)) {
-                        LOG.info("MODIFY [@|magenta %s|@] %s...", sourceRelative, Size.ofBytes(Files.size(sourceAbsolute)));
-                     }
-
-                     // compare file hashes to avoid unnecessary file copying
-                     final var sourceFileHashNew = FileHasher.DEFAULT_FILE_HASHER.hash(sourceAbsolute);
-                     final var sourceFileHashOld = sourceFileHashes(task).put(sourceAbsolute, sourceFileHashNew);
-                     final boolean contentChanged = !sourceFileHashNew.equals(sourceFileHashOld);
-                     if (contentChanged) {
-                        prepareParentDirsForIncludedFile(task, sourceRelative);
-                     }
-                     syncFile(task, sourceAbsolute, targetAbsolute, contentChanged);
-                  }
-               }
-               break;
-
-            case DELETE:
-               if (Files.exists(targetAbsolute, NOFOLLOW_LINKS)) {
-                  final var targetAttrs = FileAttrs.get(targetAbsolute);
-                  if (not(task.deleteExcluded)) {
-                     final var targetFilterCtx = targetFilterContexts.get(task);
-                     if (targetFilterCtx != null) {
-                        final boolean isIncludedTarget = FilterEngine.includesSource(targetFilterCtx, targetAbsolute, sourceRelative,
-                           targetAttrs);
-                        if (!isIncludedTarget) {
-                           break;
-                        }
-                     }
-                  }
-                  final boolean targetDirLike = targetAttrs.isDir() || targetAttrs.isDirSymlink();
-                  final var deleteCtx = syncContext(task, false, false);
-                  if (targetAttrs.type() == FileAttrs.Type.DIRECTORY) {
-                     if (loggableEvents.contains(LogEvent.DELETE)) {
-                        LOG.info("DELETE [@|magenta %s%s|@]...", sourceRelative, File.separator);
-                     }
-                     SyncHelpers.deleteDir(deleteCtx, targetAbsolute);
-                  } else {
-                     if (loggableEvents.contains(LogEvent.DELETE)) {
-                        LOG.info("DELETE [@|magenta %s|@]...", sourceRelative);
-                     }
-                     pruneSourceFileHashes(task, sourceAbsolute);
-                     SyncHelpers.deleteFile(deleteCtx, targetAbsolute, targetAttrs, true);
-                  }
-                  if (targetDirLike) {
-                     invalidatePreparedDirs(task, sourceRelative);
-                     pruneSourceFileHashes(task, sourceAbsolute);
-                  }
-               }
-               break;
-
-            case OVERFLOW:
-               LOG.warn("Filesystem event overflow encountered!");
+         applyFileChanged(task, event);
+         if (retryKey != null) {
+            pendingEventRetries.remove(retryKey);
          }
       } catch (final Exception ex) {
-         LOG.error(ex);
+         if (retryKey == null || event.eventType() == DirectoryChangeEvent.EventType.OVERFLOW) {
+            LOG.error(ex);
+            return;
+         }
+         scheduleFailedEventRetry(task, event, retryKey, ex);
       }
+   }
+
+   private void applyFileChanged(final WatchCommandConfig task, final DirectoryChangeEvent event) throws IOException {
+      final var filterCtx = filterContexts.get(task);
+
+      final Path sourceAbsolute = asNonNull(event.path());
+      final Path sourceRelative;
+      try {
+         sourceRelative = task.sourceRootAbsolute.relativize(sourceAbsolute);
+      } catch (final IllegalArgumentException ex) {
+         LOG.warn("Ignoring event outside watched root [%s]: %s", task.sourceRootAbsolute, sourceAbsolute);
+         return;
+      }
+
+      final var eventType = event.eventType();
+      final @Nullable FileAttrs sourceAttrs;
+      final boolean isDirEvent;
+      if (eventType == DirectoryChangeEvent.EventType.CREATE || eventType == DirectoryChangeEvent.EventType.MODIFY) {
+         sourceAttrs = FileAttrs.get(sourceAbsolute);
+         isDirEvent = switch (sourceAttrs.type()) {
+            case DIRECTORY, DIRECTORY_SYMLINK -> true;
+            default -> false;
+         };
+      } else {
+         sourceAttrs = null;
+         isDirEvent = false;
+      }
+
+      // enforce optional max-depth on incoming events as a safety net
+      final Integer maxDepth = task.maxDepth;
+      if (maxDepth != null) {
+         final int depth = sourceRelative.getNameCount();
+         final int allowedDepth = isDirEvent ? maxDepth : maxDepth + 1;
+         if (depth > allowedDepth) {
+            LOG.trace("Ignoring event outside max-depth [%s]: %s", maxDepth, sourceRelative);
+            return;
+         }
+      }
+
+      final var targetAbsolute = task.targetRootAbsolute.resolve(sourceRelative);
+
+      switch (eventType) {
+         case CREATE:
+            assert sourceAttrs != null;
+            if (isDirEvent) {
+               if (filterCtx != null && !FilterEngine.includesSource(filterCtx, sourceAbsolute, sourceRelative, sourceAttrs)) {
+                  LOG.debug("Ignoring CREATE of %s", sourceAbsolute);
+                  return;
+               }
+               if (loggableEvents.contains(LogEvent.CREATE)) {
+                  LOG.info("CREATE [@|magenta %s%s|@]...", sourceRelative, File.separator);
+               }
+               if (sourceAttrs.type() == FileAttrs.Type.DIRECTORY_SYMLINK) {
+                  prepareParentDirsForIncludedFile(task, sourceRelative);
+                  final Path existingTarget = Files.exists(targetAbsolute, NOFOLLOW_LINKS) ? targetAbsolute : null;
+                  SyncHelpers.ensureDir(syncContext(task, false, false), sourceAbsolute, existingTarget, targetAbsolute, sourceRelative);
+               } else if (task.fileFilters == null || asNonNull(task.fileFilters).isEmpty() //
+                     || filterCtx != null && FilterEngine.isDirExplicitlyIncluded(filterCtx, sourceRelative)) {
+                  ensureTargetDirPrepared(task, sourceAbsolute, sourceRelative);
+               }
+            } else {
+               if (filterCtx != null && !FilterEngine.includesSource(filterCtx, sourceAbsolute, sourceRelative, sourceAttrs)) {
+                  LOG.debug("Ignoring CREATE of %s", sourceAbsolute);
+                  return;
+               }
+               if (isSymlinkLeaf(sourceAttrs.type())) {
+                  if (loggableEvents.contains(LogEvent.CREATE)) {
+                     logSymlinkEvent("CREATE", sourceAbsolute, sourceRelative);
+                  }
+                  prepareParentDirsForIncludedFile(task, sourceRelative);
+                  syncSymlinkLeaf(task, sourceAbsolute, targetAbsolute, sourceRelative);
+               } else {
+                  if (loggableEvents.contains(LogEvent.CREATE)) {
+                     LOG.info("CREATE [@|magenta %s|@] %s...", sourceRelative, Size.ofBytes(Files.size(sourceAbsolute)));
+                  }
+
+                  prepareParentDirsForIncludedFile(task, sourceRelative);
+                  syncFile(task, sourceAbsolute, targetAbsolute, true);
+               }
+            }
+            break;
+
+         case MODIFY:
+            assert sourceAttrs != null;
+            if (isDirEvent) {
+               if (filterCtx != null && !FilterEngine.includesSource(filterCtx, sourceAbsolute, sourceRelative, sourceAttrs)) {
+                  LOG.debug("Ignoring MODIFY of %s", sourceAbsolute);
+                  return;
+               }
+               if (loggableEvents.contains(LogEvent.MODIFY)) {
+                  LOG.info("MODIFY [@|magenta %s%s|@]...", sourceRelative, File.separator);
+               }
+               if (sourceAttrs.type() == FileAttrs.Type.DIRECTORY_SYMLINK) {
+                  prepareParentDirsForIncludedFile(task, sourceRelative);
+                  final Path existingTarget = Files.exists(targetAbsolute, NOFOLLOW_LINKS) ? targetAbsolute : null;
+                  SyncHelpers.ensureDir(syncContext(task, false, false), sourceAbsolute, existingTarget, targetAbsolute, sourceRelative);
+               } else if (task.fileFilters == null || asNonNull(task.fileFilters).isEmpty() //
+                     || filterCtx != null && FilterEngine.isDirExplicitlyIncluded(filterCtx, sourceRelative)) {
+                  ensureTargetDirPrepared(task, sourceAbsolute, sourceRelative);
+               }
+            } else {
+               if (filterCtx != null && !FilterEngine.includesSource(filterCtx, sourceAbsolute, sourceRelative, sourceAttrs)) {
+                  LOG.debug("Ignoring MODIFY of %s", sourceAbsolute);
+                  return;
+               }
+               if (isSymlinkLeaf(sourceAttrs.type())) {
+                  if (loggableEvents.contains(LogEvent.MODIFY)) {
+                     logSymlinkEvent("MODIFY", sourceAbsolute, sourceRelative);
+                  }
+                  prepareParentDirsForIncludedFile(task, sourceRelative);
+                  syncSymlinkLeaf(task, sourceAbsolute, targetAbsolute, sourceRelative);
+               } else {
+                  if (loggableEvents.contains(LogEvent.MODIFY)) {
+                     LOG.info("MODIFY [@|magenta %s|@] %s...", sourceRelative, Size.ofBytes(Files.size(sourceAbsolute)));
+                  }
+
+                  // compare file hashes to avoid unnecessary file copying
+                  final var sourceFileHashNew = FileHasher.DEFAULT_FILE_HASHER.hash(sourceAbsolute);
+                  final var hashes = sourceFileHashes(task);
+                  final var sourceFileHashOld = hashes.get(sourceAbsolute);
+                  final boolean contentChanged = !sourceFileHashNew.equals(sourceFileHashOld);
+                  if (contentChanged) {
+                     prepareParentDirsForIncludedFile(task, sourceRelative);
+                  }
+                  syncFile(task, sourceAbsolute, targetAbsolute, contentChanged);
+                  hashes.put(sourceAbsolute, sourceFileHashNew);
+               }
+            }
+            break;
+
+         case DELETE:
+            if (Files.exists(targetAbsolute, NOFOLLOW_LINKS)) {
+               final var targetAttrs = FileAttrs.get(targetAbsolute);
+               if (not(task.deleteExcluded)) {
+                  final var targetFilterCtx = targetFilterContexts.get(task);
+                  if (targetFilterCtx != null) {
+                     final boolean isIncludedTarget = FilterEngine.includesSource(targetFilterCtx, targetAbsolute, sourceRelative,
+                        targetAttrs);
+                     if (!isIncludedTarget) {
+                        break;
+                     }
+                  }
+               }
+               final boolean targetDirLike = targetAttrs.isDir() || targetAttrs.isDirSymlink();
+               final var deleteCtx = syncContext(task, false, false);
+               if (targetAttrs.type() == FileAttrs.Type.DIRECTORY) {
+                  if (loggableEvents.contains(LogEvent.DELETE)) {
+                     LOG.info("DELETE [@|magenta %s%s|@]...", sourceRelative, File.separator);
+                  }
+                  SyncHelpers.deleteDir(deleteCtx, targetAbsolute);
+               } else {
+                  if (loggableEvents.contains(LogEvent.DELETE)) {
+                     LOG.info("DELETE [@|magenta %s|@]...", sourceRelative);
+                  }
+                  pruneSourceFileHashes(task, sourceAbsolute);
+                  SyncHelpers.deleteFile(deleteCtx, targetAbsolute, targetAttrs, true);
+               }
+               if (targetDirLike) {
+                  invalidatePreparedDirs(task, sourceRelative);
+                  pruneSourceFileHashes(task, sourceAbsolute);
+               }
+            }
+            break;
+
+         case OVERFLOW:
+            LOG.warn("Filesystem event overflow encountered!");
+      }
+   }
+
+   private void scheduleFailedEventRetry(final WatchCommandConfig task, final DirectoryChangeEvent event, final PendingEventRetry retryKey,
+         final Exception cause) {
+      final int attempt = pendingEventRetries.merge(retryKey, 1, Integer::sum);
+      if (attempt > maxEventRetryAttempts()) {
+         pendingEventRetries.remove(retryKey, attempt);
+         LOG.error("Giving up retrying %s event for [%s] after %s failed attempt(s).", event.eventType(), retryKey.path(),
+            maxEventRetryAttempts());
+         LOG.error(cause);
+         return;
+      }
+
+      final long delayMillis = eventRetryDelayMillis(attempt);
+      LOG.warn("Retrying %s event for [%s] in %sms after failure: %s", event.eventType(), retryKey.path(), delayMillis, cause.toString());
+      retryExecutor.schedule(() -> retryFailedEvent(task, event, retryKey, attempt), delayMillis, TimeUnit.MILLISECONDS);
+   }
+
+   private void retryFailedEvent(final WatchCommandConfig task, final DirectoryChangeEvent event, final PendingEventRetry retryKey,
+         final int expectedAttempt) {
+      final Integer currentAttempt = pendingEventRetries.get(retryKey);
+      if (currentAttempt == null || currentAttempt != expectedAttempt)
+         return;
+      try {
+         applyFileChanged(task, event);
+         pendingEventRetries.remove(retryKey, expectedAttempt);
+      } catch (final Exception ex) {
+         scheduleFailedEventRetry(task, event, retryKey, ex);
+      }
+   }
+
+   int maxEventRetryAttempts() {
+      return MAX_EVENT_RETRY_ATTEMPTS;
+   }
+
+   long eventRetryDelayMillis(final int attempt) {
+      return Math.min(EVENT_RETRY_DELAY_MILLIS * attempt, 5_000L);
+   }
+
+   void shutdownRetryExecutor() {
+      retryExecutor.shutdownNow();
    }
 
    @Option(names = "--no-log", paramLabel = "<op>", split = ",", //
@@ -537,7 +608,7 @@ public class WatchCommand extends AbstractSyncCommand<WatchCommandConfig> {
          dirRelative);
    }
 
-   private void syncFile(final WatchCommandConfig cfg, final Path sourcePath, final Path targetPath, final boolean contentChanged)
+   void syncFile(final WatchCommandConfig cfg, final Path sourcePath, final Path targetPath, final boolean contentChanged)
          throws IOException {
       final var sourceAttrs = MoreFiles.readAttributes(sourcePath);
       final var syncCtx = syncContext(cfg, false, false);
