@@ -326,7 +326,7 @@ jobs:
 
 
     - name: "Collect metadata"
-      uses: nick-fields/retry@v3
+      uses: nick-fields/retry@v4
       # using retry wrapper because GraalVM sometimes hangs unexpectedly during tracing 
       with:
         max_attempts: 3
