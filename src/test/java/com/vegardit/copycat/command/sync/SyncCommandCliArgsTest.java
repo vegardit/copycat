@@ -8,6 +8,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
 
 import java.nio.file.attribute.FileTime;
+import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
@@ -71,5 +72,22 @@ class SyncCommandCliArgsTest {
       assertThat(since.toLocalTime()).isEqualTo(LocalTime.MIDNIGHT);
       assertThat(until.toLocalDate()).isEqualTo(LocalDate.of(2024, 12, 31));
       assertThat(until.toLocalTime()).isEqualTo(LocalTime.MAX);
+   }
+
+   @Test
+   void testTimestampToleranceRequiresExplicitUnit() {
+      final var cmd = new SyncCommand();
+      final var cli = new CommandLine(cmd);
+
+      assertThat(catchThrowable(() -> cli.parseArgs("C:\\\\src", "C:\\\\dst", "--timestamp-tolerance", "2"))).isInstanceOf(
+         ParameterException.class).hasMessageContaining("explicit unit");
+   }
+
+   @Test
+   void testTimestampToleranceParsesDuration() {
+      final var cmd = new SyncCommand();
+      new CommandLine(cmd).parseArgs("C:\\\\src", "C:\\\\dst", "--timestamp-tolerance", "2s");
+
+      assertThat(cmd.cfgCLI.timestampTolerance).isEqualTo(Duration.ofSeconds(2));
    }
 }

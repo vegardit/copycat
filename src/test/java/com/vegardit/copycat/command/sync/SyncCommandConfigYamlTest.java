@@ -272,4 +272,47 @@ class SyncCommandConfigYamlTest {
 
       assertThat(taskCfg.stallTimeout).isEqualTo(Duration.ofMinutes(2));
    }
+
+   @Test
+   @DisplayName("Parse timestamp-tolerance from YAML")
+   void testTimestampToleranceFromYaml() {
+      final String yaml = """
+         sync:
+         - source: C:\\src
+           target: C:\\dst
+           timestamp-tolerance: 2s
+         """;
+
+      final Map<String, Object> root = YamlUtils.parseYaml(new BufferedReader(new StringReader(yaml)));
+
+      @SuppressWarnings("unchecked")
+      final var syncList = asNonNull((List<Map<String, Object>>) root.get("sync"));
+      final Map<String, Object> taskMap = syncList.get(0);
+      final var taskCfg = new SyncCommandConfig();
+      taskCfg.applyFrom(taskMap, true);
+      taskCfg.applyDefaults();
+
+      assertThat(taskCfg.timestampTolerance).isEqualTo(Duration.ofSeconds(2));
+   }
+
+   @Test
+   @DisplayName("Reject numeric timestamp-tolerance from YAML")
+   void testNumericTimestampToleranceFromYamlRequiresUnit() {
+      final String yaml = """
+         sync:
+         - source: C:\\src
+           target: C:\\dst
+           timestamp-tolerance: 2
+         """;
+
+      final Map<String, Object> root = YamlUtils.parseYaml(new BufferedReader(new StringReader(yaml)));
+
+      @SuppressWarnings("unchecked")
+      final var syncList = asNonNull((List<Map<String, Object>>) root.get("sync"));
+      final Map<String, Object> taskMap = syncList.get(0);
+      final var taskCfg = new SyncCommandConfig();
+
+      assertThatThrownBy(() -> taskCfg.applyFrom(taskMap, true)).isInstanceOf(IllegalArgumentException.class).hasMessageContaining(
+         "explicit unit");
+   }
 }

@@ -232,6 +232,21 @@ final class GenerateYamlConfigSchemaTest {
             ) //
          );
 
+      if ("timestamp-tolerance".equals(yamlKey))
+         return Map.of( //
+            "anyOf", List.of( //
+               Map.of( //
+                  "type", "integer", //
+                  "const", 0, //
+                  "description", "Exact timestamp comparison." //
+               ), //
+               Map.of( //
+                  "type", "string", //
+                  "description", "Duration with an explicit unit, e.g. 2s or PT0.5S." //
+               ) //
+            ) //
+         );
+
       if (fieldType == Boolean.class || fieldType == boolean.class)
          return Map.of("type", "boolean");
       if (fieldType == Integer.class || fieldType == int.class) {

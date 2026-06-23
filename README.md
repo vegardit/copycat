@@ -82,8 +82,8 @@ Usage: copycat sync [-hqVv] [--allow-reading-open-files] [--copy-acl] [--delete]
                     [--exclude-hidden-files] [--exclude-hidden-system-files] [--exclude-older-files] [--exclude-other-links]
                     [--exclude-system-files] [--ignore-errors] [--ignore-symlink-errors] [--log-errors-to-stdout]
                     [--before <when>] [--config <path>] [--log-file <path>] [--max-depth <depth>] [--since <when>]
-                    [--stall-timeout <duration>] [--threads <count>] [--until <when>] [--filter (in|ex):<pattern>]...
-                    [--no-log <op>[,<op>...]]... [SOURCE] [TARGET]
+                    [--stall-timeout <duration>] [--threads <count>] [--timestamp-tolerance <duration>] [--until
+                    <when>] [--filter (in|ex):<pattern>]... [--no-log <op>[,<op>...]]... [SOURCE] [TARGET]
 
 Performs one-way recursive directory synchronization copying new files/directories.
 
@@ -134,6 +134,10 @@ Options:
                             Examples: PT10M, 10m, 2h 30m. Use 0 to disable.
                             Bare numbers are minutes. Default: 10m
       --threads <count>     Number of concurrent threads. Default: 2
+      --timestamp-tolerance <duration>
+                            Treat source and target files as unchanged when their last-modified timestamps differ by no
+                              more than this duration.
+                            Examples: 1s, 2s, PT0.5S. Use 0 to require exact timestamp matches. Default: 0
       --until <when>        Sync only files modified on or before this date/time (inclusive). Format same as --since.
                               Combined with --since to define a date range. Mutually exclusive with --before.
   -v, --verbose             Specify multiple -v options to increase verbosity.
@@ -185,6 +189,8 @@ defaults:
   ignore-errors: false
   ignore-symlink-errors: false
   threads: 2
+  # Optional: tolerate small source/target last-modified timestamp differences (e.g. CIFS/SMB precision)
+  # timestamp-tolerance: 2s
   # Optional: limit directory traversal depth (0=no subdirs)
   # max-depth: 0
   # Optional: sync only recent files

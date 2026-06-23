@@ -365,13 +365,14 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
    @Option(names = "--stall-timeout", paramLabel = "<duration>", description = {"Abort sync if no progress is observed for this long.",
       "Examples: PT10M, 10m, 2h 30m. Use 0 to disable.", "Bare numbers are minutes. Default: 10m"})
    private void setStallTimeout(final String value) {
-      final String v = value.strip();
-      if (v.matches("\\d+")) {
-         final long minutes = Long.parseLong(v);
-         cfgCLI.stallTimeout = minutes == 0 ? java.time.Duration.ZERO : java.time.Duration.ofMinutes(minutes);
-         return;
-      }
-      cfgCLI.stallTimeout = SyncCommandConfig.parseDuration(v, "--stall-timeout");
+      cfgCLI.stallTimeout = SyncCommandConfig.parseDuration(value, "--stall-timeout");
+   }
+
+   @Option(names = "--timestamp-tolerance", paramLabel = "<duration>", description = {
+      "Treat source and target files as unchanged when their last-modified timestamps differ by no more than this duration.",
+      "Examples: 1s, 2s, PT0.5S. Use 0 to require exact timestamp matches. Default: 0"})
+   private void setTimestampTolerance(final String value) {
+      cfgCLI.timestampTolerance = SyncCommandConfig.parseTimestampTolerance(value, "--timestamp-tolerance");
    }
 
    void syncWorker(final SyncCommandConfig task, final FilterEngine.FilterContext sourceFilterCtx,
@@ -725,7 +726,7 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
     */
    private void syncFile(final SyncCommandConfig task, final SyncHelpers.Context ctx, final Path sourcePath, @Nullable Path targetPath,
          final Path relativePath) throws IOException {
-      final String copyCause;
+      final @Nullable SyncFileCopyCause copyCause;
 
       if (Files.isSymbolicLink(sourcePath)) {
          syncSymlinkLeaf(task, ctx, sourcePath, targetPath, relativePath, FileAttrs.get(sourcePath));
@@ -737,7 +738,7 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
       if (targetPath == null) {
          // target file does not exist
          targetPath = task.targetRootAbsolute.resolve(relativePath);
-         copyCause = "NEW";
+         copyCause = SyncFileCopyCause.NEW;
       } else {
          /*
           * target path points to file
@@ -748,35 +749,30 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
                if (targetAttrs.isSymlink()) {
                   LOG.debug("Deleting target [@|magenta %s|@] because target is symlink and source is not...", targetPath);
                   SyncHelpers.deleteFile(ctx, targetPath, targetAttrs, true);
-                  copyCause = "REPLACE";
+                  copyCause = SyncFileCopyCause.REPLACE;
                } else {
-                  final var timeCompare = sourceAttrs.lastModifiedTime().compareTo(targetAttrs.lastModifiedTime());
-                  if (timeCompare > 0) {
-                     copyCause = "NEWER";
-                  } else if (timeCompare < 0) {
-                     if (isTrue(task.excludeOlderFiles)) {
-                        LOG.debug("Ignoring source file [@|magenta %s|@] because it is older than target file...", relativePath);
-                        copyCause = null;
-                     } else {
-                        copyCause = "OLDER";
-                     }
+                  final var compareResult = SyncFileComparator.compareRegularFiles(sourceAttrs, targetAttrs, asNonNull(
+                     task.timestampTolerance), isTrue(task.excludeOlderFiles));
+                  if (compareResult.timestampToleranceApplied()) {
+                     // Precision-limited targets may hit this for most unchanged files, so keep it below debug.
+                     LOG.trace("Treating source file [@|magenta %s|@] as timestamp-equal to target; delta [%s] is within tolerance [%s].",
+                        relativePath, compareResult.toleratedTimestampDelta(), task.timestampTolerance);
+                  }
+                  if (compareResult.sourceOlderSkipped()) {
+                     LOG.debug("Ignoring source file [@|magenta %s|@] because it is older than target file...", relativePath);
+                     copyCause = null;
+                  } else if (compareResult.shouldCopy()) {
+                     copyCause = compareResult.copyCause();
                   } else {
-                     final var sizeCompare = Long.compare(sourceAttrs.size(), targetAttrs.size());
-                     if (sizeCompare > 0) {
-                        copyCause = "LARGER";
-                     } else if (sizeCompare < 0) {
-                        copyCause = "SMALLER";
-                     } else {
-                        LOG.trace("Source file [@|magenta %s|@] is in sync...", relativePath);
-                        copyCause = null;
-                     }
+                     LOG.trace("Source file [@|magenta %s|@] is in sync...", relativePath);
+                     copyCause = null;
                   }
                }
             }
             case OTHER -> {
                LOG.info("Deleting target entry [@|magenta %s|@] because source is file...", targetPath);
                SyncHelpers.deleteFile(ctx, targetPath, targetAttrs, true);
-               copyCause = "REPLACE";
+               copyCause = SyncFileCopyCause.REPLACE;
             }
             case DIRECTORY, DIRECTORY_SYMLINK -> {
                LOG.info("Deleting target directory [@|magenta %s|@] because source is file...", targetPath);
@@ -785,15 +781,15 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
                } else {
                   SyncHelpers.deleteDir(ctx, targetPath);
                }
-               copyCause = "REPLACE";
+               copyCause = SyncFileCopyCause.REPLACE;
             }
             default -> throw new IllegalStateException("Unknown type [" + targetAttrs.type() + "] of target [" + targetPath + "].");
          }
       }
 
       if (copyCause != null) {
-         if ("NEW".equals(copyCause) ? loggableEvents.contains(LogEvent.CREATE) : loggableEvents.contains(LogEvent.MODIFY)) {
-            LOG.info("%s [@|magenta %s|@] %s...", copyCause, relativePath, Size.ofBytes(sourceAttrs.size()));
+         if (copyCause == SyncFileCopyCause.NEW ? loggableEvents.contains(LogEvent.CREATE) : loggableEvents.contains(LogEvent.MODIFY)) {
+            LOG.info("%s [@|magenta %s|@] %s...", copyCause.name(), relativePath, Size.ofBytes(sourceAttrs.size()));
          }
          SyncHelpers.copyFile(ctx, sourcePath, sourceAttrs, targetPath);
       }
