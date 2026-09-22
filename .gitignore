@@ -1,12 +1,11 @@
-# Local work folder that is not checked in
-_LOCAL/
+# Local work folders that are not checked in
+/_*/
+
+.*
+!.ci
+!.git*
 
 # Eclipse
-.apt_generated/
-.checkstyle
-.classpath
-.factorypath
-.project
 **/.settings/*
 !**/.settings/
 !**/.settings/org.eclipse.core.resources.prefs
@@ -15,6 +14,8 @@ _LOCAL/
 bin/
 
 # Maven
+!.mvn/
+.mvn/timing.properties
 target/
 pom.xml.tag
 pom.xml.releaseBackup
@@ -23,22 +24,14 @@ pom.xml.next
 release.properties
 dependency-reduced-pom.xml
 buildNumber.properties
-.mvn/timing.properties
 
 # IntelliJ
-.idea
-*.iml
-*.ipr
-*.iws
+/*.iml
+/*.ipr
+/*.iws
 
 # NetBeans
 nb-configuration.xml
-
-# Visual Studio Code
-.vscode
-
-# OSX
-.DS_Store
 
 # Vim
 *.swo
