@@ -5,11 +5,16 @@
 package com.vegardit.copycat.command.sync;
 
 import static com.vegardit.copycat.util.MapUtils.*;
+import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 import static net.sf.jstuff.core.validation.NullAnalysisHelper.lateNonNull;
 
+import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
+import java.nio.file.NotDirectoryException;
 import java.nio.file.Path;
 import java.nio.file.PathMatcher;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.FileTime;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -32,6 +37,8 @@ import net.sf.jstuff.core.concurrent.Threads;
 import net.sf.jstuff.core.logging.Logger;
 
 /**
+ * Prepares shared sync/watch settings, validates task roots, and computes filter matchers before filesystem work starts.
+ *
  * @author Sebastian Thomschke, Vegard IT GmbH
  */
 public abstract class AbstractSyncCommandConfig<THIS extends AbstractSyncCommandConfig<THIS>> {
@@ -224,41 +231,94 @@ public abstract class AbstractSyncCommandConfig<THIS extends AbstractSyncCommand
       return cfg;
    }
 
+   /**
+    * Validates roots and prepares the paths and matchers consumed by execution without creating filesystem entries.
+    * Call again after changing the configuration, before passing it to a command.
+    */
    @SuppressWarnings("resource")
    public void compute() {
       final var source = this.source;
       if (source == null)
          throw new IllegalArgumentException("Source is not specified!");
-      sourceRootAbsolute = FileUtils.toAbsolute(source);
-      if (!Files.exists(sourceRootAbsolute))
-         throw new IllegalArgumentException("Source path [" + source + "] does not exist!");
-      if (!Files.isReadable(sourceRootAbsolute))
-         throw new IllegalArgumentException("Source path [" + source + "] is not readable by user [" + SystemUtils.USER_NAME + "]!");
-      if (!Files.isDirectory(sourceRootAbsolute))
-         throw new IllegalArgumentException("Source path [" + source + "] is not a directory!");
-
       final var target = this.target;
       if (target == null)
          throw new IllegalArgumentException("Target is not specified!");
-      final var targetRootAbsolute = this.targetRootAbsolute = FileUtils.toAbsolute(target);
-      if (targetRootAbsolute.getFileSystem().isReadOnly())
-         throw new IllegalArgumentException("Target path [" + target + "] is on a read-only filesystem!");
-      if (Files.exists(targetRootAbsolute)) {
-         if (!Files.isReadable(targetRootAbsolute))
-            throw new IllegalArgumentException("Target path [" + target + "] is not readable by user [" + SystemUtils.USER_NAME + "]!");
-         if (!Files.isDirectory(targetRootAbsolute))
-            throw new IllegalArgumentException("Target path [" + target + "] is not a directory!");
-         if (!FileUtils.isWritable(targetRootAbsolute)) // Files.isWritable(targetRoot) always returns false for some reason
-            throw new IllegalArgumentException("Target path [" + target + "] is not writable by user [" + SystemUtils.USER_NAME + "]!");
-      } else {
-         final var parent = targetRootAbsolute.getParent();
-         if (parent == null || !Files.exists(parent))
-            throw new IllegalArgumentException("Parent directory of target path [" + parent + "] does not exist!");
-         if (!Files.isDirectory(parent))
-            throw new IllegalArgumentException("Parent of target path [" + parent + "] is not a directory!");
+      sourceRootAbsolute = FileUtils.toAbsolute(source);
+      targetRootAbsolute = FileUtils.toAbsolute(target);
+
+      try {
+         // Execution must use the prepared paths, not just compare them, or sync could still copy a root symlink.
+         // Keep the configured source/target spellings for diagnostics.
+         sourceRootAbsolute = prepareRootDirectory(sourceRootAbsolute);
+         if (!Files.isReadable(sourceRootAbsolute))
+            throw new IllegalArgumentException("Source path [" + source + "] is not readable by user [" + SystemUtils.USER_NAME + "]!");
+
+         boolean targetExists;
+         try {
+            // A broken root link is an existing entry. Only a missing entry permits the target-creation path.
+            Files.readAttributes(targetRootAbsolute, BasicFileAttributes.class, NOFOLLOW_LINKS);
+            targetExists = true;
+         } catch (final NoSuchFileException ex) {
+            targetExists = false;
+         }
+
+         if (targetExists) {
+            // Resolve outside the missing-entry catch so dangling or looping links remain input errors.
+            targetRootAbsolute = prepareRootDirectory(targetRootAbsolute);
+         } else {
+            final var parent = targetRootAbsolute.getParent();
+            final var name = targetRootAbsolute.getFileName();
+            if (parent == null || name == null)
+               throw new NoSuchFileException(targetRootAbsolute.toString());
+            // The parent must already exist. Preparing it without creating anything also exposes nesting through aliases in sync.
+            targetRootAbsolute = prepareRootDirectory(parent).resolve(name);
+         }
+
+         if (targetRootAbsolute.getFileSystem().isReadOnly())
+            throw new IllegalArgumentException("Target path [" + target + "] is on a read-only filesystem!");
+         if (targetExists) {
+            if (!Files.isReadable(targetRootAbsolute))
+               throw new IllegalArgumentException("Target path [" + target + "] is not readable by user [" + SystemUtils.USER_NAME + "]!");
+            // Preserve the SMB workaround: Files.isWritable can report false for writable network shares.
+            if (!FileUtils.isWritable(targetRootAbsolute))
+               throw new IllegalArgumentException("Target path [" + target + "] is not writable by user [" + SystemUtils.USER_NAME + "]!");
+
+            // Filesystem identity can match even when prepared path spellings differ. Both sync and watch require this check.
+            if (Files.isSameFile(sourceRootAbsolute, targetRootAbsolute))
+               throw new IllegalArgumentException("Source and target path point to the same filesystem entry [" + sourceRootAbsolute
+                  .toRealPath() + "]!");
+         }
+         validateRootRelationship();
+      } catch (final IOException | SecurityException ex) {
+         throw new IllegalArgumentException("Cannot prepare roots [source=" + source + ", target=" + target + "]: " + ex.getMessage(), ex);
       }
 
       computePathMatchers();
+   }
+
+   private Path prepareRootDirectory(final Path path) throws IOException {
+      final var prepared = resolveExistingRoot(path);
+      // Throwing metadata reads preserve inspection failures instead of silently treating them as absence or a usable root.
+      if (!Files.readAttributes(prepared, BasicFileAttributes.class).isDirectory())
+         throw new NotDirectoryException(path.toString());
+      return prepared;
+   }
+
+   /**
+    * Chooses the path used for an existing root or a missing target's existing parent, before common directory validation.
+    *
+    * @throws IOException if command-specific root resolution fails
+    */
+   protected Path resolveExistingRoot(final Path path) throws IOException {
+      // Watch keeps its configured root aliases; sync overrides this to use real paths for both validation and I/O.
+      return path;
+   }
+
+   /**
+    * Applies command-specific restrictions after common root validation and filesystem-identity checking.
+    */
+   protected void validateRootRelationship() {
+      // Watch retains its existing nesting policy; sync adds containment rejection.
    }
 
    /**

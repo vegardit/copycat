@@ -47,6 +47,8 @@ import picocli.CommandLine;
 import picocli.CommandLine.Option;
 
 /**
+ * Performs one-way directory synchronization using prepared roots while copying source symlinks as leaf entries.
+ *
  * @author Sebastian Thomschke, Vegard IT GmbH
  */
 @CommandLine.Command(name = "sync", //

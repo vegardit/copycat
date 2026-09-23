@@ -32,6 +32,8 @@ import picocli.CommandLine.ParameterException;
 import picocli.CommandLine.Parameters;
 
 /**
+ * Prepares CLI/YAML task configurations for sync and watch before delegating filesystem work.
+ *
  * @author Sebastian Thomschke, Vegard IT GmbH
  */
 public abstract class AbstractSyncCommand<C extends AbstractSyncCommandConfig<C>> extends AbstractCommand {
@@ -56,6 +58,18 @@ public abstract class AbstractSyncCommand<C extends AbstractSyncCommandConfig<C>
       cfgCLI = cfgInstanceFactory.get();
    }
 
+   private void computeConfig(final C taskCfg) {
+      try {
+         taskCfg.compute();
+      } catch (final IllegalArgumentException ex) {
+         // Configuration validation is independent of picocli; translate input errors only at the command boundary.
+         throw new ParameterException(commandSpec.commandLine(), ex.getMessage(), ex);
+      }
+   }
+
+   /**
+    * Executes tasks whose roots and filters have all been prepared by {@link AbstractSyncCommandConfig#compute()}.
+    */
    protected abstract void doExecute(List<C> tasks) throws Exception;
 
    @Override
@@ -70,28 +84,24 @@ public abstract class AbstractSyncCommand<C extends AbstractSyncCommandConfig<C>
       if (cfgCLI.source == null && cfgYamlSyncTasks == null)
          throw new ParameterException(commandSpec.commandLine(), "Missing required parameters: 'SOURCE', 'TARGET'");
 
+      // A bad later task must not leave earlier tasks partially synchronized. Validate all tasks before delegating any filesystem work.
       final var taskCfgs = new ArrayList<C>();
       if (cfgYamlSyncTasks == null) {
          cfgCLI.applyFrom(cfgYamlDefaults, false);
          cfgCLI.applyDefaults();
-         cfgCLI.compute();
+         computeConfig(cfgCLI);
          taskCfgs.add(cfgCLI);
       } else {
          for (final var cfgYamlTask : cfgYamlSyncTasks) {
             cfgYamlTask.applyFrom(cfgCLI, false);
             cfgYamlTask.applyFrom(cfgYamlDefaults, false);
             cfgYamlTask.applyDefaults();
-            cfgYamlTask.compute();
+            computeConfig(cfgYamlTask);
             taskCfgs.add(cfgYamlTask);
          }
       }
 
       for (final var taskCfg : taskCfgs) {
-         if (Files.exists(taskCfg.targetRootAbsolute, NOFOLLOW_LINKS) && Files.isSameFile(taskCfg.sourceRootAbsolute,
-            taskCfg.targetRootAbsolute))
-            throw new ParameterException(commandSpec.commandLine(), "Source and target path point to the same filesystem entry ["
-                  + taskCfg.sourceRootAbsolute.toRealPath() + "]!");
-
          if (SystemUtils.IS_OS_WINDOWS && isTrue(taskCfg.copyACL) && !SystemUtils.isRunningAsAdmin()) {
             LOG.warn("Option --copy-acl was specified but process is not running with elevated administrative permissions."
                   + " ACL will be copied but excluding ownership information.");

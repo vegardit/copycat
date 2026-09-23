@@ -6,6 +6,8 @@ package com.vegardit.copycat.command.sync;
 
 import static com.vegardit.copycat.util.MapUtils.*;
 
+import java.io.IOException;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Collections;
 import java.util.HashMap;
@@ -16,6 +18,8 @@ import org.eclipse.jdt.annotation.Nullable;
 import com.vegardit.copycat.util.DurationParser;
 
 /**
+ * Prepares sync options and selects resolved, non-overlapping directory roots for synchronization.
+ *
  * @author Sebastian Thomschke, Vegard IT GmbH
  */
 public class SyncCommandConfig extends AbstractSyncCommandConfig<SyncCommandConfig> {
@@ -49,6 +53,21 @@ public class SyncCommandConfig extends AbstractSyncCommandConfig<SyncCommandConf
    @Override
    protected SyncCommandConfig newInstance() {
       return new SyncCommandConfig();
+   }
+
+   @Override
+   protected Path resolveExistingRoot(final Path path) throws IOException {
+      // Selected roots name directories to synchronize; only symlinks encountered below them are copied as links.
+      return path.toRealPath();
+   }
+
+   @Override
+   protected void validateRootRelationship() {
+      // Compare path components so siblings such as src and src-backup remain valid.
+      // Root safety must not depend on the current filters, depth limit, dry-run, or ignore-errors settings.
+      if (sourceRootAbsolute.startsWith(targetRootAbsolute) || targetRootAbsolute.startsWith(sourceRootAbsolute))
+         throw new IllegalArgumentException("Source and target roots must not overlap: source [" + source + "] resolves to ["
+               + sourceRootAbsolute + "], target [" + target + "] resolves to [" + targetRootAbsolute + "].");
    }
 
    @Override

@@ -143,6 +143,16 @@ Options:
                             For example `-v -v -v` or `-vvv`.
 ```
 
+Source and target roots must not refer to the same directory or contain one another.
+This rule also applies with filters, `--max-depth`, `--dry-run`, and `--ignore-errors`.
+All tasks are checked before any task changes the filesystem.
+For a missing target root, its parent directory must already exist.
+
+Directory symlinks supplied as source or target roots select the directories they resolve to.
+A source root symlink produces an independent copy, and a target root symlink remains in place.
+Symlinks encountered inside the source directory are copied as links.
+Root resolution errors, including broken root symlinks, abort the command.
+
 Under the hood, the `sync` command uses a first-match-wins include/exclude filter engine with directory creation aligned to filtering:
 
 - First matching `in:` / `ex:` rule wins; unmatched paths are included by default.
