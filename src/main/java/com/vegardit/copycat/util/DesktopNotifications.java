@@ -45,7 +45,7 @@ public final class DesktopNotifications {
          trayIcon.setPopupMenu(popup);
          EventQueue.invokeLater(() -> {
             try {
-               SystemTray.getSystemTray().add(TRAY_ICON);
+               SystemTray.getSystemTray().add(trayIcon);
             } catch (final Exception ex) {
                LOG.warn(ex);
             }

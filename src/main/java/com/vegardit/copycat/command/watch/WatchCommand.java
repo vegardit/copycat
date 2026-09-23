@@ -5,7 +5,7 @@
 package com.vegardit.copycat.command.watch;
 
 import static com.vegardit.copycat.util.Booleans.*;
-import static net.sf.jstuff.core.validation.NullAnalysisHelper.asNonNull;
+import static net.sf.jstuff.core.validation.NullAnalysisHelper.*;
 
 import java.awt.TrayIcon.MessageType;
 import java.io.File;
@@ -523,6 +523,9 @@ public class WatchCommand extends AbstractSyncCommand<WatchCommandConfig> {
                }
             }
             break;
+
+         case OVERFLOW:
+            break;
       }
    }
 
@@ -545,7 +548,7 @@ public class WatchCommand extends AbstractSyncCommand<WatchCommandConfig> {
 
    private void scheduleFailedEventRetry(final WatchCommandConfig task, final DirectoryChangeEvent event, final PendingEventRetry retryKey,
          final Exception cause) {
-      final int attempt = pendingEventRetries.merge(retryKey, 1, Integer::sum);
+      final int attempt = defaultIfNull(pendingEventRetries.merge(retryKey, 1, Integer::sum), 0);
       if (attempt > maxEventRetryAttempts()) {
          pendingEventRetries.remove(retryKey, attempt);
          LOG.error("Giving up retrying %s event for [%s] after %s failed attempt(s).", event.eventType(), retryKey.path(),

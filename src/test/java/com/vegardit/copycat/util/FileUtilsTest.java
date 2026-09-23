@@ -57,6 +57,7 @@ import net.sf.jstuff.core.SystemUtils;
  * @author Sebastian Thomschke, Vegard IT GmbH
  */
 @NonNullByDefault({})
+@SuppressWarnings("resource")
 class FileUtilsTest {
 
    private static class DelegatingFileChannel extends FileChannel {
@@ -672,7 +673,6 @@ class FileUtilsTest {
 
    @Test
    void supportsPlatformNativeFileAttributes() {
-      @SuppressWarnings("resource")
       final var supported = tempDir.getFileSystem().supportedFileAttributeViews();
       assertThat(FileUtils.supportsDosAttributes(tempDir)).isEqualTo(supported.contains("dos"));
       assertThat(FileUtils.supportsPosixAttributes(tempDir)).isEqualTo(supported.contains("posix"));

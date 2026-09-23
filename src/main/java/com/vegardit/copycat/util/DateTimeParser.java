@@ -42,7 +42,6 @@ public final class DateTimeParser {
       END_OF_DAY
    }
 
-   @SuppressWarnings("null")
    private static final DateTimeFormatter ABSOLUTE = new DateTimeFormatterBuilder() //
       .appendPattern("yyyy-MM-dd") //
       .optionalStart().appendPattern("'T'HH:mm[:ss]").optionalEnd() //
