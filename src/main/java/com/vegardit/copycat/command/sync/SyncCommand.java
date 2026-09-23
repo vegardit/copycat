@@ -14,6 +14,7 @@ import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayDeque;
 import java.util.HashMap;
 import java.util.List;
@@ -33,7 +34,6 @@ import org.eclipse.jdt.annotation.Nullable;
 
 import com.vegardit.copycat.util.DesktopNotifications;
 import com.vegardit.copycat.util.FileAttrs;
-import com.vegardit.copycat.util.FileUtils;
 import com.vegardit.copycat.util.JdkLoggingUtils;
 import com.vegardit.copycat.util.ProgressTracker;
 import com.vegardit.copycat.util.YamlUtils;
@@ -48,6 +48,7 @@ import picocli.CommandLine.Option;
 
 /**
  * Performs one-way directory synchronization using prepared roots while copying source symlinks as leaf entries.
+ * Keeps original target contents separate from directory preparation, including simulated changes in dry-run mode.
  *
  * @author Sebastian Thomschke, Vegard IT GmbH
  */
@@ -67,6 +68,17 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
       NORMAL,
       ABORT_BY_EXCEPTION,
       ABORT_BY_SIGNAL
+   }
+
+   /**
+    * Original contents available to traversal, independent of whether preparation has since created a directory.
+    * A conflict retains the entry to replace, but none of its descendants may be inspected.
+    * Empty includes missing/deleted entries and descendants whose original ancestors are unavailable.
+    */
+   private enum TargetDirState {
+      ORIGINAL_DIRECTORY,
+      CONFLICT,
+      EMPTY
    }
 
    static final class DirJob {
@@ -154,7 +166,7 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
    private final ProgressTracker progressTracker = new ProgressTracker();
 
    private final Set<LogEvent> loggableEvents = Sets.newHashSet(LogEvent.values());
-   private final Set<Path> preparedParentDirsRelative = ConcurrentHashMap.newKeySet();
+   private final ConcurrentHashMap<Path, TargetDirState> targetDirStates = new ConcurrentHashMap<>();
    private final ConcurrentHashMap<Path, CompletableFuture<@Nullable Void>> preparedTargetDirs = new ConcurrentHashMap<>();
 
    private final SyncStats stats = new SyncStats();
@@ -202,8 +214,9 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
          for (final SyncCommandConfig task : tasks) {
             final var sourceFilterCtx = task.toSourceFilterContext();
             final var targetFilterCtx = task.toTargetFilterContext();
+            // Tasks may reuse the same paths, but each must observe its own initial filesystem state.
             preparedTargetDirs.clear();
-            preparedParentDirsRelative.clear();
+            targetDirStates.clear();
             final var ctx = syncContext(task);
 
             JdkLoggingUtils.withRootLogLevel(Level.INFO, //
@@ -217,18 +230,6 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
             final int taskThreads = Math.max(asNonNull(task.threads), 1);
             final var dirJobs = new DirJobQueue(taskThreads);
             LOG.info("Working hard using %s thread(s)%s...", taskThreads, isTrue(task.dryRun) ? " (DRY RUN)" : "");
-
-            if (!Files.exists(task.targetRootAbsolute, NOFOLLOW_LINKS)) {
-               if (loggableEvents.contains(LogEvent.CREATE)) {
-                  LOG.info("NEW [@|magenta %s%s|@]...", task.targetRootAbsolute, File.separator);
-               }
-
-               final long startMillis = System.currentTimeMillis();
-               if (not(task.dryRun)) {
-                  FileUtils.copyDirShallow(task.sourceRootAbsolute, task.targetRootAbsolute, isTrue(task.copyACL));
-               }
-               stats.onDirCreated(System.currentTimeMillis() - startMillis);
-            }
 
             dirJobs.add(new DirJob(task.sourceRootAbsolute, Paths.get(".")));
 
@@ -261,8 +262,13 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
             while (remainingThreads > 0) {
                final @Nullable Future<@Nullable Void> completed = completion.poll(awaitPollMillis, TimeUnit.MILLISECONDS);
                if (completed == null) {
-                  if (state != State.NORMAL) {
+                  if (state == State.ABORT_BY_SIGNAL) {
                      break;
+                  }
+                  if (state == State.ABORT_BY_EXCEPTION) {
+                     // The abort flag can be visible before the failed worker's future reaches the completion queue.
+                     // Keep waiting for its cause; a stall timeout here would mask the original failure.
+                     continue;
                   }
                   try {
                      progressTracker.checkStalled(stallTimeoutMillis, "Sync");
@@ -406,13 +412,13 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
                   ? task.targetRootAbsolute
                   : task.targetRootAbsolute.resolve(sourceRelative);
 
-            // In unfiltered syncs directories are mirrored eagerly. With multiple worker threads a child directory
-            // may be scanned before its parent thread has created the corresponding target directory. Ensure the
-            // target directory exists before attempting to copy files into it.
+            // Capture the original view before preparation; new directories must not become comparison inputs.
+            targetDirState(task, target);
             final var taskFileFilters = task.fileFilters;
-            if (taskFileFilters == null || taskFileFilters.isEmpty()) {
-               final Path existingTarget = Files.exists(target, NOFOLLOW_LINKS) ? target : null;
-               syncDirShallow(task, ctx, source, existingTarget, sourceRelative);
+            // The root is always prepared, even when filters include no children; other filtered directories stay lazy.
+            // Keep runtime preparation in this error handler so ignoreErrors can count failures and continue with later tasks.
+            if (taskFileFilters == null || taskFileFilters.isEmpty() || source.equals(task.sourceRootAbsolute)) {
+               ensureTargetDirPrepared(task, ctx, source, sourceRelative);
             }
 
             if (loggableEvents.contains(LogEvent.SCAN)) {
@@ -433,19 +439,19 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
             /*
              * read direct children of target dir
              *
-             * With lazy directory creation some source directories may not yet have a corresponding
-             * directory on the target side. In that case attempting to list the target would raise
-             * NoSuchFileException; we catch that below and simply treat the target as empty.
+             * Physical leftovers beneath a conflict or simulated deletion are not usable target contents.
+             * The inherited state also prevents following a symlink in an intermediate path component.
              */
             targetChildren.clear();
-            if (not(task.dryRun) || Files.isDirectory(target, NOFOLLOW_LINKS)) {
+            if (targetDirState(task, target) == TargetDirState.ORIGINAL_DIRECTORY) {
                try (var ds = Files.newDirectoryStream(target)) {
                   ds.forEach(child -> {
                      progressTracker.markProgress();
                      targetChildren.put(child.subpath(targetRootNameCount, child.getNameCount()), child);
                   });
                } catch (final NoSuchFileException ex) {
-                  // target directory does not exist; treat as empty
+                  // A directory removed externally no longer provides original contents for descendants either.
+                  targetDirStates.put(target, TargetDirState.EMPTY);
                }
             }
 
@@ -507,6 +513,9 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
             /*
              * iterate over direct children of source dir
              */
+            // Siblings share this chain, and ancestor jobs finish deletion before publishing their children.
+            // Reuse preparation only within this job; concurrent external replacements are not isolated by either sync mode.
+            boolean parentDirsPrepared = false;
             for (final var sourceEntry : sourceChildren.entrySet()) {
                if (state != State.NORMAL) {
                   break;
@@ -524,21 +533,24 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
                   continue;
                }
 
+               // Traversal alone must not create a target directory; only included files and symlink leaves need it here.
+               if (!parentDirsPrepared && (sourceAttrs.isFile() || sourceAttrs.isSymlink())) {
+                  prepareParentDirs(task, ctx, sourceChildRelative);
+                  // Reuse is valid only after every ancestor's preparation has completed successfully, including other workers' work.
+                  parentDirsPrepared = true;
+               }
+
                switch (sourceAttrs.type()) {
                   case FILE, FILE_SYMLINK -> {
-                     prepareParentDirsForIncludedFile(task, ctx, sourceChildRelative);
                      syncFile(task, ctx, sourceChildAbsolute, targetChildAbsolute, sourceChildRelative);
                      stats.onFileScanned();
                   }
                   case BROKEN_SYMLINK, OTHER_SYMLINK -> {
-                     prepareParentDirsForIncludedFile(task, ctx, sourceChildRelative);
                      syncSymlinkLeaf(task, ctx, sourceChildAbsolute, targetChildAbsolute, sourceChildRelative, sourceAttrs);
                      stats.onFileScanned();
                   }
                   case DIRECTORY_SYMLINK -> {
-                     // handle directory symlink entries immediately (do not descend into them)
-                     // and ensure their parent directory chain exists on the target, just like for files.
-                     prepareParentDirsForIncludedFile(task, ctx, sourceChildRelative);
+                     // Directory symlinks are leaves too; their referents must not become traversal jobs.
                      syncDirShallow(task, ctx, sourceChildAbsolute, targetChildAbsolute, sourceChildRelative);
                      stats.onFileScanned();
                   }
@@ -556,6 +568,12 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
 
                      // respect optional max-depth: only descend if child depth <= maxDepth
                      if (!skipSubtreeScan && (maxDepth == null || childDepth <= maxDepth)) {
+                        // Deletion finishes before jobs are published. A removed entry stays absent in dry-run,
+                        // even if its physical contents remain or another descendant later prepares the parent.
+                        if (targetChildAbsolute == null) {
+                           targetDirStates.put(task.targetRootAbsolute.resolve(sourceChildRelative), TargetDirState.EMPTY);
+                        }
+                        // Inspect existing entries in their own jobs so an ignored failure does not prevent sibling jobs.
                         dirJobs.add(new DirJob(sourceChildAbsolute, sourceChildRelative));
                      }
                   }
@@ -587,7 +605,7 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
                         && FilterEngine.isDirExplicitlyIncluded(sourceFilterCtx, job.relativeDir)) {
                      final var dirAttrs = FileAttrs.get(job.sourceDir);
                      if (FilterEngine.includesSource(sourceFilterCtx, job.sourceDir, job.relativeDir, dirAttrs)) {
-                        prepareParentDirsForExplicitlyIncludedDir(task, ctx, job.relativeDir);
+                        prepareParentDirs(task, ctx, job.relativeDir);
                         ensureTargetDirPrepared(task, ctx, job.sourceDir, job.relativeDir);
                      }
                   }
@@ -610,26 +628,21 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
       }
    }
 
-   private void prepareParentDirsForIncludedFile(final SyncCommandConfig task, final SyncHelpers.Context ctx, final Path fileRelative)
+   private void prepareParentDirs(final SyncCommandConfig task, final SyncHelpers.Context ctx, final Path entryRelative)
          throws IOException {
       final var fileFilters = task.fileFilters;
       if (fileFilters == null || fileFilters.isEmpty())
-         // In unfiltered syncs, directories are mirrored eagerly via syncDirShallow.
+         // Unfiltered jobs prepare their target directory before copying any children.
          return;
 
-      final Path parentRelative = fileRelative.getParent();
-      // If the immediate parent is already known to be prepared (and thus its ancestors as well),
-      // we can skip rebuilding and walking the full parent chain.
-      if (parentRelative == null || preparedParentDirsRelative.contains(parentRelative))
-         return;
-
-      // build parent chain from root -> immediate parent
+      // Always visit ancestors in order: a cached leaf cannot certify that its parents are still real directories.
       final var parents = new ArrayDeque<Path>();
-      Path current = parentRelative;
+      Path current = entryRelative.getParent();
       while (current != null && current.getNameCount() > 0) {
          parents.push(current);
          current = current.getParent();
       }
+      parents.push(Paths.get("."));
 
       while (!parents.isEmpty()) {
          final var dirRelative = parents.pop();
@@ -638,67 +651,64 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
       }
    }
 
-   private void prepareParentDirsForExplicitlyIncludedDir(final SyncCommandConfig task, final SyncHelpers.Context ctx,
-         final Path dirRelative) throws IOException {
-      final var fileFilters = task.fileFilters;
-      if (fileFilters == null || fileFilters.isEmpty())
-         // In unfiltered syncs, directories are mirrored eagerly via syncDirShallow.
-         return;
+   /**
+    * Prepares one real source directory after its ancestors; source symlink leaves use syncDirShallow directly.
+    */
+   void ensureTargetDirPrepared(final SyncCommandConfig task, final SyncHelpers.Context ctx, final Path sourceDir, final Path dirRelative)
+         throws IOException {
+      // The root job uses "."; normalize so parent preparation and traversal share one cache entry.
+      final Path targetDir = task.targetRootAbsolute.resolve(dirRelative).normalize();
+      while (true) {
+         final var existingFuture = preparedTargetDirs.get(targetDir);
+         if (existingFuture != null) {
+            awaitTargetDirPrepared(existingFuture, dirRelative);
+            // Dry-run completion certifies preparation even when the physical entry is still missing or incompatible.
+            if (isTrue(task.dryRun))
+               return;
+            final var targetAttrs = readTargetDirAttributes(targetDir);
+            // A newly visible directory may belong to a replacement whose preparation has not completed yet.
+            if (targetAttrs != null && targetAttrs.isDirectory() && !targetAttrs.isSymbolicLink() && preparedTargetDirs.get(
+               targetDir) == existingFuture)
+               return;
+         }
 
-      final Path parentRelative = dirRelative.getParent();
-      if (parentRelative == null || preparedParentDirsRelative.contains(parentRelative))
-         return;
-
-      // build parent chain from root -> immediate parent
-      final var parents = new ArrayDeque<Path>();
-      Path current = parentRelative;
-      while (current != null && current.getNameCount() > 0) {
-         parents.push(current);
-         current = current.getParent();
-      }
-
-      while (!parents.isEmpty()) {
-         final var rel = parents.pop();
-         final var sourceDir = task.sourceRootAbsolute.resolve(rel);
-         ensureTargetDirPrepared(task, ctx, sourceDir, rel);
+         final var myFuture = new CompletableFuture<@Nullable Void>();
+         // Renew only the completed future we inspected. A stale observer must not evict another worker's new owner.
+         if (existingFuture == null ? preparedTargetDirs.putIfAbsent(targetDir, myFuture) != null
+               : !preparedTargetDirs.replace(targetDir, existingFuture, myFuture)) {
+            continue;
+         }
+         try {
+            // Attribute failures must complete the published future too, otherwise waiters can remain blocked.
+            // Real runs also need this snapshot before mutation; moving the call into the dry-run branch loses it.
+            final var originalState = targetDirState(task, targetDir); // CHECKSTYLE:IGNORE MoveVariableInsideIfCheck
+            final Path existingTarget;
+            if (isTrue(task.dryRun)) {
+               // Conflicts still need unlinking, but simulated removals and unsafe descendants must stay absent.
+               existingTarget = originalState == TargetDirState.EMPTY ? null : targetDir;
+            } else {
+               final var targetAttrs = readTargetDirAttributes(targetDir);
+               existingTarget = targetAttrs == null ? null : targetDir;
+               if (targetAttrs == null || !targetAttrs.isDirectory() || targetAttrs.isSymbolicLink()) {
+                  targetDirStates.put(targetDir, targetAttrs == null ? TargetDirState.EMPTY : TargetDirState.CONFLICT);
+               }
+            }
+            syncDirShallow(task, ctx, sourceDir, existingTarget, dirRelative);
+            // Preparation completion never promotes replacement contents into the original comparison view.
+            myFuture.complete(null);
+            return;
+         } catch (final IOException | RuntimeException ex) {
+            myFuture.completeExceptionally(ex);
+            preparedTargetDirs.remove(targetDir, myFuture);
+            throw ex;
+         }
       }
    }
 
-   void ensureTargetDirPrepared(final SyncCommandConfig task, final SyncHelpers.Context ctx, final Path sourceDir, final Path dirRelative)
-         throws IOException {
-      final Path targetDir = task.targetRootAbsolute.resolve(dirRelative);
-      if (preparedParentDirsRelative.contains(dirRelative)) {
-         if (not(task.dryRun)) {
-            final var targetAttrs = FileAttrs.find(targetDir);
-            if (targetAttrs != null && (targetAttrs.isDir() || targetAttrs.isDirSymlink()))
-               return;
-            preparedParentDirsRelative.remove(dirRelative);
-            preparedTargetDirs.remove(targetDir);
-         } else
-            return;
-      }
-
-      final var myFuture = new CompletableFuture<@Nullable Void>();
-      final var existingFuture = preparedTargetDirs.putIfAbsent(targetDir, myFuture);
-      final var future = existingFuture != null ? existingFuture : myFuture;
-
-      if (existingFuture == null) {
-         final Path existingTarget = Files.exists(targetDir, NOFOLLOW_LINKS) ? targetDir : null;
-         try {
-            syncDirShallow(task, ctx, sourceDir, existingTarget, dirRelative);
-            preparedParentDirsRelative.add(dirRelative);
-            future.complete(null);
-         } catch (final IOException | RuntimeException ex) {
-            preparedTargetDirs.remove(targetDir, future);
-            future.completeExceptionally(ex);
-            throw ex;
-         }
-         return;
-      }
-
+   void awaitTargetDirPrepared(final CompletableFuture<@Nullable Void> future, final Path dirRelative) throws IOException {
       try {
+         // Keep the captured future so existing waiters observe its failure even after a retry replaces the cache entry.
          future.get();
-         preparedParentDirsRelative.add(dirRelative);
       } catch (final InterruptedException ex) {
          Thread.currentThread().interrupt();
          throw new IOException("Interrupted while preparing target directory [" + dirRelative + "].", ex);
@@ -714,17 +724,50 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
       }
    }
 
+   private TargetDirState targetDirState(final SyncCommandConfig task, final Path targetDir) throws IOException {
+      // A real final component is insufficient: an earlier conflict/removal makes every original descendant unavailable.
+      // Check ancestors before the cache so previously recorded children also lose their original contents.
+      if (!targetDir.equals(task.targetRootAbsolute) && targetDirState(task, asNonNull(targetDir
+         .getParent())) != TargetDirState.ORIGINAL_DIRECTORY) {
+         targetDirStates.put(targetDir, TargetDirState.EMPTY);
+         return TargetDirState.EMPTY;
+      }
+      final var knownState = targetDirStates.get(targetDir);
+      if (knownState != null)
+         return knownState;
+
+      final var attrs = readTargetDirAttributes(targetDir);
+      final var originalState = attrs == null ? TargetDirState.EMPTY
+            : attrs.isDirectory() && !attrs.isSymbolicLink() ? TargetDirState.ORIGINAL_DIRECTORY : TargetDirState.CONFLICT;
+      final var existingState = targetDirStates.putIfAbsent(targetDir, originalState);
+      return existingState == null ? originalState : existingState;
+   }
+
    /**
-    * @param targetPath null, if target path does not exist yet
+    * Inspects only the entry itself; callers establish usable ancestors before requesting descendant attributes.
+    */
+   @Nullable
+   BasicFileAttributes readTargetDirAttributes(final Path targetDir) throws IOException {
+      try {
+         return Files.readAttributes(targetDir, BasicFileAttributes.class, NOFOLLOW_LINKS);
+      } catch (final NoSuchFileException ex) {
+         // Inaccessibility and other I/O errors must not be mistaken for an empty target subtree.
+         return null;
+      }
+   }
+
+   /**
+    * @param targetPath null if no usable target entry remains, including after simulated deletion
     */
    void syncDirShallow(final SyncCommandConfig task, final SyncHelpers.Context ctx, final Path sourcePath, final @Nullable Path targetPath,
          final Path relativePath) throws IOException {
-      final Path resolvedTargetPath = targetPath == null ? task.targetRootAbsolute.resolve(relativePath) : targetPath;
+      // Creating a missing root requires the root path itself; a trailing "/." would require it to exist already.
+      final Path resolvedTargetPath = targetPath == null ? task.targetRootAbsolute.resolve(relativePath).normalize() : targetPath;
       SyncHelpers.ensureDir(ctx, sourcePath, targetPath, resolvedTargetPath, relativePath);
    }
 
    /**
-    * @param targetPath null, if target path does not exist yet
+    * @param targetPath null if no usable target entry remains, including after simulated deletion
     */
    private void syncFile(final SyncCommandConfig task, final SyncHelpers.Context ctx, final Path sourcePath, @Nullable Path targetPath,
          final Path relativePath) throws IOException {

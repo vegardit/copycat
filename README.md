@@ -374,6 +374,10 @@ Copycat checks the relative path of each file to be synced against the configure
 - Directories on the target are created lazily:
   - A directory is created when the first included child (file or subdirectory) under it is synced, or
   - When the directory itself is explicitly included by a pattern.
+- During `sync`, a target file or symlink that conflicts with a source directory is replaced only when
+  that directory needs to be created, unless selected for deletion.
+  Target directory symlinks below the selected target root are not traversed.
+  Synchronization assumes that other processes do not replace target directories during the run.
 - Empty directory semantics:
   - `in:somedir` includes an empty `somedir` directory (it will be created even without files).
   - `in:somedir/**` matches only descendants of `somedir`, so an empty `somedir` is not created.
@@ -402,6 +406,8 @@ Copycat checks the relative path of each file to be synced against the configure
   - `--delete` considers target entries that do not exist in the source; filters can protect some of them.
   - `--delete-excluded` also deletes target entries that are excluded by filters.
 - Matching is done on target-relative paths, again using `/` as separator (backslashes in patterns are normalized on Windows).
+- `sync --dry-run` reports the copies and directory creation required after planned deletions,
+  even when existing target files match the source.
 
 #### Date/Time Filtering
 
