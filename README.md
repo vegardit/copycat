@@ -405,6 +405,10 @@ Copycat checks the relative path of each file to be synced against the configure
 - They are mainly used when `--delete` or `--delete-excluded` is enabled:
   - `--delete` considers target entries that do not exist in the source; filters can protect some of them.
   - `--delete-excluded` also deletes target entries that are excluded by filters.
+- During `sync --delete`, excluded entries are protected when `--delete-excluded` is disabled.
+  An excluded directory protects its whole subtree.
+  If an extraneous directory contains excluded descendants, sync deletes its eligible contents
+  and keeps the ancestor directories needed to contain the protected entries.
 - Matching is done on target-relative paths, again using `/` as separator (backslashes in patterns are normalized on Windows).
 - `sync --dry-run` reports the copies and directory creation required after planned deletions,
   even when existing target files match the source.

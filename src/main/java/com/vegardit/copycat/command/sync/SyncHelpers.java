@@ -24,11 +24,10 @@ import net.sf.jstuff.core.io.MoreFiles;
 import net.sf.jstuff.core.logging.Logger;
 
 /**
- * Shared sync primitives for file/directory copy logic.
+ * Shared sync primitives for copy operations and unconditional recursive deletion.
  *
  * <p>
- * This engine focuses on leaf-level sync operations (files, symlinks, directories).
- * Traversal, filtering, and scheduling remain in the command implementations.
+ * Filter policy and scheduling remain in the command implementations.
  * </p>
  *
  * @author Sebastian Thomschke, Vegard IT GmbH
@@ -78,42 +77,49 @@ public final class SyncHelpers {
       final long[] deletedDirs = {0};
       final long[] deletedFileSize = {0};
 
-      Files.walkFileTree(dir, new SimpleFileVisitor<>() {
-         @Override
-         public FileVisitResult postVisitDirectory(final Path subdir, final @Nullable IOException exc) throws IOException {
-            if (ctx.progress != null) {
-               ctx.progress.markProgress();
+      try {
+         Files.walkFileTree(dir, new SimpleFileVisitor<>() {
+            @Override
+            public FileVisitResult postVisitDirectory(final Path subdir, final @Nullable IOException exc) throws IOException {
+               // An incomplete scan cannot establish removal, even in dry-run; preserve the original failure before reporting deletion.
+               if (exc != null)
+                  throw exc;
+               if (ctx.progress != null) {
+                  ctx.progress.markProgress();
+               }
+               if (ctx.logDelete) {
+                  LOG.info("Deleting [@|magenta %s%s|@]...", dir.relativize(subdir), File.separator);
+               }
+               if (!ctx.dryRun) {
+                  Files.delete(subdir);
+               }
+               deletedDirs[0]++;
+               return FileVisitResult.CONTINUE;
             }
-            if (ctx.logDelete) {
-               LOG.info("Deleting [@|magenta %s%s|@]...", dir.relativize(subdir), File.separator);
-            }
-            if (!ctx.dryRun) {
-               Files.delete(subdir);
-            }
-            deletedDirs[0]++;
-            return FileVisitResult.CONTINUE;
-         }
 
-         @Override
-         public FileVisitResult visitFile(final Path file, final BasicFileAttributes attrs) throws IOException {
-            if (ctx.progress != null) {
-               ctx.progress.markProgress();
+            @Override
+            public FileVisitResult visitFile(final Path file, final BasicFileAttributes attrs) throws IOException {
+               if (ctx.progress != null) {
+                  ctx.progress.markProgress();
+               }
+               if (ctx.logDelete) {
+                  LOG.info("Deleting [@|magenta %s|@]...", dir.relativize(file));
+               }
+               if (!ctx.dryRun) {
+                  Files.delete(file);
+               }
+               deletedFiles[0]++;
+               deletedFileSize[0] += attrs.size();
+               return FileVisitResult.CONTINUE;
             }
-            if (ctx.logDelete) {
-               LOG.info("Deleting [@|magenta %s|@]...", dir.relativize(file));
-            }
-            if (!ctx.dryRun) {
-               Files.delete(file);
-            }
-            deletedFiles[0]++;
-            deletedFileSize[0] += attrs.size();
-            return FileVisitResult.CONTINUE;
+         });
+      } finally {
+         // Completed child operations still count when the walk fails; dry-run plans obey the same rule.
+         // Publish the accumulated totals once while allowing the original failure to propagate.
+         if (ctx.stats != null) {
+            ctx.stats.onDirDeleted(TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startNanos), deletedDirs[0], deletedFiles[0],
+               deletedFileSize[0]);
          }
-      });
-
-      if (ctx.stats != null) {
-         ctx.stats.onDirDeleted(TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startNanos), deletedDirs[0], deletedFiles[0],
-            deletedFileSize[0]);
       }
    }
 

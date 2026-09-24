@@ -497,16 +497,30 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
                      }
                   }
 
-                  if (loggableEvents.contains(LogEvent.DELETE)) {
-                     LOG.info("DELETE [@|magenta %s|@]...", targetChildRelative);
-                  }
+                  boolean removed = true;
                   if (targetAttrs.isDir()) {
-                     SyncHelpers.deleteDir(ctx, targetChildAbsolute);
+                     if (targetFilterHasEffects && !isTrue(task.deleteExcluded)) {
+                        removed = SyncTargetDeletion.deleteDirectory(ctx, task.targetRootAbsolute, targetChildAbsolute, targetFilterCtx);
+                     } else {
+                        // Unconditional deletion remains appropriate when exclusions cannot protect descendants.
+                        SyncHelpers.deleteDir(ctx, targetChildAbsolute);
+                        // Shared detail logs are subtree-relative; identify the root only after the whole deletion succeeds.
+                        if (loggableEvents.contains(LogEvent.DELETE)) {
+                           LOG.info("DELETE [@|magenta %s|@]...", targetChildRelative);
+                        }
+                     }
                   } else {
                      SyncHelpers.deleteFile(ctx, targetChildAbsolute, targetAttrs, true);
+                     // Report a leaf only after deletion succeeds or is planned.
+                     if (loggableEvents.contains(LogEvent.DELETE)) {
+                        LOG.info("DELETE [@|magenta %s|@]...", targetChildRelative);
+                     }
                   }
 
-                  it.remove();
+                  // Partial pruning leaves original contents available; only complete removal may imply an EMPTY target subtree.
+                  if (removed) {
+                     it.remove();
+                  }
                }
             }
 
