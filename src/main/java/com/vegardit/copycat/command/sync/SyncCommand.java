@@ -10,6 +10,7 @@ import static net.sf.jstuff.core.validation.NullAnalysisHelper.asNonNull;
 import java.awt.TrayIcon.MessageType;
 import java.io.File;
 import java.io.IOException;
+import java.io.InterruptedIOException;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
@@ -17,6 +18,7 @@ import java.nio.file.Paths;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayDeque;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Queue;
 import java.util.Set;
@@ -400,11 +402,19 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
       while (state == State.NORMAL) {
          final var job = dirJobs.pollOrWait(() -> state == State.NORMAL);
          if (job == null) {
+            // Waiting can end because of interruption as well as an empty queue; only the latter is successful completion.
+            if (state == State.NORMAL) {
+               checkInterrupted();
+            }
             LOG.debug("Worker done.");
             break;
          }
 
          try {
+            if (state != State.NORMAL) {
+               break;
+            }
+            checkInterrupted();
             progressTracker.markProgress();
             final Path source = job.sourceDir;
             final Path sourceRelative = job.relativeDir;
@@ -428,6 +438,7 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
             /*
              * read direct children of source dir
              */
+            // Keep both listings outside entry recovery. A partial source map could make real source entries look extraneous.
             sourceChildren.clear();
             try (var ds = Files.newDirectoryStream(source)) {
                ds.forEach(child -> {
@@ -458,68 +469,80 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
             /*
              * remove extraneous entries in target dir
              */
+            // Keep recovery state separate from the complete source listing used for deletion decisions.
+            final var failedTargetEntries = new HashSet<Path>();
             if (isTrue(task.delete)) {
                for (final var it = targetChildren.entrySet().iterator(); it.hasNext();) {
                   if (state != State.NORMAL) {
                      break;
                   }
+                  checkInterrupted();
                   progressTracker.markProgress();
                   final var targetChildEntry = it.next();
                   final var targetChildRelative = targetChildEntry.getKey();
                   final var targetChildAbsolute = targetChildEntry.getValue();
 
-                  final boolean existsInSource = sourceChildren.containsKey(targetChildRelative);
+                  try {
+                     final boolean existsInSource = sourceChildren.containsKey(targetChildRelative);
 
-                  final boolean needRemoval;
-                  final FileAttrs targetAttrs;
-                  if (!targetFilterHasEffects) {
-                     // Fast path: no target-side filters/flags or date constraints; default-include semantics.
-                     // In this case only entries that do not exist in the source are removed.
-                     if (existsInSource) {
-                        continue;
-                     }
-                     needRemoval = true;
-                     targetAttrs = FileAttrs.get(targetChildAbsolute);
-                  } else {
-                     targetAttrs = FileAttrs.get(targetChildAbsolute);
-                     final boolean isIncludedTarget = FilterEngine.includesSource(targetFilterCtx, targetChildAbsolute, targetChildRelative,
-                        targetAttrs);
-                     final boolean isExcludedFromSync = !isIncludedTarget;
-
-                     if (existsInSource) {
-                        needRemoval = isExcludedFromSync && isTrue(task.deleteExcluded);
+                     final boolean needRemoval;
+                     final FileAttrs targetAttrs;
+                     if (!targetFilterHasEffects) {
+                        // Fast path: no target-side filters/flags or date constraints; default-include semantics.
+                        // In this case only entries that do not exist in the source are removed.
+                        if (existsInSource) {
+                           continue;
+                        }
+                        needRemoval = true;
+                        targetAttrs = FileAttrs.get(targetChildAbsolute);
                      } else {
-                        needRemoval = !isExcludedFromSync || isExcludedFromSync && isTrue(task.deleteExcluded);
+                        targetAttrs = FileAttrs.get(targetChildAbsolute);
+                        final boolean isIncludedTarget = FilterEngine.includesSource(targetFilterCtx, targetChildAbsolute,
+                           targetChildRelative, targetAttrs);
+                        final boolean isExcludedFromSync = !isIncludedTarget;
+
+                        if (existsInSource) {
+                           needRemoval = isExcludedFromSync && isTrue(task.deleteExcluded);
+                        } else {
+                           needRemoval = !isExcludedFromSync || isExcludedFromSync && isTrue(task.deleteExcluded);
+                        }
+
+                        if (!needRemoval) {
+                           continue;
+                        }
                      }
 
-                     if (!needRemoval) {
-                        continue;
-                     }
-                  }
-
-                  boolean removed = true;
-                  if (targetAttrs.isDir()) {
-                     if (targetFilterHasEffects && !isTrue(task.deleteExcluded)) {
-                        removed = SyncTargetDeletion.deleteDirectory(ctx, task.targetRootAbsolute, targetChildAbsolute, targetFilterCtx);
+                     boolean removed = true;
+                     if (targetAttrs.isDir()) {
+                        if (targetFilterHasEffects && !isTrue(task.deleteExcluded)) {
+                           removed = SyncTargetDeletion.deleteDirectory(ctx, task.targetRootAbsolute, targetChildAbsolute, targetFilterCtx);
+                        } else {
+                           // Unconditional deletion remains appropriate when exclusions cannot protect descendants.
+                           SyncHelpers.deleteDir(ctx, targetChildAbsolute);
+                           // Shared detail logs are subtree-relative; identify the root only after the whole deletion succeeds.
+                           if (loggableEvents.contains(LogEvent.DELETE)) {
+                              LOG.info("DELETE [@|magenta %s|@]...", targetChildRelative);
+                           }
+                        }
                      } else {
-                        // Unconditional deletion remains appropriate when exclusions cannot protect descendants.
-                        SyncHelpers.deleteDir(ctx, targetChildAbsolute);
-                        // Shared detail logs are subtree-relative; identify the root only after the whole deletion succeeds.
+                        SyncHelpers.deleteFile(ctx, targetChildAbsolute, targetAttrs, true);
+                        // Report a leaf only after deletion succeeds or is planned.
                         if (loggableEvents.contains(LogEvent.DELETE)) {
                            LOG.info("DELETE [@|magenta %s|@]...", targetChildRelative);
                         }
                      }
-                  } else {
-                     SyncHelpers.deleteFile(ctx, targetChildAbsolute, targetAttrs, true);
-                     // Report a leaf only after deletion succeeds or is planned.
-                     if (loggableEvents.contains(LogEvent.DELETE)) {
-                        LOG.info("DELETE [@|magenta %s|@]...", targetChildRelative);
-                     }
-                  }
 
-                  // Partial pruning leaves original contents available; only complete removal may imply an EMPTY target subtree.
-                  if (removed) {
-                     it.remove();
+                     // Partial pruning leaves original contents available; only complete removal may imply an EMPTY target subtree.
+                     if (removed) {
+                        it.remove();
+                     }
+                  } catch (final IOException | RuntimeException ex) {
+                     // Rethrown failures belong to the outer handler; counting here as well would report them twice.
+                     if (state != State.NORMAL || not(task.ignoreErrors) || Thread.currentThread().isInterrupted())
+                        throw ex;
+                     stats.onError(ex);
+                     logError(ex);
+                     failedTargetEntries.add(targetChildRelative);
                   }
                }
             }
@@ -534,86 +557,97 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
                if (state != State.NORMAL) {
                   break;
                }
+               checkInterrupted();
                progressTracker.markProgress();
                final var sourceChildRelative = sourceEntry.getKey();
+               // A failed target operation may have removed some descendants. Reusing physical leftovers in dry-run
+               // would lose those simulated deletions, so skip dependent source work (including queueing its directory).
+               if (failedTargetEntries.contains(sourceChildRelative)) {
+                  continue;
+               }
                final var sourceChildAbsolute = sourceEntry.getValue();
                final var targetChildAbsolute = targetChildren.get(sourceChildRelative);
 
-               final boolean skipSubtreeScan = task.isExcludedSourceSubtreeDir(sourceChildRelative);
+               try {
+                  final boolean skipSubtreeScan = task.isExcludedSourceSubtreeDir(sourceChildRelative);
 
-               final var sourceAttrs = FilterEngine.getFileAttrsIfIncluded(sourceFilterCtx, sourceChildAbsolute, sourceChildRelative,
-                  skipSubtreeScan);
-               if (sourceAttrs == null) {
-                  continue;
-               }
-
-               // Traversal alone must not create a target directory; only included files and symlink leaves need it here.
-               if (!parentDirsPrepared && (sourceAttrs.isFile() || sourceAttrs.isSymlink())) {
-                  prepareParentDirs(task, ctx, sourceChildRelative);
-                  // Reuse is valid only after every ancestor's preparation has completed successfully, including other workers' work.
-                  parentDirsPrepared = true;
-               }
-
-               switch (sourceAttrs.type()) {
-                  case FILE, FILE_SYMLINK -> {
-                     syncFile(task, ctx, sourceChildAbsolute, targetChildAbsolute, sourceChildRelative);
-                     stats.onFileScanned();
+                  final var sourceAttrs = FilterEngine.getFileAttrsIfIncluded(sourceFilterCtx, sourceChildAbsolute, sourceChildRelative,
+                     skipSubtreeScan);
+                  if (sourceAttrs == null) {
+                     continue;
                   }
-                  case BROKEN_SYMLINK, OTHER_SYMLINK -> {
-                     syncSymlinkLeaf(task, ctx, sourceChildAbsolute, targetChildAbsolute, sourceChildRelative, sourceAttrs);
-                     stats.onFileScanned();
-                  }
-                  case DIRECTORY_SYMLINK -> {
-                     // Directory symlinks are leaves too; their referents must not become traversal jobs.
-                     syncDirShallow(task, ctx, sourceChildAbsolute, targetChildAbsolute, sourceChildRelative);
-                     stats.onFileScanned();
-                  }
-                  case DIRECTORY -> {
-                     final Integer maxDepth = task.maxDepth;
-                     final int childDepth = sourceChildRelative.getNameCount();
 
-                     // respect optional max-depth: skip directories beyond maxDepth entirely
-                     if (maxDepth != null && childDepth > maxDepth) {
-                        if (LOG.isTraceEnabled()) {
-                           LOG.trace("Ignoring directory outside max-depth [%s]: %s", maxDepth, sourceChildRelative);
+                  // Traversal alone must not create a target directory; only included files and symlink leaves need it here.
+                  if (!parentDirsPrepared && (sourceAttrs.isFile() || sourceAttrs.isSymlink())) {
+                     prepareParentDirs(task, ctx, sourceChildRelative);
+                     // Reuse is valid only after every ancestor's preparation has completed successfully, including other workers' work.
+                     parentDirsPrepared = true;
+                  }
+
+                  switch (sourceAttrs.type()) {
+                     case FILE, FILE_SYMLINK -> {
+                        syncFile(task, ctx, sourceChildAbsolute, targetChildAbsolute, sourceChildRelative);
+                        stats.onFileScanned();
+                     }
+                     case BROKEN_SYMLINK, OTHER_SYMLINK -> {
+                        syncSymlinkLeaf(task, ctx, sourceChildAbsolute, targetChildAbsolute, sourceChildRelative, sourceAttrs);
+                        stats.onFileScanned();
+                     }
+                     case DIRECTORY_SYMLINK -> {
+                        // Directory symlinks are leaves too; their referents must not become traversal jobs.
+                        syncDirShallow(task, ctx, sourceChildAbsolute, targetChildAbsolute, sourceChildRelative);
+                        stats.onFileScanned();
+                     }
+                     case DIRECTORY -> {
+                        final Integer maxDepth = task.maxDepth;
+                        final int childDepth = sourceChildRelative.getNameCount();
+
+                        // respect optional max-depth: skip directories beyond maxDepth entirely
+                        if (maxDepth != null && childDepth > maxDepth) {
+                           if (LOG.isTraceEnabled()) {
+                              LOG.trace("Ignoring directory outside max-depth [%s]: %s", maxDepth, sourceChildRelative);
+                           }
+                           break;
                         }
-                        break;
-                     }
 
-                     // respect optional max-depth: only descend if child depth <= maxDepth
-                     if (!skipSubtreeScan && (maxDepth == null || childDepth <= maxDepth)) {
-                        // Deletion finishes before jobs are published. A removed entry stays absent in dry-run,
-                        // even if its physical contents remain or another descendant later prepares the parent.
-                        if (targetChildAbsolute == null) {
-                           targetDirStates.put(task.targetRootAbsolute.resolve(sourceChildRelative), TargetDirState.EMPTY);
+                        // respect optional max-depth: only descend if child depth <= maxDepth
+                        if (!skipSubtreeScan && (maxDepth == null || childDepth <= maxDepth)) {
+                           // Deletion finishes before jobs are published. A removed entry stays absent in dry-run,
+                           // even if its physical contents remain or another descendant later prepares the parent.
+                           if (targetChildAbsolute == null) {
+                              targetDirStates.put(task.targetRootAbsolute.resolve(sourceChildRelative), TargetDirState.EMPTY);
+                           }
+                           // Inspect existing entries in their own jobs so an ignored failure does not prevent sibling jobs.
+                           dirJobs.add(new DirJob(sourceChildAbsolute, sourceChildRelative));
                         }
-                        // Inspect existing entries in their own jobs so an ignored failure does not prevent sibling jobs.
-                        dirJobs.add(new DirJob(sourceChildAbsolute, sourceChildRelative));
+                     }
+                     case OTHER -> {
+                        if (getVerbosity() > 0) {
+                           LOG.warn("Skipping unsupported filesystem entry [@|magenta %s|@].", sourceChildRelative);
+                        }
+                        stats.onFileScanned();
                      }
                   }
-                  case OTHER -> {
-                     if (getVerbosity() > 0) {
-                        LOG.warn("Skipping unsupported filesystem entry [@|magenta %s|@].", sourceChildRelative);
-                     }
-                     stats.onFileScanned();
-                  }
+               } catch (final IOException | RuntimeException ex) {
+                  // Cancellation is not an ignored entry failure; the outer handler owns its accounting and completion.
+                  if (state != State.NORMAL || not(task.ignoreErrors) || Thread.currentThread().isInterrupted())
+                     throw ex;
+                  stats.onError(ex);
+                  logError(ex);
                }
             }
          } catch (final IOException | RuntimeException ex) {
             stats.onError(ex);
-            if (not(task.ignoreErrors)) {
+            // An existing signal or worker failure already owns completion; do not replace its abort reason.
+            if (state == State.NORMAL && (not(task.ignoreErrors) || Thread.currentThread().isInterrupted())) {
                state = State.ABORT_BY_EXCEPTION;
                throw ex;
             }
-            if (getVerbosity() > 0) {
-               LOG.error(ex);
-            } else {
-               LOG.error(ex.getClass().getSimpleName() + ": " + ex.getMessage());
-            }
+            logError(ex);
          } finally {
             try {
-               // explicitly included empty directories
-               if (state == State.NORMAL && !job.sourceDir.equals(task.sourceRootAbsolute)) {
+               // Finally also runs after interruption; explicitly included directories must not resume filesystem work then.
+               if (state == State.NORMAL && !Thread.currentThread().isInterrupted() && !job.sourceDir.equals(task.sourceRootAbsolute)) {
                   final var fileFilters = task.fileFilters;
                   if (fileFilters != null && !fileFilters.isEmpty() //
                         && FilterEngine.isDirExplicitlyIncluded(sourceFilterCtx, job.relativeDir)) {
@@ -626,19 +660,29 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
                }
             } catch (final IOException | RuntimeException ex) {
                stats.onError(ex);
-               if (not(task.ignoreErrors)) {
+               if (state == State.NORMAL && (not(task.ignoreErrors) || Thread.currentThread().isInterrupted())) {
                   state = State.ABORT_BY_EXCEPTION;
                   throw ex;
                }
-               if (getVerbosity() > 0) {
-                  LOG.error(ex);
-               } else {
-                  LOG.error(ex.getClass().getSimpleName() + ": " + ex.getMessage());
-               }
+               logError(ex);
             } finally {
                stats.onDirScanned();
             }
          }
+      }
+   }
+
+   private static void checkInterrupted() throws InterruptedIOException {
+      // Preserve the flag for the caller; ignoreErrors must never turn interrupted work into successful completion.
+      if (Thread.currentThread().isInterrupted())
+         throw new InterruptedIOException("Sync worker interrupted.");
+   }
+
+   private void logError(final Exception ex) {
+      if (getVerbosity() > 0) {
+         LOG.error(ex);
+      } else {
+         LOG.error(ex.getClass().getSimpleName() + ": " + ex.getMessage());
       }
    }
 
@@ -781,9 +825,11 @@ public class SyncCommand extends AbstractSyncCommand<SyncCommandConfig> {
    }
 
    /**
+    * Package-private so tests can inject file-operation failures without platform-dependent permissions.
+    *
     * @param targetPath null if no usable target entry remains, including after simulated deletion
     */
-   private void syncFile(final SyncCommandConfig task, final SyncHelpers.Context ctx, final Path sourcePath, @Nullable Path targetPath,
+   void syncFile(final SyncCommandConfig task, final SyncHelpers.Context ctx, final Path sourcePath, @Nullable Path targetPath,
          final Path relativePath) throws IOException {
       final @Nullable SyncFileCopyCause copyCause;
 

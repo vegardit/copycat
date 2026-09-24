@@ -7,6 +7,7 @@ package com.vegardit.copycat.command.sync;
 import java.io.File;
 import java.io.IOException;
 import java.net.URI;
+import java.nio.channels.FileChannel;
 import java.nio.channels.SeekableByteChannel;
 import java.nio.file.AccessMode;
 import java.nio.file.CopyOption;
@@ -286,6 +287,13 @@ final class FailingDirectoryFileSystem extends FileSystem {
       public SeekableByteChannel newByteChannel(final Path path, final Set<? extends OpenOption> options, final FileAttribute<?>... attrs)
             throws IOException {
          return Files.newByteChannel(unwrap(path), options, attrs);
+      }
+
+      @Override
+      public FileChannel newFileChannel(final Path path, final Set<? extends OpenOption> options, final FileAttribute<?>... attrs)
+            throws IOException {
+         // Copies open FileChannel directly; only directory iteration should fail in this fixture.
+         return FileChannel.open(unwrap(path), options, attrs);
       }
 
       @Override

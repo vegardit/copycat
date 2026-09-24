@@ -153,6 +153,15 @@ A source root symlink produces an independent copy, and a target root symlink re
 Symlinks encountered inside the source directory are copied as links.
 Root resolution errors, including broken root symlinks, abort the command.
 
+With `--ignore-errors`, failed entries are logged and counted while independent entries continue.
+An incomplete source or target directory listing prevents processing that directory's entries.
+If a target entry fails during deletion, its matching source entry and any descendants are also skipped for that run.
+Run sync again to retry skipped work.
+Signals and thread interruptions still abort the sync.
+
+For `sync`, `--delete-excluded` takes effect only when `--delete` is enabled.
+It does not enable deletion by itself.
+
 Under the hood, the `sync` command uses a first-match-wins include/exclude filter engine with directory creation aligned to filtering:
 
 - First matching `in:` / `ex:` rule wins; unmatched paths are included by default.
@@ -395,16 +404,16 @@ Copycat checks the relative path of each file to be synced against the configure
   ```yaml
   filters:
     - ex:**/node_modules/**
+    - in:logs/latest.log # match this file before excluding other logs
     - ex:logs/*.log
-    - in:logs/latest.log # re-include a specific file
   ```
 
 #### Target filters and deletes
 
 - Target-side filters use the same syntax and semantics as source filters (same `in:`/`ex:` rules, first match wins, default include).
-- They are mainly used when `--delete` or `--delete-excluded` is enabled:
+- In `sync`, the deletion pass runs only when `--delete` is enabled:
   - `--delete` considers target entries that do not exist in the source; filters can protect some of them.
-  - `--delete-excluded` also deletes target entries that are excluded by filters.
+  - With `--delete-excluded` also enabled, it deletes excluded target entries even if they exist in the source.
 - During `sync --delete`, excluded entries are protected when `--delete-excluded` is disabled.
   An excluded directory protects its whole subtree.
   If an extraneous directory contains excluded descendants, sync deletes its eligible contents
