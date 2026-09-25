@@ -47,8 +47,10 @@ SPDX-ArtifactOfProjectHomePage: https://github.com/vegardit/copycat
       <graalvm-sdk.version>25.3.4.1</graalvm-sdk.version>
       <!-- https://central.sonatype.com/artifact/info.picocli/picocli -->
       <picocli.version>4.7.7</picocli.version>
+      <!-- https://central.sonatype.com/artifact/com.guardsquare/proguard-base -->
+      <proguard-base.version>7.10.0</proguard-base.version>
       <!-- https://central.sonatype.com/artifact/com.guardsquare/proguard-core -->
-      <proguard.version>9.3.2</proguard.version>
+      <proguard-core.version>9.4.0</proguard-core.version>
 
       <skip.japicmp.cmp>true</skip.japicmp.cmp>
    </properties>
@@ -182,13 +184,17 @@ SPDX-ArtifactOfProjectHomePage: https://github.com/vegardit/copycat
 
                <obfuscate>false</obfuscate>
 
+               <!--
+                  The parent resolves custom.compileBootClasspath to the compile JDK's jmods directory during initialize.
+                  Use that JDK's API for analysis; Maven may run on a newer JDK without jmods.
+               -->
                <libs>
-                  <lib>${java.home}/jmods/java.base.jmod</lib>
-                  <lib>${java.home}/jmods/java.desktop.jmod</lib>
-                  <lib>${java.home}/jmods/java.logging.jmod</lib>
-                  <lib>${java.home}/jmods/java.management.jmod</lib>
-                  <lib>${java.home}/jmods/java.prefs.jmod</lib>
-                  <lib>${java.home}/jmods/jdk.unsupported.jmod</lib>
+                  <lib>${custom.compileBootClasspath}/java.base.jmod</lib>
+                  <lib>${custom.compileBootClasspath}/java.desktop.jmod</lib>
+                  <lib>${custom.compileBootClasspath}/java.logging.jmod</lib>
+                  <lib>${custom.compileBootClasspath}/java.management.jmod</lib>
+                  <lib>${custom.compileBootClasspath}/java.prefs.jmod</lib>
+                  <lib>${custom.compileBootClasspath}/jdk.unsupported.jmod</lib>
                </libs>
 
                <!-- https://www.guardsquare.com/en/products/proguard/manual/usage -->
@@ -241,20 +247,21 @@ SPDX-ArtifactOfProjectHomePage: https://github.com/vegardit/copycat
                      java.lang.Object readResolve();
                   }]]></option>
                </options>
-               <proguardVersion>${proguard.version}</proguardVersion>
+               <proguardVersion>${proguard-core.version}</proguardVersion>
             </configuration>
             <dependencies>
                <dependency>
                   <!-- https://github.com/Guardsquare/proguard -->
                   <groupId>com.guardsquare</groupId>
                   <artifactId>proguard-base</artifactId>
-                  <version>7.10.0</version>
+                  <version>${proguard-base.version}</version>
                </dependency>
                <dependency>
                   <!-- https://github.com/Guardsquare/proguard-core -->
+                  <!-- The Maven plugin also declares Core directly; override it with the version required by proguard-base. -->
                   <groupId>com.guardsquare</groupId>
                   <artifactId>proguard-core</artifactId>
-                  <version>${proguard.version}</version>
+                  <version>${proguard-core.version}</version>
                </dependency>
             </dependencies>
          </plugin>
