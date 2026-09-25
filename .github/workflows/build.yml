@@ -3,6 +3,8 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-ArtifactOfProjectHomePage: https://github.com/vegardit/copycat
 #
+# Builds JVM and native distributions, then publishes GitHub releases after the native builds succeed.
+#
 # https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax
 name: Build
 
@@ -46,137 +48,43 @@ jobs:
   ###########################################################
   maven-build:
   ###########################################################
-    runs-on: ubuntu-latest  # https://github.com/actions/runner-images#available-images
-    timeout-minutes: 60
-
     permissions:
       actions: write
-      contents: read
+      contents: write
+      pull-requests: write
 
-    env:
-      JAVA_VERSION: 17
+    uses: sebthom/gha-shared/.github/workflows/reusable.maven-build.yml@v1
+    with:
+      timeout-minutes: 60
+      compile-jdk: temurin@17
+      maven-jdk: temurin@25
+      maven-versions: mvnw
+      extra-maven-args: ${{ github.event.inputs.additional_maven_args }}
 
-    steps:
-    - name: "Show: GitHub context"
-      env:
-        GITHUB_CONTEXT: ${{ toJSON(github) }}
-      run: printf '%s' "$GITHUB_CONTEXT" | python -m json.tool
+      # Copycat publishes distributions through the GitHub release job, without Maven repository deployment.
+      maven-deploy: false
+      release-on-workflow-dispatch: true
+      # Keep the outer job's deferred rebase merge while downstream native checks may still be pending.
+      dependabot-auto-merge: false
 
-
-    - name: "Show: environment variables"
-      run: env | sort
-
-
-    - name: Git Checkout
-      uses: actions/checkout@v7  # https://github.com/actions/checkout
-
-
-    - name: "Install: JDK ${{ env.JAVA_VERSION }} ☕"
-      uses: actions/setup-java@v6  # https://github.com/actions/setup-java
-      with:
-        distribution: temurin
-        java-version: ${{ env.JAVA_VERSION }}
-
-
-    - name: "Cache: Restore"
-      id: cache-restore
-      uses: actions/cache/restore@v6  # https://github.com/actions/cache/blob/main/restore/README.md
-      with:
-        # IMPORTANT: path must have exactly the same value as in the cache save step otherwise restore will fail with cache key not found 
-        path: |
-          ~/.m2/bin
-          ~/.m2/repository
-          !~/.m2/repository/.cache
-          !~/.m2/repository/.meta
-          !~/.m2/repository/com/vegardit/maven
-          !~/.m2/repository/*SNAPSHOT*
-        key: ${{ runner.os }}-${{ runner.arch }}-mvn-repo-${{ hashFiles('**/pom.xml') }}
-        restore-keys: |
-          ${{ runner.os }}-${{ runner.arch }}-mvn-repo-
-
-
-    - name: "Move Restored Repo"
-      if: ${{ steps.cache-restore.outputs.cache-hit }}
-      run: |
-         RESTORED_REPO_PATH=$HOME/.m2/repository-restored
-         mv -v ~/.m2/repository $RESTORED_REPO_PATH
-         echo "RESTORED_REPO_PATH=$RESTORED_REPO_PATH" >> $GITHUB_ENV
-
-
-    - name: "Test with Maven 🔨"
-      if: ${{ github.ref_name != 'main' || env.ACT }}
-      env:
-        GITHUB_USER: ${{ github.actor }}
-        GITHUB_API_KEY: ${{ github.token }}
-        MAY_CREATE_RELEASE: false
-      run: |
-        bash .ci/build.sh ${{ github.event.inputs.additional_maven_args }}
-
-
-    - name: "Build with Maven 🔨"
-      if: ${{ github.ref_name == 'main' && !env.ACT }}
-      env:
-        GITHUB_USER: ${{ github.actor }}
-        GITHUB_API_KEY: ${{ secrets.GH_API_TOKEN }}
-        MAY_CREATE_RELEASE: true
-      run: |
-        set -eu
-
-        # https://github.community/t/github-actions-bot-email-address/17204
-        git config --global user.name "github-actions[bot]"
-        git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
-        bash .ci/build.sh ${{ github.event.inputs.additional_maven_args }}
-
-
-    ##################################################
-    # Cache Update
-    # See https://github.com/actions/cache/issues/342#issuecomment-1399442670
-    ##################################################
-    - name: "Cache: Delete Previous"
-      if: github.event_name != 'pull_request'&& steps.cache-restore.outputs.cache-hit && !env.ACT
-      env:
-        GH_TOKEN: ${{ github.token }}
-      run: |
-        gh extension install actions/gh-actions-cache
-        # "|| true" is to avoid "Error: Resource not accessible by integration" from failing the job 
-        gh actions-cache delete ${{ steps.cache-restore.outputs.cache-primary-key }} --confirm || true
-
-    - name: "Cache: Update"
-      if: github.event_name != 'pull_request'
-      uses: actions/cache/save@v6  # https://github.com/actions/cache/blob/main/save/README.md
-      with:
-        path: |
-          ~/.m2/bin
-          ~/.m2/repository
-          !~/.m2/repository/.cache
-          !~/.m2/repository/.meta
-          !~/.m2/repository/com/vegardit/maven
-          !~/.m2/repository/*SNAPSHOT*
-        key: ${{ steps.cache-restore.outputs.cache-primary-key }}
-
-
-    - name: Test minimized fat jar
-      run: |
+      after-build: |
         set -eux
 
         mv target/copycat-*-fat.jar target/copycat-fat-orig.jar
         mv target/copycat-*-fat-minimized.jar target/copycat-fat.jar
 
-        java -jar target/copycat-fat.jar --help
-        java -jar target/copycat-fat.jar -V
-        java -jar target/copycat-fat.jar sync target/classes target/classes.copy -v
+        # Maven runs on Java 25, but the distributed JAR must also work on the supported Java 17 runtime.
+        "$JAVA17_HOME/bin/java" -jar target/copycat-fat.jar --help
+        "$JAVA17_HOME/bin/java" -jar target/copycat-fat.jar -V
+        "$JAVA17_HOME/bin/java" -jar target/copycat-fat.jar sync target/classes target/classes.copy -v
 
-
-    - name: "Share: maven-build-artifacts"
-      uses: actions/upload-artifact@v7
-      with:
-        name: maven-build-artifacts
-        path: |
-           target/copycat-fat-orig.jar
-           target/copycat-fat.jar
-           target/picocli-reflections.json
-           target/bash/bashcompletion.sh
-           target/config.schema.json
+      build-artifact-name: maven-build-artifacts
+      build-artifact-paths: |
+        target/copycat-fat-orig.jar
+        target/copycat-fat.jar
+        target/picocli-reflections.json
+        target/bash/bashcompletion.sh
+        target/config.schema.json
 
 
   ###########################################################
