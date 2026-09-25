@@ -51,6 +51,7 @@ SPDX-ArtifactOfProjectHomePage: https://github.com/vegardit/copycat
       <proguard-base.version>7.10.0</proguard-base.version>
       <!-- https://central.sonatype.com/artifact/com.guardsquare/proguard-core -->
       <proguard-core.version>9.4.0</proguard-core.version>
+      <assertj.version>3.27.7</assertj.version>
 
       <skip.japicmp.cmp>true</skip.japicmp.cmp>
    </properties>
@@ -265,6 +266,24 @@ SPDX-ArtifactOfProjectHomePage: https://github.com/vegardit/copycat
                </dependency>
             </dependencies>
          </plugin>
+
+         <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-javadoc-plugin</artifactId>
+            <configuration>
+               <dependencyLinks>
+                  <dependencyLink>
+                     <!--workaround for
+                       https://github.com/assertj/assertj/issues/3476
+                       https://issues.apache.org/jira/projects/MJAVADOC/issues/MJAVADOC-792
+                     -->
+                     <groupId>org.assertj</groupId>
+                     <artifactId>assertj-core</artifactId>
+                     <url>https://www.javadoc.io/doc/org.assertj/assertj-core/${assertj.version}</url>
+                  </dependencyLink>
+               </dependencyLinks>
+            </configuration>
+         </plugin>
       </plugins>
    </build>
 
@@ -348,7 +367,7 @@ SPDX-ArtifactOfProjectHomePage: https://github.com/vegardit/copycat
       <dependency>
          <groupId>org.assertj</groupId>
          <artifactId>assertj-core</artifactId>
-         <version>3.27.7</version>
+         <version>${assertj.version}</version>
          <scope>test</scope>
       </dependency>
       <dependency>
