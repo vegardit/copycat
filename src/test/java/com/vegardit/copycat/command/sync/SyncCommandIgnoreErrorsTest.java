@@ -198,7 +198,8 @@ class SyncCommandIgnoreErrorsTest {
    @Test
    void failedParentPreparationIsRetriedForTheNextEntry(@TempDir final Path tempDir) throws Exception {
       final var task = task(tempDir, false);
-      task.fileFilters = List.of("in:included", "ex:**");
+      // Including the directory alone excludes its files; include descendants so both entries attempt parent preparation.
+      task.fileFilters = List.of("in:included", "in:included/**", "ex:**");
       task.compute();
       writeFile(task.sourceRootAbsolute.resolve("included/one.txt"));
       writeFile(task.sourceRootAbsolute.resolve("included/two.txt"));
@@ -231,7 +232,8 @@ class SyncCommandIgnoreErrorsTest {
          final boolean ignoreErrors, @TempDir final Path tempDir) throws Exception {
       final var task = task(tempDir, true);
       task.ignoreErrors = ignoreErrors;
-      task.fileFilters = List.of("in:included", "ex:**");
+      // Keep the directory explicit for finalization and include its files so syncFile() can trigger cancellation.
+      task.fileFilters = List.of("in:included", "in:included/**", "ex:**");
       task.compute();
       writeFile(task.sourceRootAbsolute.resolve("included/one.txt"));
       writeFile(task.sourceRootAbsolute.resolve("included/two.txt"));
