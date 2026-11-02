@@ -50,7 +50,7 @@ SPDX-ArtifactOfProjectHomePage: https://github.com/vegardit/copycat
       <!-- https://central.sonatype.com/artifact/com.guardsquare/proguard-base -->
       <proguard-base.version>7.10.0</proguard-base.version>
       <!-- https://central.sonatype.com/artifact/com.guardsquare/proguard-core -->
-      <proguard-core.version>9.4.0</proguard-core.version>
+      <proguard-core.version>9.4.1</proguard-core.version>
       <assertj.version>3.27.7</assertj.version>
 
       <skip.japicmp.cmp>true</skip.japicmp.cmp>
